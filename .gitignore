@@ -1,0 +1,16 @@
+# ca-bootstrap state — written at runtime, never committed
+.ca-bootstrap/
+*.log
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# PowerShell module artifacts
+*.psproj
+*.psd1.bak
+
+# Pester output
+TestResults.xml
+coverage.xml

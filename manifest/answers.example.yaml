@@ -1,0 +1,73 @@
+# manifest/answers.example.yaml — non-interactive mode template.
+#
+# Usage examples:
+#   ./ca-bootstrap.ps1 setup  -Unattended -ConfigFile answers.yaml
+#   ./ca-bootstrap.ps1 doctor -Unattended -ConfigFile answers.yaml --json
+#   ./ca-bootstrap.ps1 repair --all -Unattended -ConfigFile answers.yaml
+#   ./ca-bootstrap.ps1 undo  -Unattended -ConfigFile answers.yaml --force
+#
+# Every prompt the interactive command would ask must have an answer here,
+# or the run fails fast with a clear error naming the missing field.
+#
+# Tokens (e.g. GH_TOKEN) come from environment variables, never from this file.
+# Sections not relevant to a given command are ignored (e.g. `clone` is not
+# read by `doctor`).
+
+version: 1
+mode: unattended
+
+workspace:
+  path: ~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev
+  on_exists: keep                    # 'keep' | 'recreate' | 'fail'
+
+prerequisites:
+  install_missing: true
+  upgrade_outdated: false
+  selections:                        # 'install' | 'skip' | 'verify-only'
+    git: install
+    gh: install
+    dotnet-10: install
+    node-20: install
+    python-312: install
+    docker: skip                     # heavy install; opt in explicitly
+    vscode: install
+    vscode-extensions: install
+    claude-code: install
+    wsl: skip                        # Windows-only; opt in explicitly
+
+github_auth:
+  required: true
+  protocol: https
+  # The GitHub token comes from the GH_TOKEN environment variable when
+  # provided; otherwise the unattended run fails fast.
+  token_env_var: GH_TOKEN
+
+git_identity:
+  configure: true
+  name: First Last
+  email: first.last@channelassist.com
+
+clone:
+  groups:
+    docs: all                        # 'all' | 'none' | list of repo slugs
+    ca-platform: all
+    cm-product: all
+    ado-legacy: skip
+  exclude:
+    - ChannelAssist/channel-manager  # opt out of the legacy monolith
+
+extras:
+  vscode_workspace_file: true
+  ca_claude_plugin: true
+  wsl_ubuntu_2204: false             # ignored on non-Windows
+
+# Used only by `undo`:
+undo:
+  include_tools: false               # do NOT uninstall git/node/etc.
+  include_folders: true              # remove empty workspace folders
+  refuse_on_uncommitted_changes: true
+  refuse_on_unknown_files: true
+  targets:                           # default: all reversible journal entries
+    - identity
+    - repos
+    - workspace

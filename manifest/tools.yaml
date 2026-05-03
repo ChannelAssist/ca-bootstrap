@@ -1,0 +1,136 @@
+# manifest/tools.yaml — prerequisites and optional tools.
+#
+# Each tool has a check (how to detect it) and an install spec per OS.
+# See docs/manifest-schema.md for the full grammar.
+
+version: 1
+
+required:
+  - id: git
+    name: Git
+    description: Distributed version control
+    check:
+      cmd: "git --version"
+      version_regex: "git version (\\d+\\.\\d+\\.\\d+)"
+      min_version: "2.40.0"
+    install:
+      windows: { type: winget, id: Git.Git }
+      macos:   { type: brew,   id: git }
+      linux:
+        debian: { type: apt, id: git }
+        rhel:   { type: dnf, id: git }
+
+  - id: gh
+    name: GitHub CLI
+    description: GitHub command-line client; used for auth and cloning
+    check:
+      cmd: "gh --version"
+      version_regex: "gh version (\\d+\\.\\d+\\.\\d+)"
+      min_version: "2.30.0"
+    install:
+      windows: { type: winget, id: GitHub.cli }
+      macos:   { type: brew,   id: gh }
+      linux:
+        debian: { type: apt, id: gh, repo_setup: "scripts/install-gh-debian.sh" }
+        rhel:   { type: dnf, id: gh }
+
+optional:
+  - id: dotnet-10
+    name: .NET SDK 10
+    description: Required for cm-* services and ca-privacy-gate
+    needed_by_groups: [cm-product, ca-platform]
+    check:
+      cmd: "dotnet --list-sdks"
+      version_regex: "^10\\.\\d+\\.\\d+"
+    install:
+      windows: { type: winget, id: Microsoft.DotNet.SDK.10 }
+      macos:   { type: brew,   id: dotnet-sdk }
+      linux:
+        any: { type: script, url: "https://dot.net/v1/dotnet-install.sh", args: "--channel 10.0" }
+
+  - id: node-20
+    name: Node.js 20 LTS
+    description: Required for Keystone (Astro Starlight) and ca-data-dictionnary-generator frontend
+    needed_by_groups: [docs, ca-platform]
+    check:
+      cmd: "node --version"
+      version_regex: "v(\\d+)\\."
+      min_version: "20"
+    install:
+      windows: { type: winget, id: OpenJS.NodeJS.LTS }
+      macos:   { type: brew,   id: "node@20" }
+      linux:   { type: nvm,    version: "20" }
+
+  - id: python-312
+    name: Python 3.12
+    description: Required for cm-claims-validator and ca-data-dictionnary-generator backend
+    needed_by_groups: [cm-product, ca-platform]
+    check:
+      cmd: "python3 --version"
+      version_regex: "Python (\\d+\\.\\d+)"
+      min_version: "3.12"
+    install:
+      windows: { type: winget, id: Python.Python.3.12 }
+      macos:   { type: brew,   id: "python@3.12" }
+      linux:
+        debian: { type: apt, id: "python3.12 python3.12-venv" }
+        rhel:   { type: dnf, id: "python3.12" }
+
+  - id: docker
+    name: Docker Desktop / Engine
+    description: Required for local SQL Server (cm-database-infra) and other containerized services
+    check:
+      cmd: "docker --version"
+      version_regex: "Docker version (\\d+\\.\\d+\\.\\d+)"
+    heavy: true
+    requires_reboot:  { windows: true,  macos: false, linux: false }
+    requires_license: { windows: true,  macos: true,  linux: false }
+    install:
+      windows: { type: winget, id: Docker.DockerDesktop }
+      macos:   { type: brew,   id: docker, cask: true }
+      linux:
+        any: { type: script, url: "https://get.docker.com", post_install: ["sudo usermod -aG docker $USER"] }
+
+  - id: vscode
+    name: Visual Studio Code
+    description: Recommended editor; ChannelAssist provides a workspace file
+    check:
+      cmd: "code --version"
+    install:
+      windows: { type: winget, id: Microsoft.VisualStudioCode }
+      macos:   { type: brew,   id: visual-studio-code, cask: true }
+      linux:   { type: snap,   id: code, classic: true }
+
+  - id: vscode-extensions
+    name: VS Code recommended extensions
+    description: Language support, git tooling, AI assistance
+    requires: [vscode]
+    install_method: code-cli
+    extensions:
+      - GitHub.copilot
+      - ms-dotnettools.csharp
+      - ms-azuretools.vscode-docker
+      - ms-python.python
+      - dbaeumer.vscode-eslint
+      - eamodio.gitlens
+      - astro-build.astro-vscode
+      - bradlc.vscode-tailwindcss
+
+  - id: claude-code
+    name: Claude Code (Anthropic CLI)
+    description: AI coding assistant; pairs with the ca-claude-plugin
+    requires: [node-20]
+    check:
+      cmd: "claude --version"
+    install:
+      windows: { type: npm, id: "@anthropic-ai/claude-code", global: true }
+      macos:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
+      linux:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
+
+  - id: wsl
+    name: WSL2 + Ubuntu 22.04
+    description: Linux subsystem for Windows; useful for cm-* services that build cleaner under Linux
+    platform: windows-only
+    requires_reboot: true
+    install:
+      windows: { type: command, cmd: "wsl --install -d Ubuntu-22.04" }

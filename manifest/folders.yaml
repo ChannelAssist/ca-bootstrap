@@ -1,0 +1,24 @@
+# manifest/folders.yaml — workspace folder structure created by ca-bootstrap.
+#
+# Each entry creates one folder under the chosen workspace root.
+# Folders marked optional are not created unless explicitly requested.
+
+version: 1
+
+# Default workspace folder name (offered as default in the workspace step;
+# user can pick a different name).
+root_name: ChannelAssistDev
+
+folders:
+  - path: docs
+    description: Documentation repos (Keystone, public + internal org profiles)
+
+  - path: ca-platform
+    description: ChannelAssist platform-wide services (ca-* prefix)
+
+  - path: cm-product
+    description: ChannelManager product repos (cm-* prefix)
+
+  - path: ado-legacy
+    description: Legacy TFVC checkouts of pre-modernization code (read-only reference)
+    optional: true
