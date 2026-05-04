@@ -127,8 +127,12 @@ if ($Unattended) {
 #   (neither)     → auto-detect; use TUI when cab-tui is importable
 $Script:CABTuiActive = $false
 if (-not $Unattended -and $Command -eq 'setup') {
-    $tuiExplicitlyOff = $NoTui
-    $tuiExplicitlyOn  = $Tui -and -not $NoTui
+    # CA_BOOTSTRAP_NO_TUI=1 is the documented opt-out env var; honored
+    # at the orchestrator level (in addition to bootstrap.sh / .ps1) so
+    # users who already have cab_tui importable can still suppress the
+    # TUI for a single run. -NoTui still wins, of course.
+    $tuiExplicitlyOff = $NoTui -or [bool]$env:CA_BOOTSTRAP_NO_TUI
+    $tuiExplicitlyOn  = $Tui -and -not $tuiExplicitlyOff
     $shouldUseTui = $false
     if ($tuiExplicitlyOff) {
         $shouldUseTui = $false

@@ -54,21 +54,41 @@ setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
 setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS)
 
+# Python detection — accept any 3.10+ interpreter on PATH. Mirrors
+# bootstrap.sh's detect_python so pyenv/conda envs that only ship
+# `python` (no `python3` symlink) work the same way here.
+PY := $(shell \
+	for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do \
+		if command -v $$cand >/dev/null 2>&1; then \
+			ver=$$($$cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0"); \
+			major=$${ver%.*}; minor=$${ver#*.}; \
+			if [ "$$major" -ge 3 ] && [ "$$minor" -ge 10 ]; then echo $$cand; break; fi; \
+		fi; \
+	done)
+
 .PHONY: tui-install
-tui-install: ## Install the cab-tui Python front-end (pip install -e cab-tui/)
+tui-install: ## Install the cab-tui Python front-end (poetry install, falls back to pip)
 	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
-	@if ! command -v python3 >/dev/null 2>&1; then \
-		printf "$(RED)python3 not found. Install Python 3.10+ first.$(RESET)\n"; exit 1; \
+	@if [ -z "$(PY)" ]; then \
+		printf "$(RED)No Python 3.10+ found on PATH (tried python3 / python). Install one first.$(RESET)\n"; exit 1; \
 	fi
-	@cd cab-tui && python3 -m pip install -e . --quiet
+	@printf "  Using interpreter: $(PY)\n"
+	@# Prefer poetry when available (per SDLC); fall back to pip for
+	@# the common case where it isn't on PATH yet.
+	@if command -v poetry >/dev/null 2>&1; then \
+		cd cab-tui && poetry install --quiet; \
+	else \
+		cd cab-tui && $(PY) -m pip install -e . --quiet; \
+	fi
 	@# Hatchling marks its editable .pth file with the macOS UF_HIDDEN flag,
 	@# and Python 3.14's site.py skips hidden .pth files — meaning `import
 	@# cab_tui` would fail from any CWD other than the cab-tui dir. Clearing
 	@# the flag is the supported fix; PYTHONPATH workaround remains as
-	@# defense-in-depth in lib/tui-rpc.ps1.
+	@# defense-in-depth in lib/tui-rpc.ps1. Harmless on poetry installs
+	@# (the .pth filename is different so the find is a no-op).
 	@if [ "$$(uname -s)" = "Darwin" ]; then \
 		find cab-tui -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-		find $$(python3 -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
+		find $$($(PY) -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
 			-name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
 	fi
 	@printf "$(GREEN)✓ cab-tui installed; \`make setup\` will now auto-launch the TUI$(RESET)\n"
@@ -76,7 +96,10 @@ tui-install: ## Install the cab-tui Python front-end (pip install -e cab-tui/)
 .PHONY: tui-test
 tui-test: ## Run the cab-tui pytest suite
 	@printf "$(BLUE)Running cab-tui pytest suite...$(RESET)\n"
-	@cd cab-tui && python3 -m pytest -q
+	@if [ -z "$(PY)" ]; then \
+		printf "$(RED)No Python 3.10+ found on PATH.$(RESET)\n"; exit 1; \
+	fi
+	@cd cab-tui && $(PY) -m pytest -q
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)

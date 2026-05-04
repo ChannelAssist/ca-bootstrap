@@ -16,6 +16,10 @@ $Script:CABTuiSchemaVersion = 1
 $Script:CABTuiInbox = $null
 $Script:CABTuiReaderInstance = $null
 $Script:CABTuiReaderHandle = $null
+# Set by Drain-CABTuiPending / Receive-CABTuiMessage when a malformed
+# line arrives from the child. Per docs/rpc-protocol.md, parse failure
+# is fatal — the caller is expected to log + tear down + fall back.
+$Script:CABFatalProtocolError = $false
 
 # Path to the cab-tui package directory next to this lib/. Used to seed
 # PYTHONPATH for the python3 invocations below — Python 3.14 skips .pth
@@ -219,7 +223,23 @@ function Drain-CABTuiPending {
         if ($null -eq $line) { continue }
         try {
             $msg = $line | ConvertFrom-Json -AsHashtable
-        } catch { continue }
+        } catch {
+            # docs/rpc-protocol.md: parse failure is fatal on the
+            # receiving side. Mirror the child's behavior — log the
+            # offending bytes to stderr, then tear down the bridge so
+            # the next user-driven prompt falls through to CLI via
+            # Invoke-CABTuiPrompt's fallback (rather than continuing
+            # with corrupted protocol state).
+            $preview = if ($line.Length -gt 200) { $line.Substring(0, 200) + '…' } else { $line }
+            [Console]::Error.WriteLine("ca-bootstrap: failed to parse RPC line from cab-tui ($($_.Exception.Message)); offending bytes: $preview")
+            $Script:CABFatalProtocolError = $true
+            try { $Script:CABTuiInbox.CompleteAdding() } catch { }
+            if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
+                try { $Script:CABTuiProcess.StandardInput.Close() } catch { }
+                try { $Script:CABTuiProcess.Kill() } catch { }
+            }
+            return
+        }
         if ($msg.type -eq 'quit') {
             $Script:CABQuitRequested = $true
         } else {
@@ -296,7 +316,7 @@ function Receive-CABTuiMessage {
             return $null   # CompleteAdding called → reader exited / EOF
         }
         if ($null -eq $line) { return $null }
-        return ($line | ConvertFrom-Json -AsHashtable)
+        return _ParseCABTuiLine $line
     }
     $reader = $Script:CABTuiProcess.StandardOutput
     $line = if ($TimeoutMs -gt 0) {
@@ -306,7 +326,23 @@ function Receive-CABTuiMessage {
         $reader.ReadLine()
     }
     if ($null -eq $line) { return $null }
-    return ($line | ConvertFrom-Json -AsHashtable)
+    return _ParseCABTuiLine $line
+}
+
+# Shared parse path. Per docs/rpc-protocol.md, parse failure is fatal on
+# the receiving side: log the offending bytes to stderr, set the global
+# fatal flag, and return $null so callers (handshake / Receive-CABTuiAnswer)
+# fall through to their bridge-dead branches and disable TuiMode.
+function _ParseCABTuiLine {
+    param([string]$Line)
+    try {
+        return ($Line | ConvertFrom-Json -AsHashtable)
+    } catch {
+        $preview = if ($Line.Length -gt 200) { $Line.Substring(0, 200) + '…' } else { $Line }
+        [Console]::Error.WriteLine("ca-bootstrap: failed to parse RPC line from cab-tui ($($_.Exception.Message)); offending bytes: $preview")
+        $Script:CABFatalProtocolError = $true
+        return $null
+    }
 }
 
 # Receive-CABTuiAnswer — wait for an `answer` whose id matches $PromptId.

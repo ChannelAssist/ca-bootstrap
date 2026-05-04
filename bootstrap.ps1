@@ -162,9 +162,22 @@ function Install-PythonAndTui {
     }
 
     Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
-    & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
-    & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
+    $installOk = $false
+    # Prefer Poetry per ChannelAssist SDLC; fall back to pip when Poetry
+    # isn't on PATH yet (first run on a fresh machine).
+    if (Test-Command 'poetry') {
+        Push-Location $cabTuiDir
+        try {
+            poetry install --quiet 2>$null
+            if ($LASTEXITCODE -eq 0) { $installOk = $true }
+        } finally { Pop-Location }
+    }
+    if (-not $installOk) {
+        & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
+        & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $installOk = $true }
+    }
+    if ($installOk) {
         Write-Color Green '✓ cab-tui installed; setup will auto-launch the TUI.'
     } else {
         Write-Color Yellow '  cab-tui install failed; continuing with the legacy Read-Host CLI.'

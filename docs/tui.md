@@ -56,7 +56,7 @@ From a clone:
 ```bash
 make setup                       # auto-detect
 make setup-no-tui                # force CLI
-make tui-install                 # pip install -e cab-tui/
+make tui-install                 # poetry install (or pip install -e . fallback)
 ```
 
 ## Installing
@@ -70,7 +70,13 @@ make tui-install
 Or by hand:
 
 ```bash
+# Preferred: Poetry (per ChannelAssist SDLC). poetry.lock is committed
+# to the repo, so the dependency set is reproducible.
 cd cab-tui
+poetry install
+
+# Or via pip if Poetry isn't on PATH yet (the build-system metadata
+# accepts both — pep 621 [project] block is read directly):
 python3 -m pip install -e .
 ```
 
