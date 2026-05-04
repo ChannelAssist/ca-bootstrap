@@ -24,19 +24,38 @@ Describe 'ca-bootstrap.ps1 -Tui / -NoTui flag binding' {
         $shimDir = Join-Path $tempState 'shim'
         New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
         if ($IsWindows) {
-            # Windows: a .cmd that always exits 99 stands in for the
-            # python.exe / py.exe / python3.exe Find-CABPython tries.
+            # Windows: provide a .cmd shim that behaves like python for
+            # Find-CABPython's `-c` version probe, but still fails the
+            # later `-m cab_tui --check` availability probe deterministically.
             foreach ($name in 'python.exe','py.exe','python3.exe') {
                 # On Windows, .exe matches a real PE. We can't easily forge
                 # one, so use a .cmd of the same stem; cmd.exe resolves
                 # `python` to python.cmd ahead of python.exe when the
                 # PATHEXT order has .CMD first (which it does by default).
-                Set-Content -Path (Join-Path $shimDir ($name -replace '\.exe$','.cmd')) -Value '@echo off`r`nexit /b 99'
+                Set-Content -Path (Join-Path $shimDir ($name -replace '\.exe$','.cmd')) -Value @'
+@echo off
+if "%~1"=="-c" (
+  echo 3.12
+  exit /b 0
+)
+if "%~1"=="-m" if "%~2"=="cab_tui" if "%~3"=="--check" exit /b 99
+exit /b 99
+'@
             }
         } else {
             foreach ($name in 'python3','python') {
                 $shim = Join-Path $shimDir $name
-                Set-Content -Path $shim -Value "#!/bin/sh`nexit 99`n"
+                Set-Content -Path $shim -Value @'
+#!/bin/sh
+if [ "$1" = "-c" ]; then
+  printf '%s\n' '3.12'
+  exit 0
+fi
+if [ "$1" = "-m" ] && [ "$2" = "cab_tui" ] && [ "$3" = "--check" ]; then
+  exit 99
+fi
+exit 99
+'@
                 & chmod +x $shim
             }
         }
