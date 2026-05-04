@@ -1,0 +1,40 @@
+[build-system]
+# Poetry per ChannelAssist SDLC §X (Python projects use Poetry with a
+# committed poetry.lock). Poetry 2.x reads PEP 621 [project] metadata
+# directly, so `pip install -e .` still works for users without Poetry
+# on their PATH (the make tui-install / bootstrap entrypoints fall back
+# to pip when poetry isn't available).
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "cab-tui"
+version = "1.4.0"
+description = "Textual-based TUI front-end for the ca-bootstrap PowerShell wizard."
+requires-python = ">=3.10,<4.0"
+license = "Proprietary"
+authors = [{ name = "ChannelAssist" }]
+readme = "README.md"
+dependencies = [
+    "textual (>=0.58,<2.0)",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest (>=7)",
+    "pytest-asyncio (>=0.21)",
+    "textual-dev (>=1.5)",
+]
+
+[project.scripts]
+cab-tui = "cab_tui.__main__:main"
+
+[tool.poetry]
+# Poetry-specific section; build pulls package layout from here.
+packages = [{ include = "cab_tui" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# Flat layout — package lives directly at cab_tui/, no src/ shim needed.
+pythonpath = ["."]

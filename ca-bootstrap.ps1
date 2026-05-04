@@ -49,11 +49,19 @@ param(
     [switch]$Quiet,
 
     # break-glass: forcibly remove a stale lock before running
-    [switch]$ForceUnlock
+    [switch]$ForceUnlock,
+
+    # Use the Textual TUI front-end for interactive runs. When neither
+    # -Tui nor -NoTui is supplied, we auto-detect cab-tui and use it if
+    # available; pass -Tui to force-enable (and error if unavailable),
+    # or -NoTui to force the legacy Read-Host CLI even when cab-tui is
+    # installed.
+    [switch]$Tui,
+    [switch]$NoTui
 )
 
 $ErrorActionPreference = 'Stop'
-$Script:CABootstrapVersion = '1.3.1'
+$Script:CABootstrapVersion = '1.4.0'
 
 # Resolve the repo root (where this script lives), not the user's cwd.
 $Script:CABootstrapRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -65,7 +73,7 @@ if ($NoColor -or $env:NO_COLOR) { $env:CA_BOOTSTRAP_NO_COLOR = '1' }
 if ($LogPath) { $env:CA_BOOTSTRAP_STATE = (Split-Path -Parent (Resolve-Path $LogPath -ErrorAction SilentlyContinue) ?? $LogPath) }
 
 # Dot-source libraries into the orchestrator's scope.
-$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
+$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1','tui-rpc.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
 foreach ($lib in $libs) {
     if (-not (Test-Path $lib)) { Write-Error "Required library missing: $lib"; exit 99 }
     . $lib
@@ -108,6 +116,69 @@ if ($Unattended) {
     }
 } else {
     Set-CABPromptMode -Unattended $false -Answers @{}
+}
+
+# Optionally launch the TUI front-end. Only meaningful for interactive
+# `setup` (the other commands are short-lived and don't need a TUI).
+#
+# Decision matrix:
+#   -NoTui        → CLI, no probe
+#   -Tui          → require TUI; error out if cab-tui isn't available
+#   (neither)     → auto-detect; use TUI when cab-tui is importable
+$Script:CABTuiActive = $false
+if (-not $Unattended -and $Command -eq 'setup') {
+    # CA_BOOTSTRAP_NO_TUI=1 is the documented opt-out env var; honored
+    # at the orchestrator level (in addition to bootstrap.sh / .ps1) so
+    # users who already have cab_tui importable can still suppress the
+    # TUI for a single run. -NoTui still wins, of course.
+    $tuiExplicitlyOff = $NoTui -or [bool]$env:CA_BOOTSTRAP_NO_TUI
+    $tuiExplicitlyOn  = $Tui -and -not $tuiExplicitlyOff
+    $shouldUseTui = $false
+    if ($tuiExplicitlyOff) {
+        $shouldUseTui = $false
+    } elseif ($tuiExplicitlyOn) {
+        if (-not (Test-CABTuiAvailable)) {
+            Write-CABColor Red 'ERROR: -Tui requested but cab-tui is not available.'
+            Write-Host  '       Install with `pip install -e cab-tui` or rerun without -Tui.'
+            exit 1
+        }
+        $shouldUseTui = $true
+    } else {
+        # Auto-detect. Quick probe; ~50ms when Python is on PATH.
+        $shouldUseTui = (Test-CABTuiAvailable)
+    }
+
+    if ($shouldUseTui) {
+        # Dot-source commands/setup.ps1 early so Get-CABSetupStepDefs is
+        # available to ship in the welcome event (single source of truth
+        # for step id → title; see commands/setup.ps1).
+        . (Join-Path $Script:CABootstrapRoot 'commands/setup.ps1')
+        $tuiSteps = Get-CABSetupStepDefs
+        try {
+            Start-CABTuiBridge -Command $Command -Version $Script:CABootstrapVersion -Steps $tuiSteps | Out-Null
+            Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true
+            $Script:CABTuiActive = $true
+            if (-not $tuiExplicitlyOn) {
+                Write-CABColor DarkGray '  (Using TUI — pass -NoTui to fall back to the CLI prompt.)'
+            }
+        } catch {
+            # Bridge failed to start. Two paths:
+            #  - Auto-detect (no flag): silently fall back to the CLI so
+            #    the user still gets a working setup.
+            #  - Explicit -Tui: hard-fail. The user explicitly asked for
+            #    the TUI; silently downgrading would hide handshake
+            #    regressions, schema_version mismatches, and Python
+            #    import errors from CI and from interactive users.
+            if ($tuiExplicitlyOn) {
+                Write-CABColor Red ''
+                Write-CABColor Red "ERROR: -Tui requested but the bridge failed to start: $($_.Exception.Message)"
+                Write-Host  '       Investigate the cab-tui install, or rerun without -Tui to use the CLI.'
+                exit 1
+            }
+            Write-CABColor Yellow "  ⚠ Could not start TUI ($($_.Exception.Message)); falling back to CLI."
+            Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false
+        }
+    }
 }
 
 # Build session context.
@@ -234,6 +305,9 @@ catch {
     $exitCode = 99
 }
 finally {
+    if ($Script:CABTuiActive) {
+        try { Stop-CABTuiBridge -ExitCode $exitCode -Summary 'Setup finished.' } catch { }
+    }
     if ($silent) {
         Save-CABJournal
     } else {

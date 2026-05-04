@@ -94,6 +94,97 @@ function Install-Git {
     Write-Color Green '✓ git installed.'
 }
 
+function Find-Python310Plus {
+    foreach ($cand in 'python3','python','py') {
+        if (Test-Command $cand) {
+            $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            if ($verLine -match '^(\d+)\.(\d+)$') {
+                $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+                if ($major -ge 3 -and $minor -ge 10) { return $cand }
+            }
+        }
+    }
+    return $null
+}
+
+function Install-Python {
+    Write-Color Blue 'Installing Python 3.12...'
+    if (-not (Test-Command 'winget')) {
+        Write-Color Yellow '  winget is not available. Install Python 3.10+ manually:'
+        Write-Color Yellow '    https://www.python.org/downloads/windows/'
+        return $false
+    }
+    winget install --id Python.Python.3.12 --silent --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Color Yellow "  winget exited with code $LASTEXITCODE — continuing without Python."
+        return $false
+    }
+    Write-Color Green '✓ Python installed.'
+    return $true
+}
+
+# Optional: Python 3.10+ + cab-tui so the rich TUI is the default. Best
+# effort — silent fallback to Read-Host if any step fails. CA_BOOTSTRAP_NO_TUI
+# (any value) skips the install attempt entirely.
+function Install-PythonAndTui {
+    param([string]$Cache)
+    if ($env:CA_BOOTSTRAP_NO_TUI) { return }
+    if (-not $Cache -or -not (Test-Path $Cache)) { return }
+    $cabTuiDir = Join-Path $Cache 'cab-tui'
+    if (-not (Test-Path $cabTuiDir)) { return }   # older release without TUI
+
+    $py = Find-Python310Plus
+
+    if (-not $py) {
+        Write-Color Yellow 'Python 3.10+ not found — installing now to enable the TUI.'
+        $ans = Read-Host 'Install Python automatically via winget? [Y/n]'
+        if ([string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Yy]') {
+            if (-not (Install-Python)) {
+                Write-Color Yellow '  Python install failed/declined; continuing with the legacy CLI.'
+                return
+            }
+            $py = Find-Python310Plus
+            if (-not $py) {
+                Write-Color Yellow '  Python still not detected post-install; continuing with the legacy CLI.'
+                return
+            }
+        } else {
+            Write-Color Yellow '  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run).'
+            return
+        }
+    }
+
+    # Already importable? Nothing to do.
+    & $py -m cab_tui --check 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Color Green '✓ cab-tui already installed.'
+        return
+    }
+
+    Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
+    $installOk = $false
+    # Prefer Poetry per ChannelAssist SDLC; fall back to pip when Poetry
+    # isn't on PATH yet (first run on a fresh machine).
+    if (Test-Command 'poetry') {
+        Push-Location $cabTuiDir
+        try {
+            poetry install --quiet 2>$null
+            if ($LASTEXITCODE -eq 0) { $installOk = $true }
+        } finally { Pop-Location }
+    }
+    if (-not $installOk) {
+        & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
+        & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) { $installOk = $true }
+    }
+    if ($installOk) {
+        Write-Color Green '✓ cab-tui installed; setup will auto-launch the TUI.'
+    } else {
+        Write-Color Yellow '  cab-tui install failed; continuing with the legacy Read-Host CLI.'
+        Write-Color Yellow '  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)'
+    }
+}
+
 Write-Color Blue 'ca-bootstrap — preparing your environment'
 Write-Host ''
 
@@ -149,6 +240,9 @@ if (Test-Path (Join-Path $CacheDir '.git')) {
     git clone --quiet --depth 1 --branch $RepoRef $RepoUrl $CacheDir
 }
 Write-Color Green '✓ ca-bootstrap ready.'
+
+# Best-effort cab-tui install so the rich TUI is the default for new users.
+Install-PythonAndTui -Cache $CacheDir
 Write-Host ''
 
 $caBootstrapPs1 = Join-Path $CacheDir 'ca-bootstrap.ps1'

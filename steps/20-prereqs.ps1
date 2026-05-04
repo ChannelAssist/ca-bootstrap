@@ -102,7 +102,13 @@ function Invoke-CABStep20 {
             continue
         }
 
+        # Indeterminate spinner — package managers (winget/brew/scoop/apt)
+        # don't expose machine-readable progress, so we just signal "busy
+        # with $tool.name" until Install-CABTool returns.
+        $progressId = "install-$($tool.id)"
+        Send-CABTuiProgress -Id $progressId -Label "Installing $($tool.name)…"
         $result = Install-CABTool -Tool $tool -Context $Context
+        Send-CABTuiProgress -Id $progressId -Done
         if ($result.ok) {
             Write-CABStatus -Status ok -Message "$($tool.id) — $($result.details)"
             Add-CABJournalEntry -Step '20-prereqs' -Action 'install_tool' -Data @{
