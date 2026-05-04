@@ -62,7 +62,7 @@ if ($NoColor -or $env:NO_COLOR) { $env:CA_BOOTSTRAP_NO_COLOR = '1' }
 if ($LogPath) { $env:CA_BOOTSTRAP_STATE = (Split-Path -Parent (Resolve-Path $LogPath -ErrorAction SilentlyContinue) ?? $LogPath) }
 
 # Dot-source libraries into the orchestrator's scope.
-$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
+$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
 foreach ($lib in $libs) {
     if (-not (Test-Path $lib)) { Write-Error "Required library missing: $lib"; exit 99 }
     . $lib
@@ -90,9 +90,19 @@ if ($Unattended) {
         Write-CABColor Red "ERROR: ConfigFile not found: $ConfigFile"
         exit 1
     }
-    # Phase 1: we read but don't yet parse YAML. Phase 11 wires powershell-yaml.
-    Set-CABPromptMode -Unattended $true -Answers @{}
-    Write-CABColor Yellow "  (Unattended mode enabled. Phase 1 does not yet parse $ConfigFile — flag handling is wired but YAML parsing comes in phase 11.)"
+    if ($Command -eq 'undo' -and -not $Force) {
+        Write-CABColor Red 'ERROR: `undo -Unattended` requires -Force (destructive).'
+        exit 1
+    }
+    try {
+        $rawAnswers = Read-CABAnswersFile -Path $ConfigFile
+        $flatAnswers = Convert-CABAnswersToFlat -Answers $rawAnswers
+        Set-CABPromptMode -Unattended $true -Answers $flatAnswers
+        Write-CABColor DarkGray "  (Unattended mode: $($flatAnswers.Count) answer keys loaded from $ConfigFile.)"
+    } catch {
+        Write-CABColor Red "ERROR loading answers file: $($_.Exception.Message)"
+        exit 1
+    }
 } else {
     Set-CABPromptMode -Unattended $false -Answers @{}
 }
@@ -116,9 +126,19 @@ $context = @{
     Quiet        = [bool]$Quiet
 }
 
-# Banner + session start.
-Write-CABBanner -Version $Script:CABootstrapVersion
-Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+# Banner + session start. Suppressed when --json or --quiet is set so the
+# JSON / one-line-summary output isn't polluted with banner text on stdout.
+$silent = $Json -or $Quiet
+if (-not $silent) {
+    Write-CABBanner -Version $Script:CABootstrapVersion
+}
+if ($silent) {
+    # Still need the journal session, but skip the on-screen banner.
+    Read-CABJournal | Out-Null
+    $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
+} else {
+    Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+}
 
 $exitCode = 0
 try {
@@ -149,7 +169,11 @@ catch {
     $exitCode = 99
 }
 finally {
-    Stop-CABSession -ExitCode $exitCode
+    if ($silent) {
+        Save-CABJournal
+    } else {
+        Stop-CABSession -ExitCode $exitCode
+    }
 }
 
 exit $exitCode

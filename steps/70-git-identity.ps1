@@ -79,16 +79,21 @@ function Invoke-CABStep70 {
         return @{ status = 'skip'; details = 'User skipped identity configuration.' }
     }
 
-    # Prompts for name and email.
-    Write-Host "  Name for ChannelAssist commits [$currentName]: " -NoNewline
-    $name = if ($Context.Unattended) { '' } else { Read-Host }
-    if ([string]::IsNullOrWhiteSpace($name)) { $name = $currentName }
+    # Prompts for name and email. Unattended mode reads from env vars
+    # set by Convert-CABAnswersToFlat from the answers.yaml.
+    if ($Context.Unattended) {
+        $name  = if ($env:CA_BOOTSTRAP_GIT_NAME)  { $env:CA_BOOTSTRAP_GIT_NAME }  else { $currentName }
+        $email = if ($env:CA_BOOTSTRAP_GIT_EMAIL) { $env:CA_BOOTSTRAP_GIT_EMAIL } else { '' }
+    } else {
+        Write-Host "  Name for ChannelAssist commits [$currentName]: " -NoNewline
+        $name = Read-Host
+        if ([string]::IsNullOrWhiteSpace($name)) { $name = $currentName }
+        Write-Host "  Email for ChannelAssist commits: " -NoNewline
+        $email = Read-Host
+    }
 
-    Write-Host "  Email for ChannelAssist commits: " -NoNewline
-    $email = if ($Context.Unattended) { '' } else { Read-Host }
     if ([string]::IsNullOrWhiteSpace($email)) {
-        # No reasonable default — work email isn't derivable. Fail clearly.
-        return @{ status = 'fail'; details = 'Email is required (no default available — please re-run and provide your work email).' }
+        return @{ status = 'fail'; details = 'Email is required (set git_identity.email in your answers file or run interactively).' }
     }
     if ([string]::IsNullOrWhiteSpace($name)) {
         return @{ status = 'fail'; details = 'Name is required.' }

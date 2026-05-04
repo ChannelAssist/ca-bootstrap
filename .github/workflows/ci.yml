@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  pester:
+    name: Pester (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pester + powershell-yaml
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable Pester | Where-Object Version -gt 5.0.0)) {
+              Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser
+          }
+          Install-Module powershell-yaml -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          Invoke-Pester -Configuration $config
+
+  doctor-json:
+    name: doctor --json (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install powershell-yaml
+        shell: pwsh
+        run: Install-Module powershell-yaml -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Run doctor in JSON mode
+        shell: pwsh
+        run: |
+          $output = & ./ca-bootstrap.ps1 doctor -Json
+          $payload = $output | ConvertFrom-Json
+          if (-not $payload.checks)         { throw 'no checks in JSON output' }
+          if (-not $payload.schema_version) { throw 'no schema_version' }
+          Write-Host "doctor produced $($payload.checks.Count) checks, exit_code=$($payload.exit_code)"
+
+  shellcheck:
+    name: shellcheck bootstrap.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          shellcheck bootstrap.sh scripts/wiki-sync.sh

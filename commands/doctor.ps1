@@ -193,8 +193,10 @@ function Invoke-CABCommandDoctor {
     [CmdletBinding()]
     param([hashtable]$Context = @{})
 
-    Write-CABHeader 'ca-bootstrap doctor'
-    Write-Host ''
+    if (-not $Context.Json -and -not $Context.Quiet) {
+        Write-CABHeader 'ca-bootstrap doctor'
+        Write-Host ''
+    }
 
     $checks = Run-CABDoctorChecks -Context $Context
 
@@ -209,7 +211,9 @@ function Invoke-CABCommandDoctor {
             checks         = $checks
             exit_code      = if ($checks | Where-Object { $_.status -in 'warn','fail' }) { 2 } else { 0 }
         }
-        $payload | ConvertTo-Json -Depth 6
+        # Write directly to the console so the orchestrator's $exitCode
+        # capture only sees the integer return value below.
+        Write-Host ($payload | ConvertTo-Json -Depth 6)
         return $payload.exit_code
     }
 
