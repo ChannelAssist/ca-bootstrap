@@ -35,25 +35,102 @@ function Invoke-CABStep20 {
     Format-CABToolReport -Report $detection.report
     Write-Host ''
 
-    # Phase 3 surfaces the report and lets the user choose to continue.
-    # Phase 4 will offer to install missing tools here.
     $Context.PrereqReport = $detection.report
+    $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/tools.yaml')
+    $allTools = @($manifest.required) + @($manifest.optional)
+    $byId = @{}
+    foreach ($t in $allTools) { $byId[$t.id] = $t }
 
-    $missingRequired = @($detection.report | Where-Object { $_.is_required -and $_.status -ne 'ok' })
+    $missing = @($detection.report | Where-Object { $_.status -in 'fail','warn' })
+    if ($missing.Count -eq 0) {
+        return @{ status = 'ok'; details = 'All tools present.' }
+    }
 
-    if ($missingRequired.Count -gt 0) {
-        Write-CABColor Yellow "  $($missingRequired.Count) required tool(s) missing. Installation lands in phase 4."
-        Write-Host '    For now, install them manually and re-run setup, or continue and skip steps that need them.'
-        $proceed = Read-CABConfirm -Question 'Continue anyway?' -Default $false -AnswerKey 'prereqs.continue_with_missing'
-        if ($proceed -is [string] -and $proceed -eq 'quit') {
-            return @{ status = 'quit'; details = 'User quit at prereqs step.' }
-        }
-        if ($proceed -is [bool] -and -not $proceed) {
+    $choice = Read-CABChoice `
+        -Question "Install $($missing.Count) missing/outdated tool(s)?" `
+        -Options @(
+            @{ Key = 'Y'; Label = 'Yes (install all)' },
+            @{ Key = 's'; Label = 'Select individually' },
+            @{ Key = 'n'; Label = 'Skip (install manually later)' }
+        ) `
+        -Default 'Y' `
+        -AnswerKey 'prereqs.install_choice'
+
+    if ($choice -eq 'quit') {
+        return @{ status = 'quit'; details = 'User quit at prereqs step.' }
+    }
+
+    if ($choice -ieq 'n') {
+        $missingRequired = @($missing | Where-Object { $_.is_required })
+        if ($missingRequired.Count -gt 0) {
             return @{ status = 'fail'; details = "$($missingRequired.Count) required tool(s) missing — install and re-run." }
+        }
+        return @{ status = 'warn'; details = "$($missing.Count) optional tool(s) skipped." }
+    }
+
+    # Install loop.
+    $installed = 0
+    $skipped = 0
+    $failed = New-Object System.Collections.Generic.List[string]
+
+    foreach ($r in $missing) {
+        $tool = $byId[$r.id]
+        if (-not $tool) { continue }
+
+        $shouldInstall = ($choice -ieq 'Y')
+        if ($choice -ieq 's') {
+            $heavyHint = if ($tool.heavy) { ' (heavy install)' } else { '' }
+            $rebootHint = if ($tool.requires_reboot -and $tool.requires_reboot[(Get-CABOSFamily)]) {
+                ' [requires reboot]'
+            } elseif ($tool.requires_reboot -is [bool] -and $tool.requires_reboot) {
+                ' [requires reboot]'
+            } else { '' }
+            $default = -not ($tool.heavy -or $tool.requires_reboot)
+            $ans = Read-CABConfirm `
+                -Question "Install $($tool.name)$heavyHint$rebootHint?" `
+                -Default $default `
+                -AnswerKey "prereqs.install.$($tool.id)"
+            if ($ans -is [string] -and $ans -eq 'quit') {
+                return @{ status = 'quit'; details = 'User quit during install selection.' }
+            }
+            $shouldInstall = ($ans -is [bool] -and $ans)
+        }
+
+        if (-not $shouldInstall) {
+            Write-CABStatus -Status skip -Message "$($tool.id) skipped"
+            $skipped++
+            continue
+        }
+
+        $result = Install-CABTool -Tool $tool -Context $Context
+        if ($result.ok) {
+            Write-CABStatus -Status ok -Message "$($tool.id) — $($result.details)"
+            Add-CABJournalEntry -Step '20-prereqs' -Action 'install_tool' -Data @{
+                tool   = $tool.id
+                method = (Get-CABInstallEntry -Tool $tool).type
+            } | Out-Null
+            $installed++
+
+            # Re-test to confirm.
+            $recheck = Test-CABTool -Tool $tool
+            if ($recheck.status -ne 'ok') {
+                Write-CABColor Yellow "      ⓘ Post-install check still reports: $($recheck.details)"
+            }
+        } else {
+            Write-CABStatus -Status fail -Message "$($tool.id) — $($result.details)"
+            $failed.Add($tool.id)
         }
     }
 
-    return @{ status = 'ok'; details = 'Prerequisite report shown.' }
+    $summary = "$installed installed, $skipped skipped, $($failed.Count) failed"
+    if ($failed.Count -gt 0) {
+        $missingRequiredAfter = @($failed | Where-Object { ($byId[$_]).id -in @($manifest.required.id) })
+        if ($missingRequiredAfter.Count -gt 0) {
+            return @{ status = 'fail'; details = "$summary. Required failures: $($missingRequiredAfter -join ', ')" }
+        }
+        return @{ status = 'warn'; details = "$summary. Optional failures: $($failed -join ', ')" }
+    }
+    return @{ status = 'ok'; details = $summary }
 }
 
 function Undo-CABStep20 {

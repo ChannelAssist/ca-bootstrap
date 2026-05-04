@@ -49,8 +49,8 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Phase 3 complete: prereq detection + workspace + folders + repos.'
-    Write-Host '    Phase 4 (tool install), phase 5 (gh auth + git identity), phase 6 (extras) come next.'
+    Write-CABStatus -Status ok -Message 'Phase 4 complete: prereqs (detect+install) + workspace + folders + repos.'
+    Write-Host '    Phase 5 (gh auth + git identity) and phase 6 (extras) come next.'
     Write-Host ''
     Write-Host "  Transcript: $(Get-CABTranscriptPath)"
     Write-Host "  Journal   : $(Get-CABJournalPath)"

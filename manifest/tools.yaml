@@ -41,7 +41,7 @@ optional:
     needed_by_groups: [cm-product, ca-platform]
     check:
       cmd: "dotnet --list-sdks"
-      version_regex: "^10\\.\\d+\\.\\d+"
+      version_regex: "^(10\\.\\d+\\.\\d+)"
     install:
       windows: { type: winget, id: Microsoft.DotNet.SDK.10 }
       macos:   { type: brew,   id: dotnet-sdk }

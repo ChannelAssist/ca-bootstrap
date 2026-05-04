@@ -95,10 +95,12 @@ function Test-CABTool {
     }
 
     # Apply regex per-line (some tools like dotnet --list-sdks emit many).
+    # Prefer capture group 1 (most regexes use one); fall back to the whole
+    # match so manifest authors aren't forced to add parens to a tight regex.
     $found = $null
     foreach ($line in ($output -split "`n")) {
         if ($line -match $Tool.check.version_regex) {
-            $found = $Matches[1]
+            $found = if ($Matches.Count -gt 1) { $Matches[1] } else { $Matches[0] }
             break
         }
     }
@@ -206,3 +208,154 @@ function Write-CABToolLine {
     $label = "$($Result.id)".PadRight(20)
     Write-CABColor ([ConsoleColor]$color) "    $icon  $label  $($Result.details)"
 }
+
+# Install-CABTool — dispatch a single tool's install entry based on OS.
+#   Returns @{ ok = $bool; details = '...' }.
+#   Honors $Context.WhatIfMode to dry-run.
+function Install-CABTool {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Tool,
+        [hashtable]$Context = @{}
+    )
+
+    $osFamily = Get-CABOSFamily
+    $entry = Get-CABInstallEntry -Tool $Tool -OSFamily $osFamily
+    if (-not $entry) {
+        return @{ ok = $false; details = "No install method for $($Tool.id) on $osFamily" }
+    }
+
+    # Meta-tool: install_method drives a different code path.
+    if ($Tool.install_method -eq 'code-cli') {
+        return Install-CABVSCodeExtensions -Tool $Tool -Context $Context
+    }
+
+    $type = $entry.type
+    $id   = $entry.id
+
+    if ($Context.WhatIfMode) {
+        return @{ ok = $true; details = "WhatIf: would install $($Tool.id) via $type ($id)" }
+    }
+
+    Write-Host "    → $type install: $id" -NoNewline
+
+    $cmdResult = $null
+    try {
+        switch ($type) {
+            'winget' {
+                & winget install --id $id --silent --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            'brew' {
+                if ($entry.cask) {
+                    & brew install --cask $id 2>&1 | Out-Host
+                } else {
+                    & brew install $id 2>&1 | Out-Host
+                }
+                $cmdResult = $LASTEXITCODE
+            }
+            'apt' {
+                if ($entry.repo_setup) {
+                    $repoScript = Join-Path $Context.RepoRoot $entry.repo_setup
+                    if (Test-Path $repoScript) { & bash $repoScript | Out-Host }
+                }
+                & sudo apt-get update 2>&1 | Out-Host
+                $idArgs = $id -split ' '
+                & sudo apt-get install -y @idArgs 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            'dnf' {
+                $idArgs = $id -split ' '
+                & sudo dnf install -y @idArgs 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            'snap' {
+                if ($entry.classic) {
+                    & sudo snap install --classic $id 2>&1 | Out-Host
+                } else {
+                    & sudo snap install $id 2>&1 | Out-Host
+                }
+                $cmdResult = $LASTEXITCODE
+            }
+            'nvm' {
+                # nvm is a shell function, not a binary — invoke via a
+                # subshell that loads the user's nvm setup.
+                $cmd = "source `"$HOME/.nvm/nvm.sh`" && nvm install $($entry.version)"
+                & bash -lc $cmd 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            'npm' {
+                $globalFlag = if ($entry.global) { '-g' } else { $null }
+                & npm install $globalFlag $id 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            'script' {
+                $tmpScript = New-TemporaryFile
+                try {
+                    Invoke-WebRequest -Uri $entry.url -OutFile $tmpScript -UseBasicParsing
+                    if ($entry.args) {
+                        & bash $tmpScript ($entry.args -split ' ') 2>&1 | Out-Host
+                    } else {
+                        & bash $tmpScript 2>&1 | Out-Host
+                    }
+                    $cmdResult = $LASTEXITCODE
+                } finally {
+                    Remove-Item $tmpScript -Force -ErrorAction SilentlyContinue
+                }
+            }
+            'command' {
+                Invoke-Expression $entry.cmd 2>&1 | Out-Host
+                $cmdResult = $LASTEXITCODE
+            }
+            default {
+                return @{ ok = $false; details = "Unknown install type: $type" }
+            }
+        }
+    } catch {
+        return @{ ok = $false; details = "Install threw: $($_.Exception.Message)" }
+    }
+
+    Write-Host ''
+    if ($cmdResult -ne 0 -and $cmdResult -ne $null) {
+        return @{ ok = $false; details = "$type install exited $cmdResult" }
+    }
+
+    # post_install commands (e.g. `sudo usermod -aG docker $USER`)
+    if ($entry.post_install) {
+        foreach ($postCmd in @($entry.post_install)) {
+            & bash -lc $postCmd 2>&1 | Out-Host
+        }
+    }
+
+    return @{ ok = $true; details = "Installed via $type" }
+}
+
+# Install-CABVSCodeExtensions — meta-tool handler.
+#   Iterates $Tool.extensions and calls `code --install-extension` for each.
+function Install-CABVSCodeExtensions {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] $Tool,
+        [hashtable]$Context = @{}
+    )
+    if (-not (Get-Command 'code' -ErrorAction SilentlyContinue)) {
+        return @{ ok = $false; details = 'VS Code CLI (code) not on PATH; install vscode first' }
+    }
+    if ($Context.WhatIfMode) {
+        return @{ ok = $true; details = "WhatIf: would install $($Tool.extensions.Count) extensions" }
+    }
+    $installed = 0
+    $failed = @()
+    foreach ($ext in @($Tool.extensions)) {
+        Write-Host "    → code --install-extension $ext" -NoNewline
+        $output = & code --install-extension $ext --force 2>&1
+        Write-Host ''
+        if ($LASTEXITCODE -eq 0) { $installed++ }
+        else { $failed += "$ext ($($output -join '; '))" }
+    }
+    if ($failed.Count -gt 0) {
+        return @{ ok = $false; details = "$installed installed, $($failed.Count) failed: $($failed -join '; ')" }
+    }
+    return @{ ok = $true; details = "$installed extensions installed" }
+}
+
