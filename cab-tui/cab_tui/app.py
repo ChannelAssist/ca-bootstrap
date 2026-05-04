@@ -20,9 +20,12 @@ from textual.widgets import (
     Footer,
     Header,
     Input,
+    LoadingIndicator,
     Log,
     MarkdownViewer,
+    ProgressBar,
     RadioSet,
+    Static,
     TabbedContent,
     TabPane,
     Tree,
@@ -78,6 +81,20 @@ class CabTuiApp(App):
     Log {
         background: $surface;
     }
+
+    #progress-area {
+        height: auto;
+    }
+
+    .progress-row {
+        height: auto;
+        padding: 0 1;
+    }
+
+    .progress-label {
+        width: 30;
+        padding-right: 1;
+    }
     """
 
     BINDINGS = [
@@ -97,6 +114,9 @@ class CabTuiApp(App):
         # when the user submits an answer. Lets button/input handlers
         # know which prompt they're answering.
         self._pending_prompt_id: str | None = None
+        # Active progress rows keyed by progress id (one row per repo
+        # clone, tool install, etc.). Removed on `done: true`.
+        self._progress_rows: dict[str, Horizontal] = {}
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -121,6 +141,9 @@ class CabTuiApp(App):
                         show_table_of_contents=False,
                         id="step-body",
                     )
+                    # Progress area: ProgressBar / LoadingIndicator rows
+                    # mounted on `progress` RPC events (one row per id).
+                    yield Container(id="progress-area")
                     # Prompt area gets populated dynamically when a
                     # `prompt` RPC event arrives; lib/prompts.py mounts
                     # the right widgets per kind.
@@ -145,6 +168,7 @@ class CabTuiApp(App):
         self._rpc.on("log",     self._handle_rpc_log)
         self._rpc.on("notify",  self._handle_rpc_notify)
         self._rpc.on("prompt",  self._handle_rpc_prompt)
+        self._rpc.on("progress", self._handle_rpc_progress)
         self._rpc.on("done",    self._handle_rpc_done)
         # Run the consumer concurrently with the UI loop.
         self._rpc_task = asyncio.create_task(self._rpc.start())
@@ -203,6 +227,67 @@ class CabTuiApp(App):
             self._append_log("error", f"prompt-area not mounted; can't render {prompt_id}")
             return
         await _prompts.render_prompt(area, msg.raw)
+
+    async def _handle_rpc_progress(self, msg: RpcMessage) -> None:
+        """A `progress` event: mount/update/remove a ProgressBar or LoadingIndicator.
+
+        Determinate (has `total`): ProgressBar with current/total.
+        Indeterminate (no `total`): LoadingIndicator spinner.
+        Closing (`done: true`): row is removed.
+        """
+        pid = str(msg.raw.get("id", ""))
+        if not pid:
+            return
+        try:
+            area = self.query_one("#progress-area", Container)
+        except Exception:
+            return
+
+        if msg.raw.get("done"):
+            row = self._progress_rows.pop(pid, None)
+            if row is not None:
+                try:
+                    await row.remove()
+                except Exception:
+                    pass
+            return
+
+        label = str(msg.raw.get("label", ""))
+        total = msg.raw.get("total")
+        current = msg.raw.get("current", 0)
+
+        existing = self._progress_rows.get(pid)
+        if existing is None:
+            # First sighting: build a label + bar/spinner row and mount it.
+            label_static = Static(label, classes="progress-label", id=f"progress-label-{pid}")
+            if total is not None:
+                indicator = ProgressBar(
+                    total=float(total),
+                    show_eta=False,
+                    id=f"progress-bar-{pid}",
+                )
+            else:
+                indicator = LoadingIndicator(id=f"progress-spinner-{pid}")
+            row = Horizontal(label_static, indicator, id=f"progress-row-{pid}", classes="progress-row")
+            await area.mount(row)
+            self._progress_rows[pid] = row
+            if total is not None:
+                indicator.update(progress=float(current))
+            return
+
+        # Update existing row.
+        if label:
+            try:
+                lbl = self.query_one(f"#progress-label-{pid}", Static)
+                lbl.update(label)
+            except Exception:
+                pass
+        if total is not None:
+            try:
+                bar = self.query_one(f"#progress-bar-{pid}", ProgressBar)
+                bar.update(total=float(total), progress=float(current))
+            except Exception:
+                pass
 
     async def _handle_rpc_done(self, msg: RpcMessage) -> None:
         summary = msg.raw.get("summary", "")

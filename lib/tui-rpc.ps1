@@ -74,6 +74,33 @@ function Send-CABTuiEvent {
     $Script:CABTuiProcess.StandardInput.Flush()
 }
 
+# Send-CABTuiProgress — emit a `progress` event for the given indicator id.
+# Determinate: pass -Total + -Current for a ProgressBar.
+# Indeterminate: omit -Total for a LoadingIndicator spinner.
+# Closing: pass -Done to remove the indicator.
+# No-op when the bridge isn't running, so step files can call this
+# unconditionally without first checking $Script:CABootstrapTuiMode.
+function Send-CABTuiProgress {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Id,
+        [int]$Current,
+        [int]$Total,
+        [string]$Label = '',
+        [switch]$Done
+    )
+    if (-not $Script:CABTuiProcess -or $Script:CABTuiProcess.HasExited) { return }
+    $event = @{ type = 'progress'; id = $Id }
+    if ($Done) {
+        $event.done = $true
+    } else {
+        if ($PSBoundParameters.ContainsKey('Current')) { $event.current = $Current }
+        if ($PSBoundParameters.ContainsKey('Total'))   { $event.total   = $Total }
+        if ($Label) { $event.label = $Label }
+    }
+    Send-CABTuiEvent -Event $event
+}
+
 # Receive-CABTuiMessage — blocking read of one line, parsed as JSON.
 # Times out after $TimeoutMs (default infinite). Returns $null on timeout.
 function Receive-CABTuiMessage {

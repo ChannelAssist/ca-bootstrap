@@ -81,6 +81,14 @@ function Invoke-CABStep60 {
     $totalFailed = 0
     $failedDetails = New-Object System.Collections.Generic.List[string]
 
+    # Determinate progress: one bar that ticks as each repo finishes.
+    # Total is across all groups; opt-in repos contribute regardless of
+    # whether the user picks them, so the bar caps at attempts not selections.
+    $allManifestRepos = @($manifest.groups | ForEach-Object { $_.repos })
+    $progressTotal = $allManifestRepos.Count
+    $progressCurrent = 0
+    Send-CABTuiProgress -Id 'clone-batch' -Current 0 -Total $progressTotal -Label 'Repositories'
+
     foreach ($g in $manifest.groups) {
         Write-Host ''
         Write-CABColor White "  Group: $($g.name) — $($g.description)"
@@ -99,6 +107,8 @@ function Invoke-CABStep60 {
         }
         if ($groupChoice -ieq 'n') {
             Write-CABStatus -Status skip -Message "Group $($g.name) skipped."
+            $progressCurrent += $g.repos.Count
+            Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label "Group $($g.name) skipped"
             continue
         }
 
@@ -108,16 +118,21 @@ function Invoke-CABStep60 {
             if (-not [System.IO.Path]::IsPathRooted($into)) {
                 return @{ status = 'fail'; details = "Computed clone path '$into' is not absolute (workspace='$($Context.WorkspacePath)', into='$($repo.into)')." }
             }
+            Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
             $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
             if ($state -eq 'matches') {
                 Write-CABStatus -Status skip -Message "$($repo.repo) already cloned" -Detail $into
                 $fetch = Invoke-CABRepoFetch -Path $into
                 if ($fetch.ok) { $totalFetched++ }
+                $progressCurrent++
+                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
                 continue
             }
             if ($state -eq 'mismatch') {
                 Write-CABStatus -Status warn -Message "$($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
                 $totalSkipped++
+                $progressCurrent++
+                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
                 continue
             }
 
@@ -136,6 +151,8 @@ function Invoke-CABStep60 {
             if (-not $shouldClone) {
                 Write-CABStatus -Status skip -Message "$($repo.repo) skipped"
                 $totalSkipped++
+                $progressCurrent++
+                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
                 continue
             }
 
@@ -155,8 +172,11 @@ function Invoke-CABStep60 {
                 $failedDetails.Add("$($repo.repo): $($result.details)")
                 $totalFailed++
             }
+            $progressCurrent++
+            Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
         }
     }
+    Send-CABTuiProgress -Id 'clone-batch' -Done
 
     Write-Host ''
     $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalFailed failed"

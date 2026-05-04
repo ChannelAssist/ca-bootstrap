@@ -81,6 +81,57 @@ $line = [Console]::In.ReadLine()
     }
 }
 
+Describe 'Send-CABTuiProgress' {
+    BeforeEach {
+        $body = @'
+$line = [Console]::In.ReadLine()
+[Console]::Out.WriteLine("echo:$line")
+[Console]::Out.Flush()
+'@
+        Start-StubChild -ScriptBody $body | Out-Null
+    }
+    AfterEach { Cleanup-StubChild }
+
+    It 'serializes determinate progress (id + current + total + label)' {
+        Send-CABTuiProgress -Id 'clone-batch' -Current 3 -Total 14 -Label 'ChannelAssist/Keystone'
+        $line = $Script:CABTuiProcess.StandardOutput.ReadLine()
+        $payload = $line.Substring(5) | ConvertFrom-Json -AsHashtable
+        $payload.type    | Should -Be 'progress'
+        $payload.id      | Should -Be 'clone-batch'
+        $payload.current | Should -Be 3
+        $payload.total   | Should -Be 14
+        $payload.label   | Should -Be 'ChannelAssist/Keystone'
+        $payload.ContainsKey('done') | Should -BeFalse
+    }
+
+    It 'serializes indeterminate progress (no total → spinner)' {
+        Send-CABTuiProgress -Id 'install-docker' -Label 'Installing Docker Desktop…'
+        $line = $Script:CABTuiProcess.StandardOutput.ReadLine()
+        $payload = $line.Substring(5) | ConvertFrom-Json -AsHashtable
+        $payload.type  | Should -Be 'progress'
+        $payload.id    | Should -Be 'install-docker'
+        $payload.label | Should -Be 'Installing Docker Desktop…'
+        $payload.ContainsKey('total')   | Should -BeFalse
+        $payload.ContainsKey('current') | Should -BeFalse
+    }
+
+    It 'serializes a close (done=$true) message' {
+        Send-CABTuiProgress -Id 'install-docker' -Done
+        $line = $Script:CABTuiProcess.StandardOutput.ReadLine()
+        $payload = $line.Substring(5) | ConvertFrom-Json -AsHashtable
+        $payload.type | Should -Be 'progress'
+        $payload.id   | Should -Be 'install-docker'
+        $payload.done | Should -Be $true
+    }
+
+    It 'is a no-op when no bridge is running (does not throw)' {
+        Cleanup-StubChild
+        $Script:CABTuiProcess = $null
+        # Step files call this unconditionally — must not blow up in CLI mode.
+        { Send-CABTuiProgress -Id 'x' -Current 1 -Total 5 } | Should -Not -Throw
+    }
+}
+
 Describe 'Receive-CABTuiMessage' {
     BeforeEach {
         # Child writes one JSON line then sleeps so the parent can read.
