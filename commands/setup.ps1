@@ -10,9 +10,9 @@ function Invoke-CABCommandSetup {
         [hashtable]$Context = @{}
     )
 
-    # Phase 2: welcome → workspace → folders → clone repos.
-    # Phases 3-5 will insert tool-prereqs (20) and gh-auth (30) before workspace.
-    $stepIds = @('10-welcome','40-workspace','50-folders','60-repos')
+    # Phase 3: welcome → prereqs (detect) → workspace → folders → clone repos.
+    # Phase 5 will insert gh-auth (30) between prereqs and workspace.
+    $stepIds = @('10-welcome','20-prereqs','40-workspace','50-folders','60-repos')
     $Context.TotalSteps = 8   # display the eventual total so step numbering matches the design
 
     foreach ($stepId in $stepIds) {
@@ -30,6 +30,7 @@ function Invoke-CABCommandSetup {
         switch ($result.status) {
             'ok'      { Write-CABStatus -Status ok   -Message $result.details }
             'skip'    { Write-CABStatus -Status skip -Message $result.details }
+            'warn'    { Write-CABStatus -Status warn -Message $result.details }
             'quit'    {
                 Write-CABStatus -Status info -Message 'You quit. Partial changes (if any) are recorded in the journal.'
                 Save-CABJournal
@@ -48,8 +49,8 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Phase 2 complete: workspace + folders + repos.'
-    Write-Host '    Phases 3-8 (tool detect/install, gh auth, git identity, extras) come next.'
+    Write-CABStatus -Status ok -Message 'Phase 3 complete: prereq detection + workspace + folders + repos.'
+    Write-Host '    Phase 4 (tool install), phase 5 (gh auth + git identity), phase 6 (extras) come next.'
     Write-Host ''
     Write-Host "  Transcript: $(Get-CABTranscriptPath)"
     Write-Host "  Journal   : $(Get-CABJournalPath)"
