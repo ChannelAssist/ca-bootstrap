@@ -104,6 +104,52 @@ install_git() {
     color_green "✓ git installed."
 }
 
+# Detect a Python 3.10+ on PATH; echo the binary name (or empty).
+detect_python() {
+    for cand in python3 python3.13 python3.12 python3.11 python3.10; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            local ver major minor
+            ver=$("$cand" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+            major="${ver%.*}"; minor="${ver#*.}"
+            if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then echo "$cand"; return 0; fi
+        fi
+    done
+    echo ""
+}
+
+# Install Python 3.10+ via the platform's package manager. Returns 0 on
+# success, non-zero if the install couldn't be attempted (no package
+# manager, user declined, etc.). Caller treats failure as a soft fallback
+# to the CLI.
+install_python() {
+    local os
+    os=$(detect_os)
+    color_blue "Installing Python 3.12 ($os)..."
+    case "$os" in
+        macos)
+            if command -v brew >/dev/null 2>&1; then
+                brew install python@3.12 || return 1
+            else
+                color_yellow "  Homebrew not found. Skipping Python install (cab-tui will be unavailable)."
+                color_yellow "  Install Homebrew (https://brew.sh) and re-run to enable the TUI."
+                return 1
+            fi
+            ;;
+        linux-debian)
+            sudo apt-get update -qq || return 1
+            sudo apt-get install -y python3 python3-pip python3-venv || return 1
+            ;;
+        linux-rhel)
+            sudo dnf install -y python3 python3-pip || return 1
+            ;;
+        *)
+            color_yellow "  Unsupported OS for automatic Python install. Install Python 3.10+ manually."
+            return 1
+            ;;
+    esac
+    color_green "✓ Python installed."
+}
+
 # Optional: install Python 3.10+ and the cab-tui front-end. The wizard
 # auto-detects this and uses the rich TUI when present; absence is fine
 # (silent fallback to the legacy Read-Host CLI). Only attempted when
@@ -114,27 +160,29 @@ install_python_and_tui() {
     local cab_tui_dir="$1/cab-tui"
     if [ ! -d "$cab_tui_dir" ]; then return 0; fi   # older release without TUI
 
-    # Detect a Python 3.10+ already installed.
-    local py=""
-    for cand in python3 python3.13 python3.12 python3.11 python3.10; do
-        if command -v "$cand" >/dev/null 2>&1; then
-            local ver
-            ver=$("$cand" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
-            local major minor
-            major="${ver%.*}"; minor="${ver#*.}"
-            if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then py="$cand"; break; fi
-        fi
-    done
+    local py
+    py=$(detect_python)
 
     if [ -z "$py" ]; then
-        color_yellow "Python 3.10+ not found — skipping cab-tui install (legacy CLI will be used)."
-        local os; os=$(detect_os)
-        case "$os" in
-            macos)        color_yellow "  Optional: \`brew install python@3.12 && curl ... | bash\` to enable the TUI." ;;
-            linux-debian) color_yellow "  Optional: \`sudo apt-get install python3 python3-pip\` to enable the TUI." ;;
-            linux-rhel)   color_yellow "  Optional: \`sudo dnf install python3 python3-pip\` to enable the TUI." ;;
+        color_yellow "Python 3.10+ not found — installing now to enable the TUI."
+        read -p "Install Python automatically? [Y/n] " ans
+        case "${ans:-Y}" in
+            [Yy]*|"")
+                if ! install_python; then
+                    color_yellow "  Python install failed/declined; continuing with the legacy CLI."
+                    return 0
+                fi
+                py=$(detect_python)
+                if [ -z "$py" ]; then
+                    color_yellow "  Python still not detected post-install; continuing with the legacy CLI."
+                    return 0
+                fi
+                ;;
+            *)
+                color_yellow "  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run)."
+                return 0
+                ;;
         esac
-        return 0
     fi
 
     # Probe whether cab_tui is already importable (e.g. previous run).

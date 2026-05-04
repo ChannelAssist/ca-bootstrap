@@ -40,11 +40,15 @@ def main() -> int:
         bridge = RpcBridge()
         app = CabTuiApp(rpc=bridge)
         app.run()
-        return 0
+        # Respect the app's exit code — schema_version mismatch and fatal
+        # RPC parse errors call self.exit(return_code=2). Returning 0 here
+        # would mask protocol errors as successful runs to the parent
+        # orchestrator and to scripts invoking `cab-tui --rpc`.
+        return int(getattr(app, "return_code", 0) or 0)
 
     app = CabTuiApp()
     app.run()
-    return 0
+    return int(getattr(app, "return_code", 0) or 0)
 
 
 if __name__ == "__main__":

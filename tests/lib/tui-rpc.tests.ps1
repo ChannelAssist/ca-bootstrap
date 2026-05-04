@@ -161,6 +161,19 @@ $line = [Console]::In.ReadLine()
         # Step files call this unconditionally — must not blow up in CLI mode.
         { Send-CABTuiProgress -Id 'x' -Current 1 -Total 5 } | Should -Not -Throw
     }
+
+    It 'swallows mid-call bridge failures (TOCTOU between HasExited and WriteLine)' {
+        # The HasExited check at function entry is best-effort: the child
+        # can die between that check and the WriteLine. We simulate that
+        # window by killing the stub then calling Send before the next
+        # poll. Send-CABTuiEvent throws "process is not running" because
+        # HasExited flips $true once the OS reaps it; the helper must
+        # catch and swallow rather than abort the host step.
+        $Script:CABTuiProcess.Kill()
+        $Script:CABTuiProcess.WaitForExit(2000) | Out-Null
+        { Send-CABTuiProgress -Id 'x' -Current 2 -Total 5 -Label 'bar' } | Should -Not -Throw
+        { Send-CABTuiProgress -Id 'x' -Done } | Should -Not -Throw
+    }
 }
 
 Describe 'Receive-CABTuiMessage' {

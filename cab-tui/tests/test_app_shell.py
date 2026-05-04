@@ -99,3 +99,57 @@ async def test_welcome_with_mismatched_schema_version_does_not_ack() -> None:
     import json
     lines = [json.loads(l) for l in cap.getvalue().strip().splitlines() if l]
     assert not any(m.get("type") == "ack" for m in lines), lines
+
+
+@pytest.mark.asyncio
+async def test_schema_version_mismatch_sets_nonzero_return_code() -> None:
+    """Mismatch must propagate through app.return_code so __main__.py exits
+    non-zero — otherwise scripts invoking `cab-tui --rpc` see a clean exit
+    on protocol error and silently use stale data."""
+    import io
+    from cab_tui.rpc import RpcBridge
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    async with app.run_test():
+        class _M:
+            raw = {"type": "welcome", "version": "9.9.9",
+                   "schema_version": 99, "command": "setup"}
+            type = "welcome"
+        await app._handle_rpc_welcome(_M())
+        await app.workers.wait_for_complete()
+    # Textual's App.exit() stores the requested code in .return_code so
+    # __main__.py can pick it up after run() returns.
+    assert app.return_code == 2, app.return_code
+
+
+def test_main_unit_propagates_app_return_code() -> None:
+    """`__main__.main()` must return whatever `app.return_code` was set
+    to by `app.exit(return_code=...)`. The wired-up app pumps a real
+    Textual loop which requires a TTY in subprocess form, so we test
+    the propagation logic in-process via a stub app."""
+    from cab_tui import __main__ as cab_main
+
+    class _StubApp:
+        return_code = 7
+        def __init__(self, *args, **kwargs):
+            pass
+        def run(self) -> None:
+            pass
+
+    # Monkey-patch CabTuiApp to our stub for the duration of the call.
+    orig = cab_main.CabTuiApp
+    cab_main.CabTuiApp = _StubApp
+    try:
+        # Simulate `cab-tui --rpc`. main() ignores argv when --rpc is set
+        # via Namespace; we drive it with a temp argv.
+        import sys as _sys
+        orig_argv = _sys.argv
+        _sys.argv = ["cab-tui", "--rpc"]
+        try:
+            rc = cab_main.main()
+        finally:
+            _sys.argv = orig_argv
+        assert rc == 7, rc
+    finally:
+        cab_main.CabTuiApp = orig

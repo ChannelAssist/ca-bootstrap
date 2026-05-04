@@ -146,6 +146,83 @@ while (`$true) {
         $exitCode | Should -Be 0
     }
 
+    It "emits step.start before each retry attempt and a skip step.end after a 'skip' recovery" {
+        # Stub: capture every inbound message to a file so we can assert
+        # on the sequence of step events. Reply 'retry' to the first
+        # recovery prompt, 'skip' to the second.
+        $captureFile = Join-Path $script:tempState 'events.jsonl'
+        $stub = @"
+`$out = '$($captureFile -replace '\\','\\')'
+`$replies = @('retry', 'skip')
+`$idx = 0
+while (`$true) {
+    `$line = [Console]::In.ReadLine()
+    if (`$null -eq `$line) { break }
+    Add-Content -Path `$out -Value `$line
+    try { `$msg = `$line | ConvertFrom-Json } catch { continue }
+    if (`$msg.type -eq 'prompt' -and `$msg.kind -eq 'recovery') {
+        `$value = if (`$idx -lt `$replies.Count) { `$replies[`$idx] } else { 'quit' }
+        `$idx++
+        `$reply = @{ type = 'answer'; id = `$msg.id; value = `$value } | ConvertTo-Json -Compress
+        [Console]::Out.WriteLine(`$reply)
+        [Console]::Out.Flush()
+    }
+}
+"@
+        # Step 10 fails twice (so retry runs, retried attempt also fails,
+        # then skip moves on). FailUntilAttempt=999 keeps it failing.
+        Write-FailingStepFile -Path (Join-Path $script:fakeRoot 'steps/10-welcome.ps1') `
+            -FailUntilAttempt 999 -CounterFile $script:counterFile
+
+        $stubFile = Join-Path $script:tempState 'evt-stub.ps1'
+        Set-Content -Path $stubFile -Value $stub
+
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = (Get-Process -Id $PID).Path
+        $psi.Arguments = "-NoLogo -NoProfile -File `"$stubFile`""
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput  = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $Script:CABTuiProcess = $proc
+
+        Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true
+        Read-CABJournal | Out-Null
+        Start-CABSession -Command 'setup' -Version 'test'
+
+        $context = @{ RepoRoot = $script:fakeRoot; Version = 'test'; Command = 'setup'; Unattended = $false }
+        Invoke-CABCommandSetup -Context $context | Out-Null
+
+        # Drain.
+        $Script:CABTuiProcess.StandardInput.Close()
+        $Script:CABTuiProcess.WaitForExit(2000) | Out-Null
+
+        Test-Path $captureFile | Should -BeTrue
+        $events = Get-Content $captureFile | ForEach-Object { $_ | ConvertFrom-Json }
+        $stepEvents = @($events | Where-Object { $_.type -eq 'step' -and $_.step -eq '10-welcome' })
+
+        # We expect, in order, for step 10:
+        #   1. step.start    (initial attempt)
+        #   2. step.end fail (first failure)
+        #   3. step.start    (retry attempt — re-flips the tree to ▶)
+        #   4. step.end fail (retry also failed)
+        #   5. step.skip     (after 'skip' recovery — clears the ✗)
+        $stepEvents.Count | Should -BeGreaterOrEqual 5
+        $stepEvents[0].phase | Should -Be 'start'
+        $stepEvents[1].phase | Should -Be 'end'
+        $stepEvents[1].status | Should -Be 'fail'
+        $stepEvents[2].phase | Should -Be 'start'   # retry re-emits start
+        $stepEvents[3].phase | Should -Be 'end'
+        $stepEvents[3].status | Should -Be 'fail'
+        # The recovery 'skip' produces a corrective step.skip event so the
+        # TUI tree drops the ✗ and shows ↷ instead.
+        $skipEvent = $stepEvents | Where-Object { $_.phase -eq 'skip' } | Select-Object -First 1
+        $skipEvent | Should -Not -BeNullOrEmpty
+        $skipEvent.status | Should -Be 'skip'
+    }
+
     It "skips a failing step when the user picks 'skip' and continues to the next" {
         # Same stub shape but always answers 'skip'.
         $stub = @'

@@ -53,9 +53,9 @@ Every UI element uses a stock widget from the [Textual gallery](https://textual.
 
 ```bash
 cd cab-tui
-pytest -q                     # 36 tests across 5 files (shell, rpc, prompts, progress, scenarios)
+pytest -q                     # cross-file suite (shell, rpc, integration, prompts, progress, scenarios)
 make tui-test                 # equivalent
-make test-all                 # Pester (PowerShell side) + pytest together; 115 tests total
+make test-all                 # Pester (PowerShell side) + pytest together
 ```
 
 CI runs the suite on ubuntu / macos / windows × Python 3.10 and 3.12. The cross-runtime Pester subset (`tests/lib/tui-rpc.tests.ps1`, `prompts-tui`, `setup-tui-events`, `setup-recovery`) integration-tests the bridge end-to-end with a real Python install.

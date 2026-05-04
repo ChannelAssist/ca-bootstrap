@@ -134,7 +134,19 @@ function Send-CABTuiProgress {
         if ($PSBoundParameters.ContainsKey('Total'))   { $event.total   = $Total }
         if ($Label) { $event.label = $Label }
     }
-    Send-CABTuiEvent -Event $event
+    # Best-effort: a progress update should NEVER abort the host step.
+    # The HasExited check above is a TOCTOU guard at best — the bridge
+    # can die between the check and the WriteLine, leaving us with a
+    # broken pipe. Step files that call this helper unconditionally
+    # would otherwise propagate that throw and crash setup.
+    try {
+        Send-CABTuiEvent -Event $event
+    } catch {
+        # Swallow: the consumer half of the bridge has gone away. The
+        # next user-driven prompt will trigger Invoke-CABTuiPrompt's
+        # fallback path, which formally disables TuiMode and writes a
+        # warning to the user.
+    }
 }
 
 # Receive-CABTuiMessage — blocking read of one line, parsed as JSON.

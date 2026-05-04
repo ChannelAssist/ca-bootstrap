@@ -177,8 +177,30 @@ class CabTuiApp(App):
         self._rpc.on("prompt",  self._handle_rpc_prompt)
         self._rpc.on("progress", self._handle_rpc_progress)
         self._rpc.on("done",    self._handle_rpc_done)
-        # Run the consumer concurrently with the UI loop.
+        # Run the consumer concurrently with the UI loop. Observe its
+        # completion so a fatal parse error (per protocol) tears the app
+        # down with a non-zero exit instead of leaving the UI idle while
+        # the parent talks to a child that's stopped reading.
         self._rpc_task = asyncio.create_task(self._rpc.start())
+        self._rpc_task.add_done_callback(self._on_rpc_task_done)
+
+    def _on_rpc_task_done(self, task: asyncio.Task) -> None:
+        # Fatal parse error → exit non-zero. Normal EOF (parent closed
+        # stdin cleanly during shutdown) is fine; we let the host's
+        # `done` handler drive the exit code in that case.
+        if getattr(self._rpc, "_fatal_parse_error", False):
+            print(
+                "cab-tui: aborting due to fatal RPC parse error",
+                file=sys.stderr,
+            )
+            self.exit(return_code=2, message="fatal RPC parse error")
+            return
+        # Surface unexpected task exceptions so they don't get swallowed.
+        if not task.cancelled():
+            exc = task.exception()
+            if exc is not None:
+                print(f"cab-tui: RPC consumer crashed: {exc!r}", file=sys.stderr)
+                self.exit(return_code=2, message=f"RPC consumer crashed: {exc}")
 
     # JSON-RPC schema version this TUI knows how to speak. Bumped only on
     # protocol-incompatible changes (renamed event types, restructured
