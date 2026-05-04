@@ -79,11 +79,11 @@ function Invoke-CABStep40 {
     Write-Host ''
 
     $useDefault = Read-CABConfirm -Question 'Use this default?' -Default $true -AnswerKey 'workspace.use_default'
-    if ($useDefault -is [string] -and $useDefault -eq 'quit') {
+    if (Test-CABQuit $useDefault) {
         return @{ status = 'quit'; details = 'User quit at workspace step.' }
     }
 
-    if ($useDefault -is [bool] -and -not $useDefault) {
+    if (Test-CABNo $useDefault) {
         Write-Host '  Custom path (must be absolute):'
         Write-Host "  > " -NoNewline
         $custom = (Read-Host).Trim()

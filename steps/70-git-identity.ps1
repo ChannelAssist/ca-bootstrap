@@ -72,10 +72,10 @@ function Invoke-CABStep70 {
     Write-Host ''
 
     $proceed = Read-CABConfirm -Question 'Configure ChannelAssist-specific identity?' -Default $true -AnswerKey 'identity.configure'
-    if ($proceed -is [string] -and $proceed -eq 'quit') {
+    if (Test-CABQuit $proceed) {
         return @{ status = 'quit'; details = 'User quit at identity step.' }
     }
-    if ($proceed -is [bool] -and -not $proceed) {
+    if (Test-CABNo $proceed) {
         return @{ status = 'skip'; details = 'User skipped identity configuration.' }
     }
 
@@ -104,7 +104,11 @@ function Invoke-CABStep70 {
         return @{ status = 'ok'; details = 'WhatIf: identity changes simulated.' }
     }
 
-    # Write the workspace .gitconfig.
+    # Write the workspace .gitconfig with explicit UTF-8 encoding (no BOM).
+    # PowerShell on Windows defaults to the system codepage (often
+    # windows-1252), which mangles non-ASCII names like "Émilie Müller"
+    # and breaks both git's parsing and our own includeIf detection on
+    # re-run.
     $workspaceGitconfig = Join-Path $Context.WorkspacePath '.gitconfig'
     $workspaceContent = @"
 # ChannelAssist developer identity for this workspace.
@@ -114,7 +118,7 @@ function Invoke-CABStep70 {
     name = $name
     email = $email
 "@
-    Set-Content -Path $workspaceGitconfig -Value $workspaceContent
+    Set-Content -Path $workspaceGitconfig -Value $workspaceContent -Encoding utf8NoBOM
 
     # Append includeIf to the global gitconfig.
     # Critical on Windows: git treats `\` as an escape character in config
@@ -131,9 +135,9 @@ function Invoke-CABStep70 {
     path = $normalizedWorkspaceGitconfig
 "@
     if (-not (Test-Path $globalPath)) {
-        Set-Content -Path $globalPath -Value $includeBlock.TrimStart()
+        Set-Content -Path $globalPath -Value $includeBlock.TrimStart() -Encoding utf8NoBOM
     } else {
-        Add-Content -Path $globalPath -Value $includeBlock
+        Add-Content -Path $globalPath -Value $includeBlock -Encoding utf8NoBOM
     }
 
     Add-CABJournalEntry -Step '70-git-identity' -Action 'configure_git_identity' -Data @{

@@ -51,8 +51,8 @@ function Invoke-CABCommandUndo {
 
     if (-not $Context.Force -and -not $Force -and -not $Target) {
         $proceed = Read-CABConfirm -Question 'Proceed with reversal (each destructive action will be re-confirmed)?' -Default $false -AnswerKey 'undo.proceed'
-        if ($proceed -is [string] -and $proceed -eq 'quit') { return 1 }
-        if ($proceed -is [bool] -and -not $proceed) {
+        if (Test-CABQuit $proceed) { return 1 }
+        if (Test-CABNo $proceed) {
             Write-CABStatus -Status info -Message 'No changes made.'
             return 0
         }
@@ -277,8 +277,8 @@ function Invoke-CABUndoToolInstall {
         return @{ status = 'skip'; details = 'tool reversal opt-in only' }
     }
     $confirm = Read-CABConfirm -Question "Uninstall $($Entry.tool)? Other projects may depend on it." -Default $false
-    if ($confirm -is [string] -and $confirm -eq 'quit') { return @{ status = 'skip'; details = 'user quit' } }
-    if ($confirm -is [bool] -and -not $confirm) { return @{ status = 'skip'; details = 'user declined' } }
+    if (Test-CABQuit $confirm) { return @{ status = 'skip'; details = 'user quit' } }
+    if (Test-CABNo $confirm) { return @{ status = 'skip'; details = 'user declined' } }
 
     $method = [string]$Entry.method
     switch ($method) {

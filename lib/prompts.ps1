@@ -18,8 +18,13 @@ function Set-CABPromptMode {
 }
 
 # Read-CABConfirm — yes/no prompt with a default.
-#   $Default: $true → "[Y/n]", $false → "[y/N]"
-#   Returns: $true / $false / 'quit'
+#   $Default: $true → "[Y/n/q]", $false → "[y/N/q]"
+#   Returns: one of 'yes' | 'no' | 'quit' (always a string).
+#
+# Callers should compare against the constants. The single-typed return
+# avoids a foot-gun where `$result -eq 'quit'` would coerce a $true bool
+# to 'true' and silently match. Two callable predicates are exported as
+# convenience: Test-CABYes / Test-CABQuit.
 function Read-CABConfirm {
     [CmdletBinding()]
     param(
@@ -27,25 +32,41 @@ function Read-CABConfirm {
         [bool]$Default = $true,
         [string]$AnswerKey
     )
+    $defaultStr = if ($Default) { 'yes' } else { 'no' }
+
     if ($Script:CABootstrapUnattended) {
         if ($AnswerKey -and $Script:CABootstrapAnswers.ContainsKey($AnswerKey)) {
-            return [bool]$Script:CABootstrapAnswers[$AnswerKey]
+            $a = $Script:CABootstrapAnswers[$AnswerKey]
+            # Accept both legacy bool answers (from old answers.yaml files)
+            # and the new string form for forward compatibility.
+            if ($a -is [bool])   { return $(if ($a) { 'yes' } else { 'no' }) }
+            if ($a -is [string]) {
+                $low = $a.ToLowerInvariant()
+                if ($low -in 'yes','y','true')  { return 'yes' }
+                if ($low -in 'no','n','false')  { return 'no' }
+                if ($low -in 'quit','q')        { return 'quit' }
+            }
         }
-        return $Default
+        return $defaultStr
     }
+
     $hint = if ($Default) { '[Y/n/q]' } else { '[y/N/q]' }
     while ($true) {
         Write-Host "  $Question $hint " -NoNewline
         $ans = Read-Host
-        if ([string]::IsNullOrWhiteSpace($ans)) { return $Default }
+        if ([string]::IsNullOrWhiteSpace($ans)) { return $defaultStr }
         switch -Regex ($ans.Trim()) {
-            '^[Yy]([Ee][Ss])?$' { return $true }
-            '^[Nn][Oo]?$'       { return $false }
+            '^[Yy]([Ee][Ss])?$' { return 'yes' }
+            '^[Nn][Oo]?$'       { return 'no' }
             '^[Qq](uit)?$'      { return 'quit' }
             default             { Write-CABColor Red "  Please answer y, n, or q." }
         }
     }
 }
+
+function Test-CABYes  { param([string]$R) $R -eq 'yes'  }
+function Test-CABNo   { param([string]$R) $R -eq 'no'   }
+function Test-CABQuit { param([string]$R) $R -eq 'quit' }
 
 # Read-CABChoice — multi-option prompt.
 #   $Options: array of @{ Key='Y'; Label='Yes (install all)' }

@@ -90,10 +90,10 @@ function Invoke-CABStep20 {
                 -Question "Install $($tool.name)$heavyHint$rebootHint?" `
                 -Default $default `
                 -AnswerKey "prereqs.install.$($tool.id)"
-            if ($ans -is [string] -and $ans -eq 'quit') {
+            if (Test-CABQuit $ans) {
                 return @{ status = 'quit'; details = 'User quit during install selection.' }
             }
-            $shouldInstall = ($ans -is [bool] -and $ans)
+            $shouldInstall = (Test-CABYes $ans)
         }
 
         if (-not $shouldInstall) {

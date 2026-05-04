@@ -41,10 +41,10 @@ function Invoke-CABStep50 {
     Write-Host ''
 
     $proceed = Read-CABConfirm -Question 'Continue?' -Default $true -AnswerKey 'folders.continue'
-    if ($proceed -is [string] -and $proceed -eq 'quit') {
+    if (Test-CABQuit $proceed) {
         return @{ status = 'quit'; details = 'User quit at folders step.' }
     }
-    if ($proceed -is [bool] -and -not $proceed) {
+    if (Test-CABNo $proceed) {
         return @{ status = 'skip'; details = 'User declined to create folders.' }
     }
 

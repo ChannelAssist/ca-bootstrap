@@ -127,10 +127,10 @@ function Invoke-CABStep60 {
                 if ($repo.warn) { Write-CABColor Yellow "    ⓘ $($repo.warn)" }
                 $default = -not $repo.opt_in
                 $ans = Read-CABConfirm -Question $promptText -Default $default -AnswerKey "repos.repo.$($repo.repo)"
-                if ($ans -is [string] -and $ans -eq 'quit') {
+                if (Test-CABQuit $ans) {
                     return @{ status = 'quit'; details = 'User quit during repo cloning.' }
                 }
-                $shouldClone = ($ans -is [bool] -and $ans)
+                $shouldClone = (Test-CABYes $ans)
             }
 
             if (-not $shouldClone) {

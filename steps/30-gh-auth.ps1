@@ -42,10 +42,10 @@ function Invoke-CABStep30 {
     Write-Host ''
 
     $proceed = Read-CABConfirm -Question 'Run `gh auth login` now?' -Default $true -AnswerKey 'gh-auth.login'
-    if ($proceed -is [string] -and $proceed -eq 'quit') {
+    if (Test-CABQuit $proceed) {
         return @{ status = 'quit'; details = 'User quit at gh auth step.' }
     }
-    if ($proceed -is [bool] -and -not $proceed) {
+    if (Test-CABNo $proceed) {
         return @{ status = 'fail'; details = 'gh auth required for repo cloning. Re-run setup after `gh auth login`.' }
     }
 

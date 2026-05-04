@@ -27,6 +27,37 @@ function Get-CABJournalPath    { $Script:CABootstrapJournalPath }
 function Get-CABSessionId      { $Script:CABootstrapSessionId }
 function Get-CABStateDir       { $Script:CABootstrapStateDir }
 
+# Test-CABContainsSensitive — returns $true if the input string contains a
+# pattern that looks like a credential. Used by the journal/transcript
+# layers to refuse to record secrets even if a step accidentally tries to.
+$Script:CABSensitivePatterns = @(
+    '\bgh[pousr]_[A-Za-z0-9_]{30,}'                      # gh CLI token prefixes
+    '\bgithub_pat_[A-Za-z0-9_]{20,}'                     # newer fine-grained PAT
+    '\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'        # JWT (3-segment, dot-separated)
+    '\bAKIA[0-9A-Z]{16}\b'                               # AWS access key id
+    '\bxox[abprs]-[A-Za-z0-9-]{10,}'                     # Slack tokens
+    '-----BEGIN [A-Z ]*PRIVATE KEY-----'                 # PEM private key
+)
+function Test-CABContainsSensitive {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    foreach ($p in $Script:CABSensitivePatterns) {
+        if ($Text -match $p) { return $true }
+    }
+    return $false
+}
+
+# Hide-CABSensitive — replace each known-token pattern with <redacted:type>.
+function Hide-CABSensitive {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    $out = $Text
+    foreach ($p in $Script:CABSensitivePatterns) {
+        $out = [regex]::Replace($out, $p, '<redacted>')
+    }
+    return $out
+}
+
 # Reset-CABJournalState — re-read CA_BOOTSTRAP_STATE and reset in-memory
 # state. Useful for tests that mutate the env var between cases (their
 # `$Script:` assignments don't reach this lib's scope).
@@ -47,6 +78,56 @@ function Initialize-CABJournal {
     param()
     if (-not (Test-Path $Script:CABootstrapStateDir)) {
         [void](New-Item -ItemType Directory -Path $Script:CABootstrapStateDir -Force)
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Lockfile (single-writer guarantee)
+# ---------------------------------------------------------------------------
+#
+# Two parallel `setup` invocations would race on the journal and the
+# transcript. The lockfile is a tiny advisory mutex: each command grabs it
+# at session start, holds the open handle for the duration of the run,
+# and releases it at session end (or on process exit, since the OS will
+# clean up the handle).
+
+$Script:CABLockHandle = $null
+
+function Lock-CABSession {
+    [CmdletBinding()]
+    param([int]$TimeoutMs = 0)
+    Initialize-CABJournal
+    $lockPath = Join-Path $Script:CABootstrapStateDir 'session.lock'
+    $deadline = [Environment]::TickCount + $TimeoutMs
+    while ($true) {
+        try {
+            # FileShare.None makes this an exclusive lock.
+            $Script:CABLockHandle = [System.IO.File]::Open(
+                $lockPath, [System.IO.FileMode]::OpenOrCreate,
+                [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            # Stamp PID so a future user can identify the holder.
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes("pid=$PID started=$(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')`n")
+            $Script:CABLockHandle.SetLength(0)
+            $Script:CABLockHandle.Write($bytes, 0, $bytes.Length)
+            $Script:CABLockHandle.Flush()
+            return $true
+        } catch [System.IO.IOException] {
+            if ([Environment]::TickCount -ge $deadline) {
+                $holder = ''
+                try { $holder = (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue).Trim() } catch {}
+                throw "Another ca-bootstrap session is already running (lock at $lockPath; holder: $holder). Wait for it to finish or remove the lock if it's stale."
+            }
+            Start-Sleep -Milliseconds 200
+        }
+    }
+}
+
+function Unlock-CABSession {
+    if ($Script:CABLockHandle) {
+        try { $Script:CABLockHandle.Dispose() } catch {}
+        $Script:CABLockHandle = $null
+        $lockPath = Join-Path $Script:CABootstrapStateDir 'session.lock'
+        Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -129,8 +210,14 @@ function Start-CABSession {
     param(
         [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo')] [string]$Command,
         [Parameter(Mandatory)] [string]$Version,
-        [string]$WorkspacePath
+        [string]$WorkspacePath,
+        [int]$LockTimeoutMs = 0
     )
+    # Refuse to run if another session is in progress. doctor is read-only
+    # so we let it through without a lock.
+    if ($Command -ne 'doctor') {
+        Lock-CABSession -TimeoutMs $LockTimeoutMs
+    }
     Read-CABJournal | Out-Null
     $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
 
@@ -183,6 +270,7 @@ function Stop-CABSession {
     Write-Host ''
     Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
     try { Stop-Transcript | Out-Null } catch { }
+    Unlock-CABSession
 }
 
 # Get-CABCurrentSession — returns a reference to the current session
@@ -217,7 +305,18 @@ function Add-CABJournalEntry {
         reversible = $Reversible
         undone     = $false
     }
-    foreach ($k in $Data.Keys) { $entry[$k] = $Data[$k] }
+    foreach ($k in $Data.Keys) {
+        $v = $Data[$k]
+        # Best-effort: refuse to journal a string that looks like a credential.
+        # The action types we expose don't carry secrets; this is a guard
+        # against future bugs and contributors who might accidentally pass
+        # a token through Data.
+        if ($v -is [string] -and (Test-CABContainsSensitive $v)) {
+            $entry[$k] = Hide-CABSensitive $v
+        } else {
+            $entry[$k] = $v
+        }
+    }
 
     # Convert .actions to a List if powershell-yaml gave us an array.
     if ($session.actions -isnot [System.Collections.Generic.List[hashtable]]) {

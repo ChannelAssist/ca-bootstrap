@@ -64,10 +64,10 @@ function Invoke-CABStep80 {
         -Question "Create VS Code multi-root workspace file at ChannelAssist.code-workspace$existsHint?" `
         -Default $true `
         -AnswerKey 'extras.vscode_workspace_file'
-    if ($createWorkspaceFile -is [string] -and $createWorkspaceFile -eq 'quit') {
+    if (Test-CABQuit $createWorkspaceFile) {
         return @{ status = 'quit'; details = 'User quit during extras step.' }
     }
-    if ($createWorkspaceFile -is [bool] -and $createWorkspaceFile) {
+    if (Test-CABYes $createWorkspaceFile) {
         $repos = Get-CABClonedReposFromWorkspace -WorkspacePath $Context.WorkspacePath
         if ($repos.Count -eq 0) {
             Write-CABStatus -Status warn -Message 'No cloned repos detected — skipping workspace file.'
@@ -121,10 +121,10 @@ function Invoke-CABStep80 {
             -Question $promptText `
             -Default $false `
             -AnswerKey 'extras.ca_claude_plugin'
-        if ($linkPlugin -is [string] -and $linkPlugin -eq 'quit') {
+        if (Test-CABQuit $linkPlugin) {
             return @{ status = 'quit'; details = 'User quit during extras step.' }
         }
-        if ($linkPlugin -is [bool] -and $linkPlugin) {
+        if (Test-CABYes $linkPlugin) {
             if ($Context.WhatIfMode) {
                 Write-CABStatus -Status info -Message "WhatIf: would symlink $linkPath → $pluginRepoPath"
             } else {
@@ -168,10 +168,10 @@ function Invoke-CABStep80 {
                 -Question 'Install WSL2 + Ubuntu 22.04 (requires reboot)?' `
                 -Default $false `
                 -AnswerKey 'extras.wsl_ubuntu_2204'
-            if ($installWsl -is [string] -and $installWsl -eq 'quit') {
+            if (Test-CABQuit $installWsl) {
                 return @{ status = 'quit'; details = 'User quit during extras step.' }
             }
-            if ($installWsl -is [bool] -and $installWsl) {
+            if (Test-CABYes $installWsl) {
                 if ($Context.WhatIfMode) {
                     Write-CABStatus -Status info -Message 'WhatIf: would run `wsl --install --no-launch -d Ubuntu-22.04`'
                 } else {
