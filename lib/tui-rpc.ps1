@@ -9,6 +9,13 @@
 
 $Script:CABTuiProcess = $null
 $Script:CABTuiSchemaVersion = 1
+# Inbox + background reader handle for the TUI bridge. A persistent
+# PowerShell runspace pumps lines from the child's stdout into this
+# BlockingCollection so Receive-CABTuiAnswer and Drain-CABTuiPending
+# can both consume from a single source without leaky-task races.
+$Script:CABTuiInbox = $null
+$Script:CABTuiReaderInstance = $null
+$Script:CABTuiReaderHandle = $null
 
 # Path to the cab-tui package directory next to this lib/. Used to seed
 # PYTHONPATH for the python3 invocations below — Python 3.14 skips .pth
@@ -30,13 +37,34 @@ function _CABTuiPythonPath {
     return @{ Set = $cabPath; Original = $null }
 }
 
+# Find-CABPython — return the first usable Python 3.10+ on PATH, or
+# $null. Mirrors bootstrap.ps1's Find-Python310Plus so the orchestrator
+# accepts the same interpreters the installer accepts:
+# 'python3' / 'python.exe' on Unix-likes, plus the Windows 'py' launcher.
+function Find-CABPython {
+    $candidates = if ($IsWindows) { @('python.exe', 'py', 'python3') } else { @('python3', 'python') }
+    foreach ($cand in $candidates) {
+        if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
+        try {
+            $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+        } catch { continue }
+        if ($verLine -match '^(\d+)\.(\d+)$') {
+            $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+            if ($major -ge 3 -and $minor -ge 10) { return $cand }
+        }
+    }
+    return $null
+}
+
 function Test-CABTuiAvailable {
     [CmdletBinding()]
     param([string]$PythonBinary)
     if (-not $PythonBinary) {
-        $PythonBinary = if ($IsWindows) { 'python.exe' } else { 'python3' }
+        $PythonBinary = Find-CABPython
+        if (-not $PythonBinary) { return $false }
+    } elseif (-not (Get-Command $PythonBinary -ErrorAction SilentlyContinue)) {
+        return $false
     }
-    if (-not (Get-Command $PythonBinary -ErrorAction SilentlyContinue)) { return $false }
     $pp = _CABTuiPythonPath
     $original = $pp.Original
     $env:PYTHONPATH = $pp.Set
@@ -64,7 +92,10 @@ function Start-CABTuiBridge {
         [string]$Arguments = '-m cab_tui --rpc'
     )
     if (-not $PythonBinary) {
-        $PythonBinary = if ($IsWindows) { 'python.exe' } else { 'python3' }
+        $PythonBinary = Find-CABPython
+        if (-not $PythonBinary) {
+            throw "cab-tui: no usable Python 3.10+ found on PATH (tried python3 / python / python.exe / py)."
+        }
     }
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -84,6 +115,29 @@ function Start-CABTuiBridge {
     $proc = [System.Diagnostics.Process]::Start($psi)
     $Script:CABTuiProcess = $proc
 
+    # Background reader: pumps stdout lines into a BlockingCollection.
+    # Without this, asking "is a line ready?" (Drain) and "wait for the
+    # next line" (Receive-CABTuiAnswer) would both have to call
+    # ReadLineAsync directly on the same StreamReader — which races and
+    # drops lines. With a single producer (the runspace) and bounded
+    # consumer reads (TryTake / Take), there's no race.
+    $Script:CABTuiInbox = [System.Collections.Concurrent.BlockingCollection[string]]::new()
+    $ps = [PowerShell]::Create()
+    [void]$ps.AddScript({
+        param($stdout, $inbox)
+        try {
+            while (-not $inbox.IsAddingCompleted) {
+                $line = $stdout.ReadLine()
+                if ($null -eq $line) { break }   # EOF
+                try { $inbox.Add($line) } catch [System.InvalidOperationException] { break }
+            }
+        } finally {
+            try { $inbox.CompleteAdding() } catch { }
+        }
+    }).AddArgument($proc.StandardOutput).AddArgument($Script:CABTuiInbox)
+    $Script:CABTuiReaderInstance = $ps
+    $Script:CABTuiReaderHandle = $ps.BeginInvoke()
+
     # Handshake: send welcome, await ack. 5s budget.
     Send-CABTuiEvent -Event @{
         type           = 'welcome'
@@ -102,6 +156,17 @@ function Start-CABTuiBridge {
                 try { $Script:CABTuiProcess.Kill() } catch { }
             }
         }
+        # Reader cleanup: same teardown as Stop-CABTuiBridge does, since
+        # we won't fall through to it on this error path.
+        if ($Script:CABTuiInbox) { try { $Script:CABTuiInbox.CompleteAdding() } catch { } }
+        if ($Script:CABTuiReaderInstance) {
+            try { $Script:CABTuiReaderInstance.EndInvoke($Script:CABTuiReaderHandle) } catch { }
+            try { $Script:CABTuiReaderInstance.Dispose() } catch { }
+        }
+        if ($Script:CABTuiInbox) { try { $Script:CABTuiInbox.Dispose() } catch { } }
+        $Script:CABTuiInbox = $null
+        $Script:CABTuiReaderInstance = $null
+        $Script:CABTuiReaderHandle = $null
         $Script:CABTuiProcess = $null
         throw "cab-tui handshake failed (expected ack of welcome, got: $($ack | ConvertTo-Json -Compress))"
     }
@@ -117,6 +182,41 @@ function Send-CABTuiEvent {
     $json = $Event | ConvertTo-Json -Compress -Depth 6
     $Script:CABTuiProcess.StandardInput.WriteLine($json)
     $Script:CABTuiProcess.StandardInput.Flush()
+    # Drain any inbound messages the user has queued while we weren't
+    # actively waiting for an answer. Without this, a `quit` press from
+    # the user during a long-running step (clones, tool installs)
+    # wouldn't be acted on until the next prompt fires — which defeats
+    # the documented "quit any time" guarantee. No-op when the inbox
+    # isn't set up (tests that bypass Start-CABTuiBridge).
+    Drain-CABTuiPending
+}
+
+# Drain-CABTuiPending — non-blocking pull of any lines the background
+# reader task has pumped into $Script:CABTuiInbox. A `quit` message sets
+# $Script:CABQuitRequested so the orchestrator's between-steps check
+# picks it up the same way Ctrl+C does; other messages are stashed on
+# $Script:CABTuiPendingMessages for the next Receive-CABTuiAnswer caller.
+#
+# Safe to call concurrently with Receive-CABTuiAnswer because both go
+# through the same BlockingCollection — the reader task is the sole
+# producer, so there's no leaky-task race like there would be if we
+# called StreamReader.ReadLineAsync() directly here.
+function Drain-CABTuiPending {
+    [CmdletBinding()]
+    param()
+    if (-not $Script:CABTuiInbox) { return }
+    $line = $null
+    while ($Script:CABTuiInbox.TryTake([ref]$line, 0)) {
+        if ($null -eq $line) { continue }
+        try {
+            $msg = $line | ConvertFrom-Json -AsHashtable
+        } catch { continue }
+        if ($msg.type -eq 'quit') {
+            $Script:CABQuitRequested = $true
+        } else {
+            $Script:CABTuiPendingMessages.Add($msg)
+        }
+    }
 }
 
 # Send-CABTuiProgress — emit a `progress` event for the given indicator id.
@@ -160,10 +260,35 @@ function Send-CABTuiProgress {
 
 # Receive-CABTuiMessage — blocking read of one line, parsed as JSON.
 # Times out after $TimeoutMs (default infinite). Returns $null on timeout.
+#
+# Two paths:
+#   1. Background-reader path (when Start-CABTuiBridge has set up the
+#      inbox): Take / TryTake from the BlockingCollection. This is the
+#      production path. It avoids the leaky-task race that direct
+#      StreamReader.ReadLineAsync would have when called from both
+#      Receive and Drain.
+#   2. Direct-read path (tests that bypass Start-CABTuiBridge and just
+#      poke a stub child via $Script:CABTuiProcess directly): fall back
+#      to ReadLineAsync. The single-reader invariant holds in those
+#      tests because Drain is a no-op without the inbox.
 function Receive-CABTuiMessage {
     [CmdletBinding()]
     param([int]$TimeoutMs = -1)
     if (-not $Script:CABTuiProcess) { throw 'cab-tui process is not running' }
+    if ($Script:CABTuiInbox) {
+        $line = $null
+        try {
+            if ($TimeoutMs -lt 0) {
+                $line = $Script:CABTuiInbox.Take()
+            } else {
+                if (-not $Script:CABTuiInbox.TryTake([ref]$line, $TimeoutMs)) { return $null }
+            }
+        } catch [System.InvalidOperationException] {
+            return $null   # CompleteAdding called → reader exited / EOF
+        }
+        if ($null -eq $line) { return $null }
+        return ($line | ConvertFrom-Json -AsHashtable)
+    }
     $reader = $Script:CABTuiProcess.StandardOutput
     $line = if ($TimeoutMs -gt 0) {
         $task = $reader.ReadLineAsync()
@@ -246,6 +371,24 @@ function Stop-CABTuiBridge {
             }
         }
     }
+    # Tear down the background reader. Closing StandardOutput on Dispose
+    # is enough to make ReadLine() return null and exit the loop, which
+    # in turn calls CompleteAdding() and lets the runspace finish.
+    if ($Script:CABTuiInbox) {
+        try { $Script:CABTuiInbox.CompleteAdding() } catch { }
+    }
+    if ($Script:CABTuiReaderInstance) {
+        try {
+            $Script:CABTuiReaderInstance.EndInvoke($Script:CABTuiReaderHandle)
+        } catch { }
+        try { $Script:CABTuiReaderInstance.Dispose() } catch { }
+    }
+    if ($Script:CABTuiInbox) {
+        try { $Script:CABTuiInbox.Dispose() } catch { }
+    }
+    $Script:CABTuiInbox = $null
+    $Script:CABTuiReaderInstance = $null
+    $Script:CABTuiReaderHandle = $null
     $Script:CABTuiProcess = $null
 }
 

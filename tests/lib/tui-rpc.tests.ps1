@@ -46,6 +46,64 @@ BeforeAll {
     }
 }
 
+Describe 'Find-CABPython' {
+    It 'returns a usable Python 3.10+ binary if one is installed' {
+        # The dev workflow has python3 (and the cab-tui venv); CI does too.
+        $py = Find-CABPython
+        if ($py) {
+            $verLine = & $py -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            $verLine | Should -Match '^3\.(1[0-9]|[2-9]\d)'
+        } else {
+            Set-ItResult -Skipped -Because 'no Python 3.10+ on PATH; nothing to assert'
+        }
+    }
+}
+
+Describe 'Drain-CABTuiPending + Send-CABTuiEvent quit-surfacing' {
+    AfterEach { Stop-CABTuiBridge }
+
+    It 'surfaces a `quit` from the child during a long step (no prompt waiting)' {
+        # Stub child: ack the welcome, then immediately emit `quit`. The
+        # orchestrator path during a long step would call Send-CABTuiEvent
+        # (e.g. for a progress update) and the embedded Drain should
+        # set $Script:CABQuitRequested.
+        $body = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+if ($msg.type -eq 'welcome') {
+    [Console]::Out.WriteLine('{"type":"ack","of":"welcome"}')
+    [Console]::Out.Flush()
+    Start-Sleep -Milliseconds 100
+    [Console]::Out.WriteLine('{"type":"quit"}')
+    [Console]::Out.Flush()
+}
+Start-Sleep -Seconds 5
+'@
+        $script:quitStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-quit-$(Get-Random).ps1"
+        Set-Content $script:quitStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:quitStub`""
+        Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path `
+            -Command 'setup' -Version 'test' -Arguments $stubArgs | Out-Null
+
+        # Reset the flag, then simulate the orchestrator emitting a step
+        # event during a long-running step. Wait briefly for the inbox
+        # to deliver the quit.
+        $Script:CABQuitRequested = $false
+        Start-Sleep -Milliseconds 200
+        Send-CABTuiEvent -Event @{ type = 'log'; stream = 'info'; text = 'busy with clones…' }
+
+        # Drain may have already happened inside Send-CABTuiEvent; if the
+        # quit hadn't landed yet, give it one more cycle.
+        if (-not $Script:CABQuitRequested) {
+            Start-Sleep -Milliseconds 200
+            Drain-CABTuiPending
+        }
+        $Script:CABQuitRequested | Should -BeTrue
+
+        Remove-Item $script:quitStub -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Describe 'Test-CABTuiAvailable' {
     It 'returns $false when the python binary is not on PATH' {
         # A binary name that no system would have.

@@ -123,6 +123,44 @@ async def test_schema_version_mismatch_sets_nonzero_return_code() -> None:
     assert app.return_code == 2, app.return_code
 
 
+@pytest.mark.asyncio
+async def test_q_press_post_done_self_exits_without_sending_quit() -> None:
+    """After `done` arrives, the parent has stopped reading stdout. A
+    subsequent `q` keypress must self-exit the TUI, not send another
+    `quit` message that the parent will never see (which would leave the
+    user waiting for the dismiss-timeout instead of getting the
+    documented 'press q to dismiss' experience)."""
+    import io
+    import json
+    from cab_tui.rpc import RpcBridge
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    async with app.run_test():
+        # Pre-done: q-press should send `quit` over RPC.
+        app.action_quit_with_rollback()
+        sent = [json.loads(l) for l in cap.getvalue().splitlines() if l]
+        pre_quits = [m for m in sent if m.get("type") == "quit"]
+        assert len(pre_quits) == 1
+
+        # Receive `done`.
+        class _M:
+            raw = {"type": "done", "exit_code": 0, "summary": "8 steps complete."}
+            type = "done"
+        await app._handle_rpc_done(_M())
+        await app.workers.wait_for_complete()
+        assert app._post_done is True
+
+        # Post-done: q-press must self-exit. action_quit_with_rollback
+        # falls through to app.exit() instead of send_quit.
+        cap_before = cap.getvalue()
+        app.action_quit_with_rollback()
+        cap_after = cap.getvalue()
+        # No new `quit` event written.
+        new_lines = cap_after[len(cap_before):]
+        assert "quit" not in new_lines, new_lines
+
+
 def test_main_unit_propagates_app_return_code() -> None:
     """`__main__.main()` must return whatever `app.return_code` was set
     to by `app.exit(return_code=...)`. The wired-up app pumps a real

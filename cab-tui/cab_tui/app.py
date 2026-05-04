@@ -124,6 +124,11 @@ class CabTuiApp(App):
         # Active progress rows keyed by progress id (one row per repo
         # clone, tool install, etc.). Removed on `done: true`.
         self._progress_rows: dict[str, Horizontal] = {}
+        # Set when the parent's `done` event arrives. After that, q-press
+        # must self-exit instead of sending a `quit` message: the parent
+        # has stopped reading our stdout and is just waiting for the
+        # process to terminate.
+        self._post_done: bool = False
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -339,6 +344,12 @@ class CabTuiApp(App):
         summary = msg.raw.get("summary", "")
         exit_code = int(msg.raw.get("exit_code", 0))
         self._append_log("info", f"=== Done (exit {exit_code}). {summary}")
+        # Once `done` arrives, the parent has stopped reading our stdout
+        # and is just waiting for us to exit. Pressing `q` after this
+        # point must self-exit (see action_quit_with_rollback) — sending
+        # another `quit` event would hit a closed read pipe and the
+        # parent would never see the keypress.
+        self._post_done = True
 
     # -- helpers --
 
@@ -425,11 +436,18 @@ class CabTuiApp(App):
     # ----- Actions (bound to keys via BINDINGS) -----
 
     def action_quit_with_rollback(self) -> None:
-        # If we're driven by RPC, tell the parent we're quitting so it
-        # can run its rollback offer; the parent decides when to actually
-        # close us (via the `done` event). If we're standalone (no RPC),
-        # exit immediately.
-        if self._rpc is not None:
+        # Three lifecycle states matter here:
+        #
+        # 1. Standalone (no RPC) → exit immediately.
+        # 2. Driven by RPC, pre-done → tell the parent we're quitting so
+        #    it can run its rollback offer; the parent decides when to
+        #    actually close us (via the `done` event).
+        # 3. Driven by RPC, post-done → self-exit. The parent has
+        #    finished its work and is no longer reading our stdout, so a
+        #    `quit` message would never be seen and the user would be
+        #    stuck waiting for the dismiss timeout instead of getting
+        #    the documented "press q to dismiss" experience.
+        if self._rpc is not None and not self._post_done:
             try:
                 self._rpc.send_quit()
                 self._append_log("warn", "Quit requested — waiting for parent to finish.")

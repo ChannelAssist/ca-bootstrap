@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cab-tui"
-version = "0.1.0"
+version = "1.4.0"
 description = "Textual-based TUI front-end for the ca-bootstrap PowerShell wizard."
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
