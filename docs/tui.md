@@ -56,7 +56,7 @@ From a clone:
 ```bash
 make setup                       # auto-detect
 make setup-no-tui                # force CLI
-make tui-install                 # poetry install (or pip install -e . fallback)
+make tui-install                 # pip install -e cab-tui/
 ```
 
 ## Installing
@@ -70,14 +70,14 @@ make tui-install
 Or by hand:
 
 ```bash
-# Preferred: Poetry (per ChannelAssist SDLC). poetry.lock is committed
-# to the repo, so the dependency set is reproducible.
 cd cab-tui
-poetry install
-
-# Or via pip if Poetry isn't on PATH yet (the build-system metadata
-# accepts both — pep 621 [project] block is read directly):
 python3 -m pip install -e .
+
+# `poetry.lock` is committed for reproducibility (per SDLC), but the
+# orchestrator probes the active Python via PATH (`python3 -m cab_tui`),
+# not Poetry's virtualenv. If you want a strict-locked install,
+# activate your own venv first, then run pip — the dependency set
+# matches poetry.lock because the build backend is poetry-core.
 ```
 
 The bootstrap one-liners (`bootstrap.sh` / `bootstrap.ps1`) install Python and cab-tui automatically when missing — no manual step required for first-time users.

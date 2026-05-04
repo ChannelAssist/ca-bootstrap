@@ -67,19 +67,20 @@ PY := $(shell \
 	done)
 
 .PHONY: tui-install
-tui-install: ## Install the cab-tui Python front-end (poetry install, falls back to pip)
+tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
 	@if [ -z "$(PY)" ]; then \
 		printf "$(RED)No Python 3.10+ found on PATH (tried python3 / python). Install one first.$(RESET)\n"; exit 1; \
 	fi
 	@printf "  Using interpreter: $(PY)\n"
-	@# Prefer poetry when available (per SDLC); fall back to pip for
-	@# the common case where it isn't on PATH yet.
-	@if command -v poetry >/dev/null 2>&1; then \
-		cd cab-tui && poetry install --quiet; \
-	else \
-		cd cab-tui && $(PY) -m pip install -e . --quiet; \
-	fi
+	@# Install into the same Python the orchestrator probes via
+	@# Find-CABPython. `poetry install` would create a separate
+	@# Poetry-managed virtualenv that the orchestrator can't see —
+	@# successful install, unreachable TUI. poetry.lock stays as the
+	@# spec-of-record for users who want bit-for-bit reproducibility
+	@# (they can `poetry install` into their own venv and add it to
+	@# PATH; the orchestrator will pick up that Python).
+	@cd cab-tui && $(PY) -m pip install -e . --quiet
 	@# Hatchling marks its editable .pth file with the macOS UF_HIDDEN flag,
 	@# and Python 3.14's site.py skips hidden .pth files — meaning `import
 	@# cab_tui` would fail from any CWD other than the cab-tui dir. Clearing

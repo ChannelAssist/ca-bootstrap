@@ -19,14 +19,19 @@ Describe 'ca-bootstrap.ps1 -Tui / -NoTui flag binding' {
         # The orchestrator prints an ERROR and exits 1 per phase 7's contract.
         $tempState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-tui-flag-$(Get-Random)"
         New-Item -ItemType Directory -Path $tempState -Force | Out-Null
+        # Empty answers file — the orchestrator validates -ConfigFile
+        # exists before doing anything else, so a real path is needed.
+        # Cross-platform: don't hardcode /dev/null (Windows doesn't have it).
+        $emptyAnswers = Join-Path $tempState 'answers.yaml'
+        Set-Content -Path $emptyAnswers -Value ''
         try {
             $env:CA_BOOTSTRAP_STATE = $tempState
-            $env:PYTHONPATH = '/definitely/does/not/exist'
+            $env:PYTHONPATH = if ($IsWindows) { 'C:\Definitely\Does\Not\Exist' } else { '/definitely/does/not/exist' }
             # We need pwsh to use a python that doesn't have cab_tui.
             # `python3` on this machine shouldn't have it either (only
             # the venv does). The orchestrator will probe `python3 -m cab_tui --check`,
             # get a non-zero exit, and surface the ERROR.
-            $output = & pwsh -NoLogo -NoProfile -File $script:orch setup -Tui -ConfigFile '/dev/null' 2>&1
+            $output = & pwsh -NoLogo -NoProfile -File $script:orch setup -Tui -ConfigFile $emptyAnswers 2>&1
             $LASTEXITCODE | Should -Not -Be 0
             ($output -join "`n") | Should -Match '(?i)cab-tui is not available'
         } finally {

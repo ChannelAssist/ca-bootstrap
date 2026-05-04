@@ -214,21 +214,17 @@ install_python_and_tui() {
     fi
 
     color_blue "Installing cab-tui (optional rich TUI front-end)..."
-    # Prefer Poetry per ChannelAssist SDLC; fall back to pip when Poetry
-    # isn't on PATH yet (curl-pipe first run on a fresh machine).
+    # Install via pip into the same Python the orchestrator probes.
+    # `poetry install` would create a Poetry-managed virtualenv that
+    # the orchestrator's Find-CABPython can't see, so the TUI would
+    # be unreachable despite a successful install. poetry.lock stays
+    # in the repo as the spec-of-record for strict reproducibility.
     local install_ok=0
-    if command -v poetry >/dev/null 2>&1; then
-        if (cd "$cab_tui_dir" && poetry install --quiet 2>/dev/null); then
-            install_ok=1
-        fi
+    if ! "$py" -m pip install --quiet --upgrade pip 2>/dev/null; then
+        color_yellow "  pip upgrade failed; continuing with whatever pip is available."
     fi
-    if [ "$install_ok" = "0" ]; then
-        if ! "$py" -m pip install --quiet --upgrade pip 2>/dev/null; then
-            color_yellow "  pip upgrade failed; continuing with whatever pip is available."
-        fi
-        if "$py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
-            install_ok=1
-        fi
+    if "$py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
+        install_ok=1
     fi
     if [ "$install_ok" = "1" ]; then
         # macOS Python 3.14 + Hatchling: clear UF_HIDDEN on the editable
