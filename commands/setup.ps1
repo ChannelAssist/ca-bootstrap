@@ -10,9 +10,11 @@ function Invoke-CABCommandSetup {
         [hashtable]$Context = @{}
     )
 
-    # Phase 5: welcome → prereqs → gh-auth → workspace → folders → repos → identity.
-    # Phase 6 will append step 80 (extras) after identity.
-    $stepIds = @('10-welcome','20-prereqs','30-gh-auth','40-workspace','50-folders','60-repos','70-git-identity')
+    # Phase 6: full setup happy path — eight steps, end to end.
+    $stepIds = @(
+        '10-welcome','20-prereqs','30-gh-auth','40-workspace',
+        '50-folders','60-repos','70-git-identity','80-extras'
+    )
     $Context.TotalSteps = 8   # display the eventual total so step numbering matches the design
 
     foreach ($stepId in $stepIds) {
@@ -49,8 +51,10 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Phase 5 complete: prereqs + gh auth + workspace + folders + repos + identity.'
-    Write-Host '    Phase 6 (extras: VS Code workspace file, Claude Code, ca-claude-plugin, WSL2) comes next.'
+    Write-CABStatus -Status ok -Message 'Setup happy path complete (phase 6).'
+    Write-Host '    Phases 7-12 (full journal layer, doctor/repair/undo implementations,'
+    Write-Host '    unattended mode, CI matrix) refine the experience but the user-facing'
+    Write-Host '    setup flow is now feature-complete.'
     Write-Host ''
     Write-Host "  Transcript: $(Get-CABTranscriptPath)"
     Write-Host "  Journal   : $(Get-CABJournalPath)"
