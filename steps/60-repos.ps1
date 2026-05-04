@@ -32,6 +32,14 @@ function Invoke-CABStep60 {
         return @{ status = 'fail'; details = 'Workspace not set — step 40 must run first.' }
     }
 
+    # Defensive: refuse to clone into a relative path. A relative WorkspacePath
+    # would land every clone inside the user's current directory, which has
+    # been a real failure mode (see TEST_PLAN.md §3.1).
+    if (-not [System.IO.Path]::IsPathRooted($Context.WorkspacePath)) {
+        return @{ status = 'fail'; details = "WorkspacePath '$($Context.WorkspacePath)' is not absolute. Refusing to clone (would write to your current directory)." }
+    }
+    Write-CABColor DarkGray "    Cloning into: $($Context.WorkspacePath)"
+
     # Phase 2 prereq check: git + gh + gh auth.
     if (-not (Test-CABCommandAvailable 'git')) {
         Write-CABStatus -Status fail -Message 'git is not installed.'
@@ -91,6 +99,10 @@ function Invoke-CABStep60 {
 
         foreach ($repo in $g.repos) {
             $into = Join-Path $Context.WorkspacePath $repo.into
+            # Final paranoia check before any disk mutation.
+            if (-not [System.IO.Path]::IsPathRooted($into)) {
+                return @{ status = 'fail'; details = "Computed clone path '$into' is not absolute (workspace='$($Context.WorkspacePath)', into='$($repo.into)')." }
+            }
             $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
             if ($state -eq 'matches') {
                 Write-CABStatus -Status skip -Message "$($repo.repo) already cloned" -Detail $into
@@ -122,7 +134,7 @@ function Invoke-CABStep60 {
                 continue
             }
 
-            Write-Host "    cloning $($repo.repo) → $($repo.into)..." -NoNewline
+            Write-Host "    cloning $($repo.repo) → $into..." -NoNewline
             $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
             Write-Host ''
             if ($result.ok) {

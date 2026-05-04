@@ -25,6 +25,9 @@ function Invoke-CABStep50 {
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set — step 40 must run first.' }
     }
+    if (-not [System.IO.Path]::IsPathRooted($Context.WorkspacePath)) {
+        return @{ status = 'fail'; details = "WorkspacePath '$($Context.WorkspacePath)' is not absolute." }
+    }
 
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
     $required = @($manifest.folders | Where-Object { -not $_.optional })
