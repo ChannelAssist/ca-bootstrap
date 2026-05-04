@@ -10,6 +10,26 @@
 $Script:CABTuiProcess = $null
 $Script:CABTuiSchemaVersion = 1
 
+# Path to the cab-tui package directory next to this lib/. Used to seed
+# PYTHONPATH for the python3 invocations below — Python 3.14 skips .pth
+# files whose names start with underscore, and hatchling's editable
+# backend writes `_editable_impl_<pkg>.pth`, so `python3 -m cab_tui`
+# would otherwise fail unless CWD happens to be the cab-tui dir.
+function Get-CABTuiPackagePath {
+    Join-Path (Split-Path -Parent $PSScriptRoot) 'cab-tui'
+}
+
+# Build a PYTHONPATH that prepends the cab-tui dir to whatever the user
+# already has. Returns a pair: the value to assign and the original
+# value to restore after.
+function _CABTuiPythonPath {
+    $cabPath = Get-CABTuiPackagePath
+    $sep = if ($IsWindows) { ';' } else { ':' }
+    $existing = $env:PYTHONPATH
+    if ($existing) { return @{ Set = "$cabPath$sep$existing"; Original = $existing } }
+    return @{ Set = $cabPath; Original = $null }
+}
+
 function Test-CABTuiAvailable {
     [CmdletBinding()]
     param([string]$PythonBinary)
@@ -17,8 +37,16 @@ function Test-CABTuiAvailable {
         $PythonBinary = if ($IsWindows) { 'python.exe' } else { 'python3' }
     }
     if (-not (Get-Command $PythonBinary -ErrorAction SilentlyContinue)) { return $false }
-    & $PythonBinary -m cab_tui --check 2>$null | Out-Null
-    return ($LASTEXITCODE -eq 0)
+    $pp = _CABTuiPythonPath
+    $original = $pp.Original
+    $env:PYTHONPATH = $pp.Set
+    try {
+        & $PythonBinary -m cab_tui --check 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        if ($null -eq $original) { Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue }
+        else                     { $env:PYTHONPATH = $original }
+    }
 }
 
 # Start-CABTuiBridge — spawn the Python child. Returns the process object;
@@ -44,6 +72,10 @@ function Start-CABTuiBridge {
     $psi.RedirectStandardError  = $true
     $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
     $psi.StandardErrorEncoding  = [System.Text.Encoding]::UTF8
+    # See _CABTuiPythonPath: ensures cab_tui resolves regardless of CWD
+    # under Python 3.14's stricter .pth handling.
+    $pp = _CABTuiPythonPath
+    $psi.EnvironmentVariables['PYTHONPATH'] = $pp.Set
 
     $proc = [System.Diagnostics.Process]::Start($psi)
     $Script:CABTuiProcess = $proc

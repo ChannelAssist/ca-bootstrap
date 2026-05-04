@@ -41,6 +41,37 @@ BeforeAll {
     }
 }
 
+Describe 'Test-CABTuiAvailable' {
+    It 'returns $false when the python binary is not on PATH' {
+        # A binary name that no system would have.
+        Test-CABTuiAvailable -PythonBinary 'definitely-not-a-real-python-9999' | Should -BeFalse
+    }
+
+    It 'returns $false when python is present but cab_tui module is not importable' {
+        # Use the host pwsh as a stand-in for a python binary: -m cab_tui --check
+        # will fail (pwsh doesn't speak `-m`), exiting non-zero. That's the
+        # exact failure mode we want to detect: probe runs, exit != 0.
+        $hostPwsh = (Get-Process -Id $PID).Path
+        Test-CABTuiAvailable -PythonBinary $hostPwsh | Should -BeFalse
+    }
+
+    It 'returns $true when cab_tui --check exits 0' {
+        # Use this test's own venv if one exists alongside the cab-tui dir
+        # (created in the dev workflow via `python3 -m venv cab-tui/.venv`).
+        $repoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
+        $venvPython = if ($IsWindows) {
+            Join-Path $repoRoot 'cab-tui/.venv/Scripts/python.exe'
+        } else {
+            Join-Path $repoRoot 'cab-tui/.venv/bin/python3'
+        }
+        if (-not (Test-Path $venvPython)) {
+            Set-ItResult -Skipped -Because 'cab-tui/.venv not present in this checkout'
+            return
+        }
+        Test-CABTuiAvailable -PythonBinary $venvPython | Should -BeTrue
+    }
+}
+
 Describe 'Send-CABTuiEvent' {
     BeforeEach {
         # Stub child that just echoes every line back, prefixed with "echo:".

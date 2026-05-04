@@ -51,9 +51,13 @@ param(
     # break-glass: forcibly remove a stale lock before running
     [switch]$ForceUnlock,
 
-    # Use the Textual TUI front-end for interactive runs. Falls back to
-    # Read-Host if cab-tui isn't installed or the runtime probe fails.
-    [switch]$Tui
+    # Use the Textual TUI front-end for interactive runs. When neither
+    # -Tui nor -NoTui is supplied, we auto-detect cab-tui and use it if
+    # available; pass -Tui to force-enable (and error if unavailable),
+    # or -NoTui to force the legacy Read-Host CLI even when cab-tui is
+    # installed.
+    [switch]$Tui,
+    [switch]$NoTui
 )
 
 $ErrorActionPreference = 'Stop'
@@ -116,19 +120,42 @@ if ($Unattended) {
 
 # Optionally launch the TUI front-end. Only meaningful for interactive
 # `setup` (the other commands are short-lived and don't need a TUI).
+#
+# Decision matrix:
+#   -NoTui        → CLI, no probe
+#   -Tui          → require TUI; error out if cab-tui isn't available
+#   (neither)     → auto-detect; use TUI when cab-tui is importable
 $Script:CABTuiActive = $false
-if ($Tui -and -not $Unattended -and $Command -eq 'setup') {
-    if (Test-CABTuiAvailable) {
+if (-not $Unattended -and $Command -eq 'setup') {
+    $tuiExplicitlyOff = $NoTui
+    $tuiExplicitlyOn  = $Tui -and -not $NoTui
+    $shouldUseTui = $false
+    if ($tuiExplicitlyOff) {
+        $shouldUseTui = $false
+    } elseif ($tuiExplicitlyOn) {
+        if (-not (Test-CABTuiAvailable)) {
+            Write-CABColor Red 'ERROR: -Tui requested but cab-tui is not available.'
+            Write-Host  '       Install with `pip install -e cab-tui` or rerun without -Tui.'
+            exit 1
+        }
+        $shouldUseTui = $true
+    } else {
+        # Auto-detect. Quick probe; ~50ms when Python is on PATH.
+        $shouldUseTui = (Test-CABTuiAvailable)
+    }
+
+    if ($shouldUseTui) {
         try {
             Start-CABTuiBridge -Command $Command -Version $Script:CABootstrapVersion | Out-Null
             Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true
             $Script:CABTuiActive = $true
+            if (-not $tuiExplicitlyOn) {
+                Write-CABColor DarkGray '  (Using TUI — pass -NoTui to fall back to the CLI prompt.)'
+            }
         } catch {
             Write-CABColor Yellow "  ⚠ Could not start TUI ($($_.Exception.Message)); falling back to CLI."
             Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false
         }
-    } else {
-        Write-CABColor Yellow '  ⚠ cab-tui not available (run `pip install -e cab-tui` to enable). Continuing with CLI.'
     }
 }
 
