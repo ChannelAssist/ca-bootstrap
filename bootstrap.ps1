@@ -89,9 +89,23 @@ if (-not (Test-Path $CacheDir)) {
 
 if (Test-Path (Join-Path $CacheDir '.git')) {
     Write-Color Blue "Updating ca-bootstrap (cache: $CacheDir)..."
-    git -C $CacheDir fetch --quiet origin $RepoRef
-    git -C $CacheDir checkout --quiet $RepoRef
-    git -C $CacheDir pull --quiet --ff-only origin $RepoRef
+    git -C $CacheDir fetch --quiet origin $RepoRef 2>&1 | Out-Null
+    $fetchExit = $LASTEXITCODE
+    if ($fetchExit -ne 0) {
+        # Fall back to a fresh clone if the cache is corrupt or git fails
+        # (the most common cause is a malformed line in the user's global
+        # .gitconfig, which makes every git command exit non-zero).
+        Write-Color Yellow "Cache update failed (exit $fetchExit). Refreshing cache from scratch..."
+        Remove-Item -Recurse -Force $CacheDir
+        git clone --quiet --depth 1 --branch $RepoRef $RepoUrl $CacheDir
+        if ($LASTEXITCODE -ne 0) {
+            Write-Color Red "Re-clone also failed. Check your global .gitconfig for a malformed line, then retry."
+            exit 1
+        }
+    } else {
+        git -C $CacheDir checkout --quiet $RepoRef
+        git -C $CacheDir pull --quiet --ff-only origin $RepoRef
+    }
 } else {
     Write-Color Blue "Fetching ca-bootstrap from $RepoUrl ($RepoRef)..."
     git clone --quiet --depth 1 --branch $RepoRef $RepoUrl $CacheDir

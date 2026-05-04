@@ -117,13 +117,18 @@ function Invoke-CABStep70 {
     Set-Content -Path $workspaceGitconfig -Value $workspaceContent
 
     # Append includeIf to the global gitconfig.
+    # Critical on Windows: git treats `\` as an escape character in config
+    # VALUES, so a path written with backslashes (e.g. `path = C:\Users\…`)
+    # makes git fail with `bad config line N` on every subsequent command.
+    # Forward-slash both the gitdir pattern and the path = … target.
     $globalPath = Get-CABGlobalGitconfigPath
     $pattern = ConvertTo-CABGitdirPattern -Path $Context.WorkspacePath
+    $normalizedWorkspaceGitconfig = $workspaceGitconfig.Replace('\','/')
     $includeBlock = @"
 
 # Added by ca-bootstrap — scopes the ChannelAssist identity to the workspace.
 [includeIf "gitdir:$pattern"]
-    path = $workspaceGitconfig
+    path = $normalizedWorkspaceGitconfig
 "@
     if (-not (Test-Path $globalPath)) {
         Set-Content -Path $globalPath -Value $includeBlock.TrimStart()

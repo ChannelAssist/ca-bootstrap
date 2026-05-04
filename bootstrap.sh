@@ -107,9 +107,17 @@ main() {
     mkdir -p "$CACHE_DIR"
     if [[ -d "$CACHE_DIR/.git" ]]; then
         color_blue "Updating ca-bootstrap (cache: $CACHE_DIR)..."
-        git -C "$CACHE_DIR" fetch --quiet origin "$REPO_REF"
-        git -C "$CACHE_DIR" checkout --quiet "$REPO_REF"
-        git -C "$CACHE_DIR" pull --quiet --ff-only origin "$REPO_REF"
+        if ! git -C "$CACHE_DIR" fetch --quiet origin "$REPO_REF" 2>/dev/null; then
+            color_yellow "Cache update failed. Refreshing cache from scratch..."
+            rm -rf "$CACHE_DIR"
+            git clone --quiet --depth 1 --branch "$REPO_REF" "$REPO_URL" "$CACHE_DIR" || {
+                color_red "Re-clone also failed. Check ~/.gitconfig for a malformed line and retry."
+                exit 1
+            }
+        else
+            git -C "$CACHE_DIR" checkout --quiet "$REPO_REF"
+            git -C "$CACHE_DIR" pull --quiet --ff-only origin "$REPO_REF"
+        fi
     else
         color_blue "Fetching ca-bootstrap from $REPO_URL ($REPO_REF)..."
         git clone --quiet --depth 1 --branch "$REPO_REF" "$REPO_URL" "$CACHE_DIR"
