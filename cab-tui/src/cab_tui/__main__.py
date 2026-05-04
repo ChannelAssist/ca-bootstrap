@@ -1,0 +1,37 @@
+"""Entry point for `python -m cab_tui` and the `cab-tui` console script."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+from cab_tui.app import CabTuiApp
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="cab-tui",
+        description="Textual TUI for ca-bootstrap. Phase 1: layout-only shell.",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Probe whether the TUI can start (used by ca-bootstrap.ps1 "
+             "to decide between TUI and Read-Host fallback). Exits 0 on success.",
+    )
+    args = parser.parse_args()
+
+    if args.check:
+        # Don't actually launch; just confirm the package + Textual import
+        # cleanly. This is the orchestrator's auto-detect probe.
+        import textual  # noqa: F401
+        print(f"cab-tui ok (textual {textual.__version__})")
+        return 0
+
+    app = CabTuiApp()
+    app.run()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

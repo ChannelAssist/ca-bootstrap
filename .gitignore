@@ -21,3 +21,11 @@ wiki/
 # Accidental cwd-relative workspace from a misanswered smoke run
 /y/
 /n/
+
+# Python (cab-tui)
+cab-tui/.venv/
+cab-tui/**/__pycache__/
+cab-tui/**/*.egg-info/
+cab-tui/.pytest_cache/
+cab-tui/dist/
+cab-tui/build/

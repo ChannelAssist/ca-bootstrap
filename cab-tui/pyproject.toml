@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cab-tui"
+version = "0.1.0"
+description = "Textual-based TUI front-end for the ca-bootstrap PowerShell wizard."
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "ChannelAssist" }]
+dependencies = [
+    "textual>=0.58,<2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.21",
+    "textual-dev>=1.5",
+]
+
+[project.scripts]
+cab-tui = "cab_tui.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cab_tui"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
