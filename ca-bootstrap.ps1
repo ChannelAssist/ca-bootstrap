@@ -181,6 +181,20 @@ catch [CABSessionLockedException] {
     exit 5
 }
 
+$Script:CABQuitRequested = $false
+
+# Ctrl+C trap. PowerShell's [Console]::CancelKeyPress fires on Ctrl-C
+# before the process is terminated. We set a flag the orchestrator
+# checks between steps and on prompt return, so the user gets the same
+# rollback offer they'd get by typing 'q'.
+$null = [Console]::add_CancelKeyPress({
+    param($sender, $eventArgs)
+    $eventArgs.Cancel = $true   # don't terminate; let us handle it
+    $Script:CABQuitRequested = $true
+    Write-Host ''
+    Write-CABColor Yellow '  ⚠ Ctrl+C — quitting after the current step. Press Ctrl+C again to force-exit.'
+})
+
 $exitCode = 0
 try {
     switch ($Command) {

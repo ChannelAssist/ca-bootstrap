@@ -179,6 +179,23 @@ function Unlock-CABSession {
     }
 }
 
+# Get-CABCurrentSessionActions — return only this run's journal entries,
+# in reverse chronological order. Used by Invoke-CABQuitWithRollbackOffer
+# to roll back what the user just did, without touching prior sessions.
+function Get-CABCurrentSessionActions {
+    $session = Get-CABCurrentSession
+    if (-not $session) { return ,@() }
+    # Materialize the list before filtering so PowerShell's pipeline
+    # doesn't expand a List<hashtable> into something with the wrong
+    # .Count semantics. Without the comma-prefix-and-array-cast dance
+    # below, .Count occasionally reports the underlying capacity rather
+    # than the number of items.
+    $actionsArr = [hashtable[]](@($session.actions))
+    $open = @($actionsArr | Where-Object { -not $_.undone })
+    $sorted = @($open | Sort-Object -Property id -Descending)
+    return ,$sorted
+}
+
 function New-CABJournalSkeleton {
     $os = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } elseif ($IsLinux) { 'linux' } else { 'unknown' }
     $userName = if ($env:USER) { $env:USER } else { $env:USERNAME }
