@@ -201,6 +201,48 @@ async def test_text_prompt_enter_in_input_sends_answer() -> None:
         assert ans == {"type": "answer", "id": "p4", "value": "/tmp/x"}
 
 
+# ---------- recovery prompts (Button row + details Static) ----------
+
+@pytest.mark.asyncio
+async def test_recovery_prompt_renders_three_buttons_and_details() -> None:
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=_ack_bridge(cap))
+    async with app.run_test():
+        await app._handle_rpc_prompt(_msg({
+            "type": "prompt", "id": "rcv1", "kind": "recovery",
+            "question": "Step '60-repos' failed",
+            "details": "2 repos failed:\n  Keystone: gh auth required",
+            "options": ["retry", "skip", "quit"],
+            "default": "retry",
+        }))
+        await app.workers.wait_for_complete()
+        buttons = list(app.query("#prompt-area Button"))
+        assert {b.id for b in buttons} == {
+            "prompt-recovery-retry", "prompt-recovery-skip", "prompt-recovery-quit"
+        }
+        # Details Static rendered with the failure message.
+        details = app.query_one("#prompt-recovery-details", Static)
+        assert "Keystone" in str(details.renderable)
+
+
+@pytest.mark.asyncio
+async def test_recovery_prompt_button_press_sends_answer() -> None:
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=_ack_bridge(cap))
+    async with app.run_test() as pilot:
+        await app._handle_rpc_prompt(_msg({
+            "type": "prompt", "id": "rcv1", "kind": "recovery",
+            "question": "Step '60-repos' failed",
+            "details": "Network down",
+            "options": ["retry", "skip", "quit"],
+            "default": "retry",
+        }))
+        await pilot.pause()
+        await _press(app, pilot, "#prompt-recovery-skip")
+        ans = _last_answer(cap)
+        assert ans == {"type": "answer", "id": "rcv1", "value": "skip"}
+
+
 # ---------- behaviour: prompt area cleared after answer ----------
 
 @pytest.mark.asyncio

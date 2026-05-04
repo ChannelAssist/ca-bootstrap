@@ -48,6 +48,8 @@ async def render_prompt(target: Container, prompt: dict[str, Any]) -> None:
         await _mount_multi(target, prompt)
     elif kind == "text":
         await _mount_text(target, prompt)
+    elif kind == "recovery":
+        await _mount_recovery(target, prompt)
     else:
         # Unknown kind — render an error so it's visible during dev.
         await target.mount(Static(f"[unknown prompt kind: {kind}]", classes="prompt-error"))
@@ -143,12 +145,52 @@ async def _mount_text(target: Container, prompt: dict[str, Any]) -> None:
     inp.focus()
 
 
+async def _mount_recovery(target: Container, prompt: dict[str, Any]) -> None:
+    """Step-failure recovery panel: details Static + Retry/Skip/Quit buttons.
+
+    The question (mounted by render_prompt) doubles as the panel title.
+    `details` carries the multi-line failure message.
+    """
+    details = str(prompt.get("details", ""))
+    if details:
+        await target.mount(Static(details, id="prompt-recovery-details", classes="prompt-recovery-details"))
+
+    options = prompt.get("options") or ["retry", "skip", "quit"]
+    default = prompt.get("default", "retry")
+
+    variants = {"retry": "success", "skip": "default", "quit": "error"}
+    buttons: list[Button] = []
+    for opt in options:
+        btn = Button(
+            str(opt).capitalize(),
+            id=f"prompt-recovery-{opt}",
+            variant=variants.get(opt, "default"),
+        )
+        if opt == default:
+            btn.add_class("prompt-default")
+        buttons.append(btn)
+
+    row = Horizontal(*buttons, id="prompt-buttons", classes="prompt-row")
+    await target.mount(row)
+    for b in buttons:
+        if "prompt-default" in b.classes:
+            b.focus()
+            break
+
+
 # ---------- answer extraction helpers ----------
 
 def confirm_value_from_button_id(button_id: str) -> str | None:
     """Extract the option value from a confirm-button id."""
     if button_id and button_id.startswith("prompt-confirm-"):
         return button_id[len("prompt-confirm-"):]
+    return None
+
+
+def recovery_value_from_button_id(button_id: str) -> str | None:
+    """Extract the option value from a recovery-button id."""
+    if button_id and button_id.startswith("prompt-recovery-"):
+        return button_id[len("prompt-recovery-"):]
     return None
 
 

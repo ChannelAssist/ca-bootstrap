@@ -124,39 +124,55 @@ function Invoke-CABCommandSetup {
 
         $stepNum = ($stepId -split '-')[0]
         $invokeFn = "Invoke-CABStep$stepNum"
-        $result = & $invokeFn -Context $Context
 
-        # Emit step.end mirroring the result. Done before the switch's
-        # status-write so the TUI's Tree updates in lockstep with the CLI.
-        if ($Script:CABootstrapTuiMode) {
-            try {
-                Send-CABTuiEvent -Event @{
-                    type    = 'step'
-                    phase   = if ($result.status -eq 'skip') { 'skip' } else { 'end' }
-                    step    = $stepId
-                    status  = $result.status
-                    details = $result.details
+        # Retry loop: a step that fails can ask the user (via TUI recovery
+        # prompt) to retry, skip, or quit. CLI mode keeps the legacy
+        # "fail → rollback" path because Read-CABRecovery returns 'quit'.
+        $shouldRetry = $true
+        while ($shouldRetry) {
+            $shouldRetry = $false
+            $result = & $invokeFn -Context $Context
+
+            # Emit step.end mirroring the result. Done before the switch's
+            # status-write so the TUI's Tree updates in lockstep with the CLI.
+            if ($Script:CABootstrapTuiMode) {
+                try {
+                    Send-CABTuiEvent -Event @{
+                        type    = 'step'
+                        phase   = if ($result.status -eq 'skip') { 'skip' } else { 'end' }
+                        step    = $stepId
+                        status  = $result.status
+                        details = $result.details
+                    }
+                } catch { }
+            }
+
+            switch ($result.status) {
+                'ok'      { Write-CABStatus -Status ok   -Message $result.details }
+                'skip'    { Write-CABStatus -Status skip -Message $result.details }
+                'warn'    { Write-CABStatus -Status warn -Message $result.details }
+                'quit'    {
+                    Save-CABJournal
+                    Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'You quit'
+                    return 1
                 }
-            } catch { }
-        }
-
-        switch ($result.status) {
-            'ok'      { Write-CABStatus -Status ok   -Message $result.details }
-            'skip'    { Write-CABStatus -Status skip -Message $result.details }
-            'warn'    { Write-CABStatus -Status warn -Message $result.details }
-            'quit'    {
-                Save-CABJournal
-                Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'You quit'
-                return 1
+                'fail'    {
+                    Write-CABStatus -Status fail -Message $result.details
+                    $action = Read-CABRecovery -StepId $stepId -Details $result.details
+                    if ($action -eq 'retry') {
+                        Write-CABStatus -Status info -Message "Retrying '$stepId'..."
+                        $shouldRetry = $true
+                    } elseif ($action -eq 'skip') {
+                        Write-CABStatus -Status warn -Message "Skipped after failure: $($result.details)"
+                    } else {
+                        Save-CABJournal
+                        Invoke-CABQuitWithRollbackOffer -Context $Context -Reason "Step '$stepId' failed"
+                        return 2
+                    }
+                }
+                'pending' { Write-CABStatus -Status info -Message $result.details }
+                default   { Write-CABStatus -Status warn -Message "Unknown step status: $($result.status)" }
             }
-            'fail'    {
-                Write-CABStatus -Status fail -Message $result.details
-                Save-CABJournal
-                Invoke-CABQuitWithRollbackOffer -Context $Context -Reason "Step '$stepId' failed"
-                return 2
-            }
-            'pending' { Write-CABStatus -Status info -Message $result.details }
-            default   { Write-CABStatus -Status warn -Message "Unknown step status: $($result.status)" }
         }
     }
 

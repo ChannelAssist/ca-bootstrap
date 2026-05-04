@@ -147,4 +147,40 @@ function Read-CABChoice {
     }
 }
 
+# Read-CABRecovery — step-failure recovery prompt. TUI mode renders a
+# prominent panel with the failure details and Retry / Skip / Quit
+# buttons; CLI mode preserves the existing "always quits to rollback"
+# behavior by returning 'quit' immediately.
+#
+# Returns one of: 'retry' | 'skip' | 'quit'.
+function Read-CABRecovery {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$StepId,
+        [Parameter(Mandatory)][string]$Details,
+        [string]$Default = 'retry'
+    )
+    if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
+        $promptId = New-CABPromptId
+        Send-CABTuiEvent -Event @{
+            type     = 'prompt'
+            id       = $promptId
+            kind     = 'recovery'
+            question = "Step '$StepId' failed"
+            details  = $Details
+            options  = @('retry', 'skip', 'quit')
+            default  = $Default
+        }
+        $answer = Receive-CABTuiAnswer -PromptId $promptId
+        if (-not $answer) { return 'quit' }   # bridge died → fail safe
+        $answer = [string]$answer
+        if ($answer -in 'retry','skip','quit') { return $answer }
+        return 'quit'
+    }
+    # CLI mode (and unattended): preserve long-standing behavior of going
+    # straight to the rollback offer. A future phase can add a CLI version
+    # of this prompt; phase 6 is TUI-scoped.
+    return 'quit'
+}
+
 # Functions exported automatically when this file is dot-sourced.

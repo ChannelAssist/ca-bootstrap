@@ -95,6 +95,12 @@ class CabTuiApp(App):
         width: 30;
         padding-right: 1;
     }
+
+    .prompt-recovery-details {
+        color: $error;
+        margin-bottom: 1;
+        padding: 0 1;
+    }
     """
 
     BINDINGS = [
@@ -323,6 +329,12 @@ class CabTuiApp(App):
         confirm_value = _prompts.confirm_value_from_button_id(bid)
         if confirm_value is not None:
             await self._send_answer(confirm_value)
+            return
+
+        # recovery: button id encodes retry/skip/quit
+        recovery_value = _prompts.recovery_value_from_button_id(bid)
+        if recovery_value is not None:
+            await self._send_answer(recovery_value)
             return
 
         # choice / multi / text submit buttons: pick up state from siblings

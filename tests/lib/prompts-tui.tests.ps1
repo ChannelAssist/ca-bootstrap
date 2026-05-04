@@ -97,6 +97,77 @@ Start-Sleep -Seconds 5
     }
 }
 
+Describe 'Read-CABRecovery in TuiMode (real subprocess)' {
+    BeforeEach { Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true }
+    AfterEach  { Stop-StubChild; Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false }
+
+    It 'sends a recovery prompt with details and returns retry/skip/quit' {
+        # Stub: read prompt, reply with 'skip'.
+        $stub = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+$reply = @{ type = 'answer'; id = $msg.id; value = 'skip' } | ConvertTo-Json -Compress
+[Console]::Out.WriteLine($reply)
+[Console]::Out.Flush()
+Start-Sleep -Seconds 5
+'@
+        Start-StubChild -AnswerScript $stub | Out-Null
+        $r = Read-CABRecovery -StepId '60-repos' -Details 'gh auth required'
+        $r | Should -Be 'skip'
+    }
+
+    It 'sends prompt of kind=recovery with the expected fields' {
+        # Side-channel: stub writes the parsed prompt to a temp file so we
+        # can inspect its shape, then replies with a whitelisted value.
+        # Using the echo-as-answer trick like the confirm test won't work
+        # here: Read-CABRecovery enforces a strict {retry,skip,quit} answer
+        # set and falls back to 'quit' on anything else (correct hardening).
+        $script:capFile = Join-Path ([System.IO.Path]::GetTempPath()) "cab-rcv-cap-$(Get-Random).json"
+        $stub = @"
+`$line = [Console]::In.ReadLine()
+`$msg  = `$line | ConvertFrom-Json
+`$out  = '$($script:capFile -replace '\\','\\')'
+Set-Content -Path `$out -Value `$line
+`$reply = @{ type = 'answer'; id = `$msg.id; value = 'retry' } | ConvertTo-Json -Compress
+[Console]::Out.WriteLine(`$reply)
+[Console]::Out.Flush()
+Start-Sleep -Seconds 5
+"@
+        Start-StubChild -AnswerScript $stub | Out-Null
+        try {
+            $r = Read-CABRecovery -StepId '60-repos' -Details 'auth needed'
+            $r | Should -Be 'retry'
+            Test-Path $script:capFile | Should -BeTrue
+            $captured = Get-Content $script:capFile | ConvertFrom-Json
+            $captured.kind     | Should -Be 'recovery'
+            $captured.question | Should -Be "Step '60-repos' failed"
+            $captured.details  | Should -Be 'auth needed'
+            $captured.default  | Should -Be 'retry'
+            ($captured.options -join ',') | Should -Be 'retry,skip,quit'
+        } finally {
+            if ($script:capFile -and (Test-Path $script:capFile)) {
+                Remove-Item $script:capFile -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    It 'returns quit if the bridge closes without answering (fail-safe)' {
+        $stub = '[Console]::In.ReadLine() | Out-Null'
+        Start-StubChild -AnswerScript $stub | Out-Null
+        $r = Read-CABRecovery -StepId 'x' -Details 'y'
+        $r | Should -Be 'quit'
+    }
+
+    It 'returns quit when not in TuiMode (CLI fallback)' {
+        Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false
+        # No stub started — if Read-CABRecovery tried to send, it would
+        # throw on the null bridge. The test passing proves the early
+        # return path.
+        $r = Read-CABRecovery -StepId 'x' -Details 'y'
+        $r | Should -Be 'quit'
+    }
+}
+
 Describe 'Read-CABChoice in TuiMode (real subprocess)' {
     BeforeEach { Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true }
     AfterEach  { Stop-StubChild; Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false }

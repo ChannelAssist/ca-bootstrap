@@ -50,6 +50,8 @@ Ask the user a question. The TUI MUST reply with a single `answer` message whose
 - `choice` — single-pick from `options[]`; renders a `RadioSet` of `RadioButton`s
 - `multi` — multi-pick; renders `Checkbox`es
 - `text` — free-text; renders an `Input`
+- `recovery` — step-failure recovery; renders a prominent panel with the failure
+  `details` and a `Button` row (Retry / Skip / Quit)
 
 ```json
 {
@@ -78,6 +80,15 @@ Ask the user a question. The TUI MUST reply with a single `answer` message whose
   "kind": "text",
   "question": "Custom path (must be absolute):",
   "default": null
+}
+{
+  "type": "prompt",
+  "id": "step-60-recovery",
+  "kind": "recovery",
+  "question": "Step '60-repos' failed",
+  "details": "2 repos failed to clone:\n  Keystone: gh auth required",
+  "options": ["retry", "skip", "quit"],
+  "default": "retry"
 }
 ```
 
