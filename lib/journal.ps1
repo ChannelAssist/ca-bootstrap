@@ -27,6 +27,17 @@ function Get-CABJournalPath    { $Script:CABootstrapJournalPath }
 function Get-CABSessionId      { $Script:CABootstrapSessionId }
 function Get-CABStateDir       { $Script:CABootstrapStateDir }
 
+# Reset-CABJournalState — re-read CA_BOOTSTRAP_STATE and reset in-memory
+# state. Useful for tests that mutate the env var between cases (their
+# `$Script:` assignments don't reach this lib's scope).
+function Reset-CABJournalState {
+    $Script:CABootstrapStateDir    = if ($env:CA_BOOTSTRAP_STATE) { $env:CA_BOOTSTRAP_STATE } else { Join-Path $HOME '.ca-bootstrap' }
+    $Script:CABootstrapJournalPath = Join-Path $Script:CABootstrapStateDir 'journal.yaml'
+    $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
+    $Script:CABootstrapSessionId   = $null
+    $Script:CABJournalState        = $null
+}
+
 # ---------------------------------------------------------------------------
 # State directory + file I/O
 # ---------------------------------------------------------------------------

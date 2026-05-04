@@ -201,7 +201,10 @@ function Invoke-CABCommandDoctor {
     $checks = Run-CABDoctorChecks -Context $Context
 
     if ($Context.Json) {
-        # Emit a single JSON object; suppresses other formatting.
+        # Emit a single JSON object on the success stream so callers like
+        # CI runners can capture it via `$output = & ./ca-bootstrap.ps1
+        # doctor -Json`. Use [Environment]::Exit so the function's return
+        # value doesn't leak into the captured output as a trailing int.
         $payload = [ordered]@{
             schema_version = 1
             generated_at   = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
@@ -211,10 +214,9 @@ function Invoke-CABCommandDoctor {
             checks         = $checks
             exit_code      = if ($checks | Where-Object { $_.status -in 'warn','fail' }) { 2 } else { 0 }
         }
-        # Write directly to the console so the orchestrator's $exitCode
-        # capture only sees the integer return value below.
-        Write-Host ($payload | ConvertTo-Json -Depth 6)
-        return $payload.exit_code
+        $payload | ConvertTo-Json -Depth 6 | Write-Output
+        Save-CABJournal
+        [Environment]::Exit($payload.exit_code)
     }
 
     Format-CABDoctorReport -Checks $checks -Summary:$Context.Summary

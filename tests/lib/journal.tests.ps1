@@ -12,12 +12,9 @@ Describe 'Journal round-trip' {
     BeforeEach {
         $script:tempState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-jtest-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tempState
-        # Re-evaluate paths inside the journal lib (script-scope variables
-        # captured at dot-source time still point at the old default).
-        $Script:CABootstrapStateDir    = $script:tempState
-        $Script:CABootstrapJournalPath = Join-Path $script:tempState 'journal.yaml'
-        $Script:CABootstrapTranscript  = Join-Path $script:tempState 'last-run.log'
-        $Script:CABJournalState        = $null
+        # The journal lib captured its $Script: paths at dot-source time;
+        # ours don't reach it. Reset-CABJournalState re-reads the env var.
+        Reset-CABJournalState
     }
     AfterEach {
         # Stop any active transcript so Windows releases the file handle
@@ -36,7 +33,7 @@ Describe 'Journal round-trip' {
         Add-CABJournalEntry -Step '40-workspace' -Action 'create_folder' -Data @{ path = '/tmp/x' } | Out-Null
         Save-CABJournal
 
-        $raw = Get-Content -Raw $Script:CABootstrapJournalPath
+        $raw = Get-Content -Raw (Get-CABJournalPath)
         $raw | Should -Not -BeNullOrEmpty
         $parsed = ConvertFrom-Yaml $raw
         $parsed.schema_version | Should -Be 1
@@ -48,13 +45,14 @@ Describe 'Journal round-trip' {
         Start-CABSession -Command 'setup' -Version '0.0.0-test'
         Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = '/tmp/a' } | Out-Null
         Save-CABJournal
+        try { Stop-Transcript | Out-Null } catch { }
 
-        $Script:CABJournalState = $null
+        Reset-CABJournalState
         Read-CABJournal | Out-Null
         Start-CABSession -Command 'doctor' -Version '0.0.0-test'
         Save-CABJournal
 
-        $parsed = ConvertFrom-Yaml (Get-Content -Raw $Script:CABootstrapJournalPath)
+        $parsed = ConvertFrom-Yaml (Get-Content -Raw (Get-CABJournalPath))
         @($parsed.sessions).Count | Should -Be 2
     }
 
