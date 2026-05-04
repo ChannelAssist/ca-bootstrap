@@ -17,3 +17,7 @@ coverage.xml
 
 # Wiki working tree (separate git repo, never committed to main)
 wiki/
+
+# Accidental cwd-relative workspace from a misanswered smoke run
+/y/
+/n/
