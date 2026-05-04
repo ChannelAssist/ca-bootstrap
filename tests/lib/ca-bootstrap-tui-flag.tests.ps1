@@ -59,16 +59,20 @@ exit 99
                 & chmod +x $shim
             }
         }
-        $sep = if ($IsWindows) { ';' } else { ':' }
+        # Capture pwsh's own path before we restrict PATH so we can still
+        # invoke the subprocess even when the shim dir is the only thing on
+        # PATH (otherwise `& pwsh` would fail to resolve on a stripped PATH).
+        $pwshPath = (Get-Process -Id $PID).Path
         $origPath = $env:PATH
         try {
             $env:CA_BOOTSTRAP_STATE = $tempState
-            # Prepend the shim dir so the bridge probe finds OUR python
-            # before the real one. Test-CABTuiAvailable's `-m cab_tui --check`
-            # will then exit 99 and Test- returns $false → the orchestrator's
-            # `-Tui` path errors out per the documented contract.
-            $env:PATH = "$shimDir$sep$origPath"
-            $output = & pwsh -NoLogo -NoProfile -File $script:orch setup -Tui 2>&1
+            # Restrict PATH to ONLY the shim dir so Find-CABPython cannot
+            # fall back to any real Python on the runner. With this restriction
+            # the shim is the only Python visible; -m cab_tui --check exits 99
+            # and Test-CABTuiAvailable returns $false deterministically
+            # regardless of what is installed system-wide.
+            $env:PATH = $shimDir
+            $output = & $pwshPath -NoLogo -NoProfile -File $script:orch setup -Tui 2>&1
             $LASTEXITCODE | Should -Not -Be 0
             ($output -join "`n") | Should -Match '(?i)cab-tui is not available'
         } finally {
