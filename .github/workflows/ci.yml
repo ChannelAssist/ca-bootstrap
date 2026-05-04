@@ -55,6 +55,9 @@ jobs:
           if (-not $payload.schema_version) { throw 'no schema_version' }
           Write-Host "doctor produced $($payload.checks.Count) checks, exit_code=$code"
           if ($code -ne 0 -and $code -ne 2) { throw "unexpected exit code: $code" }
+          # Explicit success exit so GH Actions doesn't inherit the inner
+          # script's $LASTEXITCODE=2 (which is intentional drift detection).
+          exit 0
 
   shellcheck:
     name: shellcheck bootstrap.sh
