@@ -20,6 +20,11 @@ $Script:CABTuiReaderHandle = $null
 # line arrives from the child. Per docs/rpc-protocol.md, parse failure
 # is fatal — the caller is expected to log + tear down + fall back.
 $Script:CABFatalProtocolError = $false
+# Set $true once the welcome → ack handshake has completed. Until then,
+# Drain-CABTuiPending must be a no-op: if it fired between the welcome
+# send and the ack receive, it would consume the ack out of the inbox
+# and the handshake's Receive-CABTuiMessage would time out spuriously.
+$Script:CABTuiHandshakeComplete = $false
 
 # Path to the cab-tui package directory next to this lib/. Used to seed
 # PYTHONPATH for the python3 invocations below — Python 3.14 skips .pth
@@ -157,6 +162,10 @@ function Start-CABTuiBridge {
         command        = $Command
     }
     if ($Steps -and $Steps.Count -gt 0) { $welcome.steps = @($Steps) }
+    # Reset handshake gate before sending — Send-CABTuiEvent's drain
+    # call will be a no-op until we explicitly flip this $true after a
+    # successful ack receive (preventing the drain-eats-ack race).
+    $Script:CABTuiHandshakeComplete = $false
     Send-CABTuiEvent -Event $welcome
     $ack = Receive-CABTuiMessage -TimeoutMs 5000
     if (-not $ack -or $ack.type -ne 'ack' -or $ack.of -ne 'welcome') {
@@ -181,8 +190,11 @@ function Start-CABTuiBridge {
         $Script:CABTuiReaderInstance = $null
         $Script:CABTuiReaderHandle = $null
         $Script:CABTuiProcess = $null
+        $Script:CABTuiHandshakeComplete = $false
         throw "cab-tui handshake failed (expected ack of welcome, got: $($ack | ConvertTo-Json -Compress))"
     }
+    # Handshake complete — Drain-CABTuiPending is now safe to run.
+    $Script:CABTuiHandshakeComplete = $true
     return $proc
 }
 
@@ -218,28 +230,21 @@ function Drain-CABTuiPending {
     [CmdletBinding()]
     param()
     if (-not $Script:CABTuiInbox) { return }
+    # Pre-handshake: don't touch the inbox. The welcome → ack exchange
+    # owns it exclusively until Receive-CABTuiMessage takes the ack.
+    # Without this gate, a fast child can ack between our welcome send
+    # and our receive, Drain consumes the ack into CABTuiPendingMessages,
+    # and the handshake spuriously times out.
+    if (-not $Script:CABTuiHandshakeComplete) { return }
     $line = $null
     while ($Script:CABTuiInbox.TryTake([ref]$line, 0)) {
         if ($null -eq $line) { continue }
-        try {
-            $msg = $line | ConvertFrom-Json -AsHashtable
-        } catch {
-            # docs/rpc-protocol.md: parse failure is fatal on the
-            # receiving side. Mirror the child's behavior — log the
-            # offending bytes to stderr, then tear down the bridge so
-            # the next user-driven prompt falls through to CLI via
-            # Invoke-CABTuiPrompt's fallback (rather than continuing
-            # with corrupted protocol state).
-            $preview = if ($line.Length -gt 200) { $line.Substring(0, 200) + '…' } else { $line }
-            [Console]::Error.WriteLine("ca-bootstrap: failed to parse RPC line from cab-tui ($($_.Exception.Message)); offending bytes: $preview")
-            $Script:CABFatalProtocolError = $true
-            try { $Script:CABTuiInbox.CompleteAdding() } catch { }
-            if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
-                try { $Script:CABTuiProcess.StandardInput.Close() } catch { }
-                try { $Script:CABTuiProcess.Kill() } catch { }
-            }
-            return
-        }
+        $msg = _ParseCABTuiLine $line
+        # On parse failure _ParseCABTuiLine already logged the bytes,
+        # set $CABFatalProtocolError, and torn down the bridge. We just
+        # bail out of the loop so we don't process anything that may
+        # still be in the inbox after a corrupted line.
+        if ($null -eq $msg) { return }
         if ($msg.type -eq 'quit') {
             $Script:CABQuitRequested = $true
         } else {
@@ -330,9 +335,11 @@ function Receive-CABTuiMessage {
 }
 
 # Shared parse path. Per docs/rpc-protocol.md, parse failure is fatal on
-# the receiving side: log the offending bytes to stderr, set the global
-# fatal flag, and return $null so callers (handshake / Receive-CABTuiAnswer)
-# fall through to their bridge-dead branches and disable TuiMode.
+# the receiving side: log the offending bytes to stderr, tear down the
+# bridge so a subsequent Stop-CABTuiBridge doesn't sit in its 300s
+# dismiss wait against a dead-state child, and return $null so callers
+# (handshake / Receive-CABTuiAnswer) fall through to their bridge-dead
+# branches and disable TuiMode.
 function _ParseCABTuiLine {
     param([string]$Line)
     try {
@@ -341,6 +348,17 @@ function _ParseCABTuiLine {
         $preview = if ($Line.Length -gt 200) { $Line.Substring(0, 200) + '…' } else { $Line }
         [Console]::Error.WriteLine("ca-bootstrap: failed to parse RPC line from cab-tui ($($_.Exception.Message)); offending bytes: $preview")
         $Script:CABFatalProtocolError = $true
+        # Match Drain-CABTuiPending's teardown: complete the inbox so
+        # the reader runspace exits, then kill the child process. This
+        # is what makes Stop-CABTuiBridge skip its dismiss wait — the
+        # process has already exited by the time it runs.
+        if ($Script:CABTuiInbox) {
+            try { $Script:CABTuiInbox.CompleteAdding() } catch { }
+        }
+        if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
+            try { $Script:CABTuiProcess.StandardInput.Close() } catch { }
+            try { $Script:CABTuiProcess.Kill() } catch { }
+        }
         return $null
     }
 }
@@ -435,6 +453,7 @@ function Stop-CABTuiBridge {
     $Script:CABTuiReaderInstance = $null
     $Script:CABTuiReaderHandle = $null
     $Script:CABTuiProcess = $null
+    $Script:CABTuiHandshakeComplete = $false
 }
 
 # Functions exported automatically when this file is dot-sourced.

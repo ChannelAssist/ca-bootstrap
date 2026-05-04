@@ -22,7 +22,7 @@
 
 - **Tree pane** — eight setup steps in execution order; status icon (`○ ▶ ✓ ↷ ⚠ ✗`) updates live as the wizard progresses.
 - **Active step** — Markdown view of the current step's content.
-- **Progress area** — `ProgressBar` per repo clone (determinate) and `LoadingIndicator` per tool install (indeterminate).
+- **Progress area** — single determinate `ProgressBar` for repo cloning that advances across the whole manifest (current/total, with the active repo's name as the label), and one indeterminate `LoadingIndicator` per tool install.
 - **Prompt area** — Whatever question the wizard is asking right now: `Button` row for confirms, `RadioSet` for single-pick, `Checkbox`es for multi-pick, `Input` for free text, prominent red panel for step-failure recovery.
 - **Transcript tab** — Full live log; press `l` to flip to it any time.
 - **Footer** — Keybindings.

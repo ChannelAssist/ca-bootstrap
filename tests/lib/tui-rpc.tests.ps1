@@ -59,6 +59,81 @@ Describe 'Find-CABPython' {
     }
 }
 
+Describe 'Drain-CABTuiPending pre-handshake gating' {
+    AfterEach { Stop-CABTuiBridge }
+
+    It 'does NOT consume the welcome ack even when the child replies fast' {
+        # Regression for iter-8 #1: Drain-CABTuiPending was added to
+        # Send-CABTuiEvent's tail in iter 4. If the child acks fast
+        # enough that Drain runs before the handshake's
+        # Receive-CABTuiMessage, Drain would have consumed the ack into
+        # CABTuiPendingMessages and the handshake would spuriously time
+        # out. The fix gates Drain on $CABTuiHandshakeComplete.
+        $body = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+if ($msg.type -eq 'welcome') {
+    # Reply IMMEDIATELY — same line, before any sleep — so the ack
+    # lands in the inbox while the parent is still inside Send.
+    [Console]::Out.WriteLine('{"type":"ack","of":"welcome"}')
+    [Console]::Out.Flush()
+}
+Start-Sleep -Seconds 5
+'@
+        $script:fastAckStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-fastack-$(Get-Random).ps1"
+        Set-Content $script:fastAckStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:fastAckStub`""
+        # If Drain stole the ack, this would throw "handshake failed".
+        $proc = Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path `
+            -Command 'setup' -Version 'test' -Arguments $stubArgs
+        $proc | Should -Not -BeNullOrEmpty
+        $Script:CABTuiHandshakeComplete | Should -BeTrue
+        Remove-Item $script:fastAckStub -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Describe '_ParseCABTuiLine fatal teardown' {
+    AfterEach { Stop-CABTuiBridge }
+
+    It 'kills the child process on parse failure (so Stop does not wait the dismiss timeout)' {
+        # Regression for iter-8 #2: _ParseCABTuiLine was only setting
+        # the fatal flag and returning $null; the bridge process was
+        # left running and Stop-CABTuiBridge would wait the full 300s
+        # dismiss timeout against a child that was already in a fatal
+        # protocol state. Now Parse tears down (close stdin + kill).
+        $body = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+if ($msg.type -eq 'welcome') {
+    [Console]::Out.WriteLine('{"type":"ack","of":"welcome"}')
+    [Console]::Out.Flush()
+    # Then emit a malformed line.
+    [Console]::Out.WriteLine('this is not json')
+    [Console]::Out.Flush()
+}
+Start-Sleep -Seconds 30   # pretend to be a long-running TUI
+'@
+        $script:badLineStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-badline-$(Get-Random).ps1"
+        Set-Content $script:badLineStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:badLineStub`""
+        $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '60'   # generous so we'd notice a real wait
+        $proc = Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path `
+            -Command 'setup' -Version 'test' -Arguments $stubArgs
+
+        # Wait briefly so the bad line lands in the inbox, then drain.
+        Start-Sleep -Milliseconds 300
+        $Script:CABFatalProtocolError = $false
+        Drain-CABTuiPending
+        $Script:CABFatalProtocolError | Should -BeTrue
+        # Drain should have killed the child.
+        Start-Sleep -Milliseconds 200
+        $proc.HasExited | Should -BeTrue
+
+        Remove-Item $script:badLineStub -Force -ErrorAction SilentlyContinue
+        $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '2'
+    }
+}
+
 Describe 'Drain-CABTuiPending + Send-CABTuiEvent quit-surfacing' {
     AfterEach { Stop-CABTuiBridge }
 
