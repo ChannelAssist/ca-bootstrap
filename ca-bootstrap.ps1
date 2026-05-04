@@ -49,7 +49,11 @@ param(
     [switch]$Quiet,
 
     # break-glass: forcibly remove a stale lock before running
-    [switch]$ForceUnlock
+    [switch]$ForceUnlock,
+
+    # Use the Textual TUI front-end for interactive runs. Falls back to
+    # Read-Host if cab-tui isn't installed or the runtime probe fails.
+    [switch]$Tui
 )
 
 $ErrorActionPreference = 'Stop'
@@ -65,7 +69,7 @@ if ($NoColor -or $env:NO_COLOR) { $env:CA_BOOTSTRAP_NO_COLOR = '1' }
 if ($LogPath) { $env:CA_BOOTSTRAP_STATE = (Split-Path -Parent (Resolve-Path $LogPath -ErrorAction SilentlyContinue) ?? $LogPath) }
 
 # Dot-source libraries into the orchestrator's scope.
-$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
+$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1','tui-rpc.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
 foreach ($lib in $libs) {
     if (-not (Test-Path $lib)) { Write-Error "Required library missing: $lib"; exit 99 }
     . $lib
@@ -108,6 +112,24 @@ if ($Unattended) {
     }
 } else {
     Set-CABPromptMode -Unattended $false -Answers @{}
+}
+
+# Optionally launch the TUI front-end. Only meaningful for interactive
+# `setup` (the other commands are short-lived and don't need a TUI).
+$Script:CABTuiActive = $false
+if ($Tui -and -not $Unattended -and $Command -eq 'setup') {
+    if (Test-CABTuiAvailable) {
+        try {
+            Start-CABTuiBridge -Command $Command -Version $Script:CABootstrapVersion | Out-Null
+            Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true
+            $Script:CABTuiActive = $true
+        } catch {
+            Write-CABColor Yellow "  ⚠ Could not start TUI ($($_.Exception.Message)); falling back to CLI."
+            Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false
+        }
+    } else {
+        Write-CABColor Yellow '  ⚠ cab-tui not available (run `pip install -e cab-tui` to enable). Continuing with CLI.'
+    }
 }
 
 # Build session context.
@@ -234,6 +256,9 @@ catch {
     $exitCode = 99
 }
 finally {
+    if ($Script:CABTuiActive) {
+        try { Stop-CABTuiBridge -ExitCode $exitCode -Summary 'Setup finished.' } catch { }
+    }
     if ($silent) {
         Save-CABJournal
     } else {

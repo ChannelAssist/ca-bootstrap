@@ -88,6 +88,33 @@ function Invoke-CABCommandSetup {
         }
         $ordinal++
         $Context.StepOrdinal = $ordinal
+
+        # When the TUI is driving, emit a step.start event before the
+        # step runs and a step.end event after, so the Tree pane lights
+        # up in real time. The step files themselves don't need to know.
+        if ($Script:CABootstrapTuiMode) {
+            $title = switch ($stepId) {
+                '10-welcome'      { 'Welcome' }
+                '20-prereqs'      { 'Prerequisites' }
+                '30-gh-auth'      { 'GitHub authentication' }
+                '40-workspace'    { 'Workspace location' }
+                '50-folders'      { 'Folder structure' }
+                '60-repos'        { 'Clone repositories' }
+                '70-git-identity' { 'Git identity' }
+                '80-extras'       { 'Optional extras' }
+                default           { $stepId }
+            }
+            try {
+                Send-CABTuiEvent -Event @{
+                    type    = 'step'
+                    phase   = 'start'
+                    step    = $stepId
+                    title   = $title
+                    ordinal = $ordinal
+                    total   = 8
+                }
+            } catch { }
+        }
         $stepPath = Join-Path $Context.RepoRoot "steps/$stepId.ps1"
         if (-not (Test-Path $stepPath)) {
             Write-CABStatus -Status fail -Message "Step file missing: $stepPath"
@@ -98,6 +125,20 @@ function Invoke-CABCommandSetup {
         $stepNum = ($stepId -split '-')[0]
         $invokeFn = "Invoke-CABStep$stepNum"
         $result = & $invokeFn -Context $Context
+
+        # Emit step.end mirroring the result. Done before the switch's
+        # status-write so the TUI's Tree updates in lockstep with the CLI.
+        if ($Script:CABootstrapTuiMode) {
+            try {
+                Send-CABTuiEvent -Event @{
+                    type    = 'step'
+                    phase   = if ($result.status -eq 'skip') { 'skip' } else { 'end' }
+                    step    = $stepId
+                    status  = $result.status
+                    details = $result.details
+                }
+            } catch { }
+        }
 
         switch ($result.status) {
             'ok'      { Write-CABStatus -Status ok   -Message $result.details }
