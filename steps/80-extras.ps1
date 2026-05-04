@@ -161,6 +161,9 @@ function Invoke-CABStep80 {
             -and ((& wsl -l 2>$null | Out-String) -match 'Ubuntu')) {
             Write-CABStatus -Status skip -Message 'WSL with Ubuntu already installed.'
         } else {
+            Write-CABColor DarkGray '    ⓘ Will install with --no-launch so the wizard does not block. After'
+            Write-CABColor DarkGray '      reboot, run `wsl -d Ubuntu-22.04` from a new terminal to create your'
+            Write-CABColor DarkGray '      Linux username + password.'
             $installWsl = Read-CABConfirm `
                 -Question 'Install WSL2 + Ubuntu 22.04 (requires reboot)?' `
                 -Default $false `
@@ -170,11 +173,17 @@ function Invoke-CABStep80 {
             }
             if ($installWsl -is [bool] -and $installWsl) {
                 if ($Context.WhatIfMode) {
-                    Write-CABStatus -Status info -Message 'WhatIf: would run `wsl --install -d Ubuntu-22.04`'
+                    Write-CABStatus -Status info -Message 'WhatIf: would run `wsl --install --no-launch -d Ubuntu-22.04`'
                 } else {
-                    & wsl --install -d Ubuntu-22.04
+                    # --no-launch is critical: without it, `wsl --install` drops the
+                    # user into the new Ubuntu shell after first-run setup, which
+                    # blocks ca-bootstrap.ps1 because Windows treats the bash session
+                    # as a child of our PowerShell process. With --no-launch the
+                    # distro is installed but not started; the user runs it manually
+                    # later (which is when the username/password prompt appears).
+                    & wsl --install --no-launch -d Ubuntu-22.04
                     if ($LASTEXITCODE -eq 0) {
-                        Write-CABStatus -Status ok -Message 'WSL2 + Ubuntu 22.04 installation triggered. A reboot is required.'
+                        Write-CABStatus -Status ok -Message 'WSL2 + Ubuntu 22.04 installed. Reboot, then run `wsl -d Ubuntu-22.04` to create your Linux user.'
                         Add-CABJournalEntry -Step '80-extras' -Action 'install_wsl' -Reversible $false -Data @{
                             distro = 'Ubuntu-22.04'
                         } | Out-Null
