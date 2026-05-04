@@ -8,6 +8,8 @@ phase 2 can drive it via RPC.
 
 from __future__ import annotations
 
+import asyncio
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -20,6 +22,9 @@ from textual.widgets import (
     TabPane,
     Tree,
 )
+from textual.widgets.tree import TreeNode
+
+from cab_tui.rpc import RpcBridge, RpcMessage
 
 # The eight setup steps in execution order. Phase 2 will populate this
 # from journal events instead of hard-coding it.
@@ -35,8 +40,20 @@ SETUP_STEPS: list[tuple[str, str]] = [
 ]
 
 
+# Status icons used in the Tree labels. Single-char width so labels
+# align even when alternated mid-run.
+_STATUS_ICON = {
+    "pending": "○",
+    "active":  "▶",
+    "ok":      "✓",
+    "skip":    "↷",
+    "warn":    "⚠",
+    "fail":    "✗",
+}
+
+
 class CabTuiApp(App):
-    """Top-level Textual app. Phase 1: layout only."""
+    """Top-level Textual app. Phase 2: shell + RPC consumer."""
 
     CSS = """
     Screen {
@@ -66,6 +83,11 @@ class CabTuiApp(App):
     TITLE = "ca-bootstrap"
     SUB_TITLE = "ChannelAssist developer onboarding"
 
+    def __init__(self, *args, rpc: RpcBridge | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._rpc = rpc
+        self._step_nodes: dict[str, TreeNode[str]] = {}
+
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
         yield Header(show_clock=True)
@@ -76,7 +98,8 @@ class CabTuiApp(App):
             tree: Tree[str] = Tree("Steps", id="steps-pane")
             tree.root.expand()
             for step_id, title in SETUP_STEPS:
-                tree.root.add_leaf(f"○ {title}", data=step_id)
+                node = tree.root.add_leaf(f"{_STATUS_ICON['pending']} {title}", data=step_id)
+                self._step_nodes[step_id] = node
             yield tree
 
             # Right: tabbed content. Active step pane is the default; the Log
@@ -93,13 +116,95 @@ class CabTuiApp(App):
 
         yield Footer()
 
+    # ----- RPC plumbing (phase 2) -----
+
+    async def on_mount(self) -> None:
+        if self._rpc is None:
+            return
+        # Register handlers for the events phase 2 supports. Phase 3 adds
+        # `prompt`; phases 5–6 add `progress` and `notify`.
+        # Naming note: Textual auto-binds methods named `_on_<message>`
+        # to its own internal Message classes (e.g. `_on_notify` ←→ Notify).
+        # We use `_handle_rpc_<event>` to avoid those collisions.
+        self._rpc.on("welcome", self._handle_rpc_welcome)
+        self._rpc.on("step",    self._handle_rpc_step)
+        self._rpc.on("log",     self._handle_rpc_log)
+        self._rpc.on("notify",  self._handle_rpc_notify)
+        self._rpc.on("done",    self._handle_rpc_done)
+        # Run the consumer concurrently with the UI loop.
+        self._rpc_task = asyncio.create_task(self._rpc.start())
+
+    async def _handle_rpc_welcome(self, msg: RpcMessage) -> None:
+        self._rpc.send_ack("welcome")
+        v = msg.raw.get("version", "?")
+        self._append_log("info", f"Connected to ca-bootstrap v{v}")
+
+    async def _handle_rpc_step(self, msg: RpcMessage) -> None:
+        step_id = msg.raw.get("step", "")
+        node = self._step_nodes.get(step_id)
+        if node is None:
+            return
+        title = self._title_from_node(node)
+        phase = msg.raw.get("phase", "")
+        if phase == "start":
+            node.set_label(f"{_STATUS_ICON['active']} {title}")
+            self._append_log("info", f"→ Step start: {step_id}")
+        elif phase == "end":
+            status = msg.raw.get("status", "ok")
+            icon = _STATUS_ICON.get(status, _STATUS_ICON["ok"])
+            node.set_label(f"{icon} {title}")
+            details = msg.raw.get("details", "")
+            self._append_log("info", f"  Step end: {step_id} — {status}{(' — ' + details) if details else ''}")
+        elif phase == "skip":
+            node.set_label(f"{_STATUS_ICON['skip']} {title}")
+            self._append_log("info", f"  Step skipped: {step_id}")
+
+    async def _handle_rpc_log(self, msg: RpcMessage) -> None:
+        self._append_log(msg.raw.get("stream", "info"), msg.raw.get("text", ""))
+
+    async def _handle_rpc_notify(self, msg: RpcMessage) -> None:
+        # Stock toast — not a custom modal.
+        self.notify(
+            msg.raw.get("message", ""),
+            severity=msg.raw.get("severity", "information"),
+            title=msg.raw.get("title", ""),
+        )
+
+    async def _handle_rpc_done(self, msg: RpcMessage) -> None:
+        summary = msg.raw.get("summary", "")
+        exit_code = int(msg.raw.get("exit_code", 0))
+        self._append_log("info", f"=== Done (exit {exit_code}). {summary}")
+
+    # -- helpers --
+
+    def _append_log(self, stream: str, text: str) -> None:
+        try:
+            log_widget = self.query_one("#transcript-log", Log)
+        except Exception:
+            return
+        log_widget.write_line(text)
+
+    @staticmethod
+    def _title_from_node(node: TreeNode[str]) -> str:
+        # Strip the leading "X " icon to recover the original title.
+        label = str(node.label)
+        return label.split(" ", 1)[1] if " " in label else label
+
     # ----- Actions (bound to keys via BINDINGS) -----
 
     def action_quit_with_rollback(self) -> None:
-        # Phase 2 will dispatch this through RPC so the PowerShell side
-        # offers the same rollback flow that 'q' triggers in the CLI.
-        # For phase 1 we just exit; the CLI fallback is the user's safety net.
-        self.exit(message="Phase 1 stub — quit-with-rollback lands in phase 6.")
+        # If we're driven by RPC, tell the parent we're quitting so it
+        # can run its rollback offer; the parent decides when to actually
+        # close us (via the `done` event). If we're standalone (no RPC),
+        # exit immediately.
+        if self._rpc is not None:
+            try:
+                self._rpc.send_quit()
+                self._append_log("warn", "Quit requested — waiting for parent to finish.")
+                return
+            except Exception:
+                pass
+        self.exit(message="Quit by user.")
 
     def action_toggle_log(self) -> None:
         # Switch to the Transcript tab.

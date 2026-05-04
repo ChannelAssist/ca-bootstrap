@@ -19,6 +19,13 @@ def main() -> int:
         help="Probe whether the TUI can start (used by ca-bootstrap.ps1 "
              "to decide between TUI and Read-Host fallback). Exits 0 on success.",
     )
+    parser.add_argument(
+        "--rpc",
+        action="store_true",
+        help="Run as a child of ca-bootstrap.ps1, consuming JSON-RPC events "
+             "over stdin and emitting answers on stdout. See "
+             "docs/rpc-protocol.md for the message catalog.",
+    )
     args = parser.parse_args()
 
     if args.check:
@@ -26,6 +33,13 @@ def main() -> int:
         # cleanly. This is the orchestrator's auto-detect probe.
         import textual  # noqa: F401
         print(f"cab-tui ok (textual {textual.__version__})")
+        return 0
+
+    if args.rpc:
+        from cab_tui.rpc import RpcBridge
+        bridge = RpcBridge()
+        app = CabTuiApp(rpc=bridge)
+        app.run()
         return 0
 
     app = CabTuiApp()
