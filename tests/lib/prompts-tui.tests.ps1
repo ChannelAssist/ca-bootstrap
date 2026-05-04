@@ -34,11 +34,28 @@ BeforeAll {
         return $proc
     }
     function Stop-StubChild {
-        if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
-            try { $Script:CABTuiProcess.Kill() } catch {}
+        if ($Script:CABTuiProcess) {
+            if (-not $Script:CABTuiProcess.HasExited) {
+                # Close stdin first so the stub's `[Console]::In.ReadLine()`
+                # returns null and the stub exits naturally. Kill is the
+                # safety net.
+                try { $Script:CABTuiProcess.StandardInput.Close() } catch {}
+                if (-not $Script:CABTuiProcess.WaitForExit(2000)) {
+                    try { $Script:CABTuiProcess.Kill() } catch {}
+                    # WaitForExit *after* Kill so the OS reaps the
+                    # process before we move on; without this the
+                    # next test can still see HasExited == false on
+                    # a killed-but-not-yet-reaped child, and on
+                    # interrupt the stub orphans for its full sleep.
+                    try { $Script:CABTuiProcess.WaitForExit(2000) | Out-Null } catch {}
+                }
+            }
+            try { $Script:CABTuiProcess.Dispose() } catch {}
+            $Script:CABTuiProcess = $null
         }
         if ($script:stubPath -and (Test-Path $script:stubPath)) {
             Remove-Item $script:stubPath -Force -ErrorAction SilentlyContinue
+            $script:stubPath = $null
         }
     }
 }
@@ -57,7 +74,6 @@ if ($msg.type -eq 'prompt') {
     [Console]::Out.WriteLine($reply)
     [Console]::Out.Flush()
 }
-Start-Sleep -Seconds 5
 '@
         Start-StubChild -AnswerScript $stub | Out-Null
         $r = Read-CABConfirm -Question 'Use default workspace?' -Default $true
@@ -72,7 +88,6 @@ $msg = $line | ConvertFrom-Json
 $reply = @{ type = 'answer'; id = $msg.id; value = "kind=$($msg.kind);q=$($msg.question);d=$($msg.default);opts=$($msg.options -join ',')" } | ConvertTo-Json -Compress
 [Console]::Out.WriteLine($reply)
 [Console]::Out.Flush()
-Start-Sleep -Seconds 5
 '@
         Start-StubChild -AnswerScript $stub | Out-Null
         $r = Read-CABConfirm -Question 'Use default workspace?' -Default $true
@@ -89,9 +104,11 @@ Start-Sleep -Seconds 5
 
     It 'unattended mode takes priority — no event sent at all' {
         Set-CABPromptMode -Unattended $true -Answers @{ 'k' = 'no' } -TuiMode $true
-        # No stub started: if a send is attempted, $Script:CABTuiProcess
-        # is null and Send-CABTuiEvent would throw. So the test passing
-        # proves we short-circuit before the send.
+        # No stub started: $Script:CABTuiProcess is null because
+        # AfterEach's Stop-StubChild explicitly nulls it. If a send
+        # were attempted, Send-CABTuiEvent would throw "process is not
+        # running". The test passing proves the unattended branch
+        # short-circuits before the send.
         $r = Read-CABConfirm -Question 'q' -Default $true -AnswerKey 'k'
         $r | Should -Be 'no'
     }
@@ -138,7 +155,6 @@ $msg = $line | ConvertFrom-Json
 $reply = @{ type = 'answer'; id = $msg.id; value = 'no' } | ConvertTo-Json -Compress
 [Console]::Out.WriteLine($reply)
 [Console]::Out.Flush()
-Start-Sleep -Seconds 5
 '@
         Start-StubChild -AnswerScript $stub | Out-Null
         $r = Invoke-CABTuiPrompt -PromptId 'p3' -Event @{
@@ -163,7 +179,6 @@ $msg = $line | ConvertFrom-Json
 $reply = @{ type = 'answer'; id = $msg.id; value = 'skip' } | ConvertTo-Json -Compress
 [Console]::Out.WriteLine($reply)
 [Console]::Out.Flush()
-Start-Sleep -Seconds 5
 '@
         Start-StubChild -AnswerScript $stub | Out-Null
         $r = Read-CABRecovery -StepId '60-repos' -Details 'gh auth required'
@@ -185,7 +200,6 @@ Set-Content -Path `$out -Value `$line
 `$reply = @{ type = 'answer'; id = `$msg.id; value = 'retry' } | ConvertTo-Json -Compress
 [Console]::Out.WriteLine(`$reply)
 [Console]::Out.Flush()
-Start-Sleep -Seconds 5
 "@
         Start-StubChild -AnswerScript $stub | Out-Null
         try {
@@ -234,7 +248,6 @@ $summary = ($msg.options | ForEach-Object { "$($_.value):$($_.label)" }) -join '
 $reply = @{ type = 'answer'; id = $msg.id; value = $summary } | ConvertTo-Json -Compress
 [Console]::Out.WriteLine($reply)
 [Console]::Out.Flush()
-Start-Sleep -Seconds 5
 '@
         Start-StubChild -AnswerScript $stub | Out-Null
         $r = Read-CABChoice -Question 'Pick' -Options @(
