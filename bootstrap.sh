@@ -1,16 +1,32 @@
 #!/usr/bin/env bash
 # ca-bootstrap one-line entrypoint for macOS / Linux.
 #
+# Two modes:
+#   1. Curl-pipe (documented use): no sibling ca-bootstrap.ps1 next to
+#      this script. Ensures pwsh + git, clones the repo to a cache,
+#      hands off to ca-bootstrap.ps1 setup.
+#   2. From a clone: a sibling ca-bootstrap.ps1 exists. Skip the cache
+#      and forward all args directly to it.
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/bootstrap.sh | bash
-#
-# This script does the minimum to hand off to ca-bootstrap.ps1:
-#   1. Ensure PowerShell 7+ is available (install if missing)
-#   2. Ensure git is available (install if missing)
-#   3. Clone or update the ca-bootstrap repository to a cache directory
-#   4. Hand off to pwsh ca-bootstrap.ps1 setup
+#   ./bootstrap.sh doctor               # from a clone — forwards to ca-bootstrap.ps1
 
 set -euo pipefail
+
+# Mode 2 short-circuit: sibling orchestrator detected → exec directly.
+# This block runs even when piped via stdin (no $0 path); in that case
+# the next condition fails and we fall through to mode 1.
+SELF_PATH="${BASH_SOURCE[0]:-}"
+if [ -n "$SELF_PATH" ] && [ -f "$(dirname "$SELF_PATH")/ca-bootstrap.ps1" ]; then
+    SIBLING="$(cd "$(dirname "$SELF_PATH")" && pwd)/ca-bootstrap.ps1"
+    if ! command -v pwsh >/dev/null 2>&1; then
+        echo "pwsh not found. Install PowerShell 7+ and re-run." >&2
+        exit 1
+    fi
+    if [ "$#" -eq 0 ]; then set -- setup; fi
+    exec pwsh -NoLogo -File "$SIBLING" "$@"
+fi
 
 REPO_URL="${CA_BOOTSTRAP_REPO:-https://github.com/ChannelAssist/ca-bootstrap.git}"
 REPO_REF="${CA_BOOTSTRAP_REF:-main}"

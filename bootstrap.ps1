@@ -1,22 +1,60 @@
+#!/usr/bin/env pwsh
 #requires -Version 5.1
 <#
 .SYNOPSIS
 ca-bootstrap one-line entrypoint for Windows.
 
 .DESCRIPTION
-Ensures pwsh 7+ and git are available, clones (or updates) the ca-bootstrap
-repository to a cache directory, and hands off to ca-bootstrap.ps1 setup.
+Two modes:
+
+  1. Curl-pipe (the documented use): downloaded fresh, no sibling script
+     present. Ensures pwsh 7+ and git are available, clones (or updates)
+     the ca-bootstrap repository to a cache directory, then hands off to
+     ca-bootstrap.ps1 setup.
+
+  2. From a clone: a sibling `ca-bootstrap.ps1` exists next to this
+     script. Skip the cache machinery entirely and forward all arguments
+     directly to it. So `./bootstrap.ps1 doctor` from a clone behaves the
+     same as `./ca-bootstrap.ps1 doctor`.
 
 .EXAMPLE
 iwr -useb https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/bootstrap.ps1 | iex
+
+.EXAMPLE
+./bootstrap.ps1 doctor                # from a clone — forwards to ca-bootstrap.ps1
 #>
 
 [CmdletBinding()]
 param(
     [string]$RepoUrl = $env:CA_BOOTSTRAP_REPO,
     [string]$RepoRef = $env:CA_BOOTSTRAP_REF,
-    [string]$CacheDir = $env:CA_BOOTSTRAP_CACHE
+    [string]$CacheDir = $env:CA_BOOTSTRAP_CACHE,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$ForwardArgs
 )
+
+# Mode 2 short-circuit: if a sibling ca-bootstrap.ps1 is next to this
+# script, we're inside a clone — just exec it with whatever the user
+# typed. Skips cache fetch + git pull dance.
+$selfDir  = $null
+if ($MyInvocation.MyCommand.Path) { $selfDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$siblingOrch = if ($selfDir) { Join-Path $selfDir 'ca-bootstrap.ps1' } else { $null }
+if ($siblingOrch -and (Test-Path $siblingOrch)) {
+    # If the user invoked `./bootstrap.ps1 setup` (or doctor / repair /
+    # undo), PowerShell positionally binds the first arg to $RepoUrl
+    # rather than $ForwardArgs (since RepoUrl is declared first). Treat
+    # a known-command string in $RepoUrl as the command to forward.
+    $knownCommands = @('setup','doctor','repair','undo','help','--help','-h','version','--version')
+    if ($RepoUrl -and ($knownCommands -contains $RepoUrl)) {
+        $argsToForward = @($RepoUrl) + @($ForwardArgs)
+    } elseif ($ForwardArgs -and $ForwardArgs.Count -gt 0) {
+        $argsToForward = @($ForwardArgs)
+    } else {
+        $argsToForward = @('setup')
+    }
+    & pwsh -NoLogo -File $siblingOrch @argsToForward
+    exit $LASTEXITCODE
+}
 
 if (-not $RepoUrl)  { $RepoUrl  = 'https://github.com/ChannelAssist/ca-bootstrap.git' }
 if (-not $RepoRef)  { $RepoRef  = 'main' }

@@ -24,6 +24,27 @@ curl -fsSL https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/boo
 
 That's it. The bootstrap script ensures PowerShell 7+ and git are installed (prompting first; uses `winget` on Windows, `brew` on macOS, `apt`/`dnf` on Linux), clones this repository to a cache directory, and launches the interactive onboarding wizard.
 
+### From a clone
+
+If you've cloned this repo (e.g. for development), the daily-driver invocation is:
+
+```bash
+make setup
+make doctor
+make repair ARGS='--all'
+make undo ARGS='--force'
+```
+
+Or directly:
+
+```bash
+pwsh ./ca-bootstrap.ps1 doctor
+./bootstrap.sh doctor    # also works — short-circuits when invoked from a clone
+./bootstrap.ps1 doctor   # likewise on Windows
+```
+
+> `bootstrap.sh` / `bootstrap.ps1` are the curl-pipe entrypoints. From a clone they auto-detect their sibling `ca-bootstrap.ps1` and forward args, so you never need to remember which is which.
+
 ### Manual prerequisite install
 
 If you'd rather install PowerShell 7 yourself first:

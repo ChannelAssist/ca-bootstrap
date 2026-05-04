@@ -46,10 +46,23 @@ smoke-clean: ## Remove smoke-test temp state
 	@rm -rf $(SMOKE_STATE) $(SMOKE_WORKSPACE)
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
 
+.PHONY: setup
+setup: ## Run setup wizard against the current user (`make setup`)
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS)
+
 .PHONY: doctor
-doctor: ## Run ca-bootstrap doctor against the current user state (exit 2 = drift found, not a make failure)
-	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 doctor; rc=$$?; \
+doctor: ## Run doctor (exit 2 = drift found, not a make failure)
+	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 doctor $(ARGS); rc=$$?; \
 	 if [ $$rc -eq 0 ] || [ $$rc -eq 2 ]; then exit 0; else exit $$rc; fi
+
+.PHONY: repair
+repair: ## Run repair. Pass ARGS, e.g. `make repair ARGS='--all'` or `make repair ARGS='--target dotnet-10'`
+	@if [ -z "$(ARGS)" ]; then printf "$(YELLOW)Hint: pass ARGS, e.g. \`make repair ARGS=--all\`$(RESET)\n"; fi
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 repair $(ARGS)
+
+.PHONY: undo
+undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--force'`
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo $(ARGS)
 
 .PHONY: test
 test: ## Run Pester unit tests under tests/
