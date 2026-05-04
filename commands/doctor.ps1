@@ -229,14 +229,27 @@ function Invoke-CABCommandDoctor {
         return 0
     }
 
-    Write-CABColor White "  $($issues.Count) issue(s) found:"
-    foreach ($i in $issues) {
-        if ($i.fix) {
-            Write-Host "    • $($i.id) — fix: ca-bootstrap.ps1 $($i.fix)"
+    # Distinguish "fresh machine, never set up" from "drift from a known
+    # good state". Both exit 2, but the message differs to set the right
+    # expectation for the user.
+    $journalCheck = $checks | Where-Object { $_.id -eq 'journal' } | Select-Object -First 1
+    $workspaceCheck = $checks | Where-Object { $_.id -eq 'workspace' } | Select-Object -First 1
+    $isFreshMachine = $journalCheck -and $journalCheck.status -in 'warn','fail' -and `
+                      ($workspaceCheck -and $workspaceCheck.status -eq 'fail')
+
+    if ($isFreshMachine) {
+        Write-CABColor Cyan "  Looks like setup hasn't been run on this machine yet."
+        Write-Host  '  Run `ca-bootstrap.ps1 setup` to get started.'
+    } else {
+        Write-CABColor White "  $($issues.Count) issue(s) found:"
+        foreach ($i in $issues) {
+            if ($i.fix) {
+                Write-Host "    • $($i.id) — fix: ca-bootstrap.ps1 $($i.fix)"
+            }
         }
+        Write-Host ''
+        Write-Host '  Run `ca-bootstrap.ps1 repair --all` to fix them all.'
     }
-    Write-Host ''
-    Write-Host '  Run `ca-bootstrap.ps1 repair --all` to fix them all.'
     Write-Host ''
     return 2
 }

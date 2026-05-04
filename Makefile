@@ -47,8 +47,9 @@ smoke-clean: ## Remove smoke-test temp state
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
 
 .PHONY: doctor
-doctor: ## Run ca-bootstrap doctor against the current user state
-	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 doctor
+doctor: ## Run ca-bootstrap doctor against the current user state (exit 2 = drift found, not a make failure)
+	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 doctor; rc=$$?; \
+	 if [ $$rc -eq 0 ] || [ $$rc -eq 2 ]; then exit 0; else exit $$rc; fi
 
 .PHONY: test
 test: ## Run Pester unit tests under tests/
@@ -109,8 +110,18 @@ clean: smoke-clean ## Remove caches and ephemeral state
 # Release helpers
 # ---------------------------------------------------------------------------
 
+.PHONY: release
+release: ## Cut a release: bump version constant, smoke + tests, commit, tag, push, GitHub release
+	@chmod +x scripts/release.sh
+	@VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) SKIP_SMOKE=$(SKIP_SMOKE) SKIP_TESTS=$(SKIP_TESTS) FORCE_BRANCH=$(FORCE_BRANCH) DRY_RUN=$(DRY_RUN) ./scripts/release.sh
+
+.PHONY: release-dry-run
+release-dry-run: ## Same as release but without writing/pushing anything (VERSION required)
+	@chmod +x scripts/release.sh
+	@DRY_RUN=1 VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) ./scripts/release.sh
+
 .PHONY: tag
-tag: ## Create + push a semver tag from VERSION variable (e.g. make tag VERSION=v1.0.0)
+tag: ## Plain tag-and-push (no version bump, no release notes — prefer `make release`)
 	@if [ -z "$(VERSION)" ]; then printf "$(RED)VERSION is required, e.g. make tag VERSION=v1.0.0$(RESET)\n"; exit 1; fi
 	@git tag -a $(VERSION) -m "Release $(VERSION)"
 	@git push origin $(VERSION)
