@@ -83,17 +83,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Install cab-tui via Poetry (per SDLC; pip is the fallback)
+      - name: Install cab-tui (editable + dev extras)
         shell: bash
         working-directory: cab-tui
         run: |
-          poetry install --no-interaction
-          # Install dev extras explicitly — they're declared under
-          # [project.optional-dependencies] (PEP 621), which Poetry 2.x
-          # respects via `poetry sync --with` … or just pip them in.
-          poetry run python -m pip install -e ".[dev]"
+          # Install via pip into the runner's Python so the bridge
+          # probe finds it. poetry.lock stays in the repo as the
+          # spec-of-record but `poetry install` would create a
+          # separate venv that the orchestrator can't see.
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
       - name: Clear UF_HIDDEN on editable .pth (macOS only)
         if: runner.os == 'macOS'
         shell: bash
@@ -106,7 +105,7 @@ jobs:
       - name: Run pytest
         shell: bash
         working-directory: cab-tui
-        run: poetry run python -m pytest -q
+        run: python -m pytest -q
 
   cab-tui-rpc-pester:
     name: cab-tui RPC bridge Pester (${{ matrix.os }})
@@ -121,12 +120,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Poetry
-        run: pipx install poetry
-      - name: Install cab-tui via Poetry
+      - name: Install cab-tui
         shell: bash
         working-directory: cab-tui
-        run: poetry install --no-interaction
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
       - name: Install Pester + powershell-yaml
         shell: pwsh
         run: |

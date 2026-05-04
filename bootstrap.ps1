@@ -162,21 +162,15 @@ function Install-PythonAndTui {
     }
 
     Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
+    # Install via pip into the same Python the orchestrator probes.
+    # `poetry install` would create a Poetry-managed venv invisible
+    # to Find-CABPython, leaving the TUI unreachable despite a
+    # "successful" install. poetry.lock stays committed as the
+    # spec-of-record for strict reproducibility.
     $installOk = $false
-    # Prefer Poetry per ChannelAssist SDLC; fall back to pip when Poetry
-    # isn't on PATH yet (first run on a fresh machine).
-    if (Test-Command 'poetry') {
-        Push-Location $cabTuiDir
-        try {
-            poetry install --quiet 2>$null
-            if ($LASTEXITCODE -eq 0) { $installOk = $true }
-        } finally { Pop-Location }
-    }
-    if (-not $installOk) {
-        & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
-        & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
-        if ($LASTEXITCODE -eq 0) { $installOk = $true }
-    }
+    & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
+    & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { $installOk = $true }
     if ($installOk) {
         Write-Color Green '✓ cab-tui installed; setup will auto-launch the TUI.'
     } else {

@@ -14,12 +14,10 @@ See [`docs/textual-plan.md`](../docs/textual-plan.md) for the architecture and [
 
 ```bash
 cd cab-tui
-poetry install                # preferred — uses the committed poetry.lock
-# or, if Poetry isn't on PATH yet:
-pip install -e '.[dev]'
+python -m pip install -e '.[dev]'   # binds the install to the current interpreter
 ```
 
-Requires Python 3.10+. Production install via `poetry install --without dev` (or `pip install -e .` for the no-Poetry path).
+Requires Python 3.10+. The build-backend is `poetry-core` and `poetry.lock` is committed for reproducibility, but the orchestrator probes the active Python on PATH, so `pip install` (which targets the active interpreter) is the supported install path. `poetry install` would put deps into a Poetry-managed venv that the bridge can't see.
 
 End users don't usually run this directly — `bootstrap.sh` / `bootstrap.ps1` do it automatically when the orchestrator is fetched, and `make tui-install` does it from a clone (the latter also clears the macOS `UF_HIDDEN` flag that Hatchling sets on its editable `.pth` file, which Python 3.14's site.py would otherwise skip).
 
