@@ -139,7 +139,7 @@ function Invoke-CABCommandSetup {
                         step    = $stepId
                         title   = $title
                         ordinal = $ordinal
-                        total   = 8
+                        total   = $Context.TotalSteps
                     }
                 } catch { }
             }

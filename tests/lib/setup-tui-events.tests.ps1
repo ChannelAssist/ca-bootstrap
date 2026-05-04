@@ -101,7 +101,13 @@ while (`$true) {
         $stepEvents[0].phase | Should -Be 'start'
         $stepEvents[0].step  | Should -Be '10-welcome'
         $stepEvents[0].title | Should -Be 'Welcome'
-        $stepEvents[0].total | Should -Be 8
+        # `total` must match the orchestrator's step count, NOT a hardcoded
+        # number — regression guard for Copilot iter-6 #4 (a hardcoded `8`
+        # in the step.start emit defeated the iter-5 single-source-of-truth
+        # refactor). Compute the expected value from Get-CABSetupStepDefs
+        # so this assertion follows the orchestrator if steps are added.
+        $expectedTotal = (Get-CABSetupStepDefs).Count
+        $stepEvents[0].total | Should -Be $expectedTotal
         # The matching end (could be 'end' with status=quit, since
         # 'no' at welcome maps to 'quit' status in step 10).
         $endEvent = $stepEvents | Where-Object { $_.phase -in 'end','skip' } | Select-Object -First 1

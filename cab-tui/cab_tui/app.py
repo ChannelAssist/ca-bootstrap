@@ -496,18 +496,18 @@ class CabTuiApp(App):
 
     def action_show_help(self) -> None:
         self.notify(
-            "Phase 1 stub. Press q to quit, l to toggle the transcript.",
+            "q to quit · l to toggle the transcript · Tab/Enter to navigate prompts. "
+            "See docs/tui.md for the full keybinding map.",
             severity="information",
             title="ca-bootstrap TUI",
         )
 
 
 def _welcome_markdown() -> str:
-    """Welcome content rendered with MarkdownViewer.
-
-    Phase 1 ships hard-coded text identical to the CLI welcome step; phase 3
-    will receive this content via RPC so the two front-ends stay in sync.
-    """
+    """Welcome content rendered before the parent wizard sends its first
+    step event. Once the bridge handshake completes, the parent drives
+    everything via RPC and this default is replaced by step content.
+    Standalone runs (no parent) keep this as the starting view."""
     return """\
 # ChannelAssist developer onboarding
 
@@ -520,8 +520,4 @@ This wizard will set up your machine for ChannelAssist development:
 - configure your git identity for ChannelAssist commits
 
 Every step is **optional**. Quit any time with `q` or `Ctrl+C`.
-
-> **Phase 1 stub.** This is the layout-only build of the TUI. The
-> PowerShell wizard does not yet drive it; phase 2 lands the JSON-RPC
-> bridge and the prompts will become live.
 """

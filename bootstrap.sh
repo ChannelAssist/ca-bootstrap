@@ -129,7 +129,11 @@ install_git() {
 
 # Detect a Python 3.10+ on PATH; echo the binary name (or empty).
 detect_python() {
-    for cand in python3 python3.13 python3.12 python3.11 python3.10; do
+    # `python` (no version suffix) covers pyenv, conda, and homebrew
+    # configurations where the only usable interpreter on PATH isn't
+    # a versioned `python3` symlink. We still version-check the result,
+    # so a system `python` that's actually 2.x is correctly rejected.
+    for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do
         if command -v "$cand" >/dev/null 2>&1; then
             local ver major minor
             ver=$("$cand" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")

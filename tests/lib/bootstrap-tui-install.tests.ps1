@@ -47,6 +47,19 @@ Describe 'bootstrap.ps1 — Python/cab-tui install path' {
         $content | Should -Match 'Test-Path\s+\$cabTuiDir'
     }
 
+    It 'bootstrap.sh detect_python tries `python` in addition to `python3*` symlinks' {
+        # Regression guard for Copilot iter-6 #1: pyenv/conda envs may
+        # only have `python` on PATH. Without this candidate, bootstrap
+        # would falsely report Python missing and prompt to reinstall.
+        $bash = Join-Path $script:repoRoot 'bootstrap.sh'
+        $content = Get-Content -Raw $bash
+        $content | Should -Match 'detect_python\(\)'
+        # Pull out the candidate list from the loop. We allow any order
+        # / additional version suffixes, but `python` (no suffix) must
+        # appear so non-symlinked interpreters resolve.
+        $content | Should -Match 'for cand in [^;]*\bpython\b'
+    }
+
     It 'mode-2 short-circuit forwards to the sibling ca-bootstrap.ps1 (skipping the install path)' {
         # The mode-2 short-circuit lives at the top of bootstrap.ps1 and
         # exec's the sibling orchestrator without going through any of
