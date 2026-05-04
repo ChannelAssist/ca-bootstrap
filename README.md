@@ -2,7 +2,7 @@
 
 One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
 
-> **Status: design phase.** This directory currently holds the design specification ([`DESIGN.md`](DESIGN.md)) and example manifests. The runnable scripts are not yet implemented. See [DESIGN.md → Build sequence](DESIGN.md#15-build-sequence) for the planned implementation order.
+> **Status: v1.0.0** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
 
 ---
 
