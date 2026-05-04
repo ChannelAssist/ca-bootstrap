@@ -104,6 +104,66 @@ install_git() {
     color_green "✓ git installed."
 }
 
+# Optional: install Python 3.10+ and the cab-tui front-end. The wizard
+# auto-detects this and uses the rich TUI when present; absence is fine
+# (silent fallback to the legacy Read-Host CLI). Only attempted when
+# CA_BOOTSTRAP_NO_TUI is unset.
+install_python_and_tui() {
+    if [ -n "${CA_BOOTSTRAP_NO_TUI:-}" ]; then return 0; fi
+    if [ ! -d "$1" ]; then return 0; fi   # cache may not be cloned yet
+    local cab_tui_dir="$1/cab-tui"
+    if [ ! -d "$cab_tui_dir" ]; then return 0; fi   # older release without TUI
+
+    # Detect a Python 3.10+ already installed.
+    local py=""
+    for cand in python3 python3.13 python3.12 python3.11 python3.10; do
+        if command -v "$cand" >/dev/null 2>&1; then
+            local ver
+            ver=$("$cand" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
+            local major minor
+            major="${ver%.*}"; minor="${ver#*.}"
+            if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then py="$cand"; break; fi
+        fi
+    done
+
+    if [ -z "$py" ]; then
+        color_yellow "Python 3.10+ not found — skipping cab-tui install (legacy CLI will be used)."
+        local os; os=$(detect_os)
+        case "$os" in
+            macos)        color_yellow "  Optional: \`brew install python@3.12 && curl ... | bash\` to enable the TUI." ;;
+            linux-debian) color_yellow "  Optional: \`sudo apt-get install python3 python3-pip\` to enable the TUI." ;;
+            linux-rhel)   color_yellow "  Optional: \`sudo dnf install python3 python3-pip\` to enable the TUI." ;;
+        esac
+        return 0
+    fi
+
+    # Probe whether cab_tui is already importable (e.g. previous run).
+    if "$py" -m cab_tui --check >/dev/null 2>&1; then
+        color_green "✓ cab-tui already installed."
+        return 0
+    fi
+
+    color_blue "Installing cab-tui (optional rich TUI front-end)..."
+    if ! "$py" -m pip install --quiet --upgrade pip 2>/dev/null; then
+        color_yellow "  pip upgrade failed; continuing with whatever pip is available."
+    fi
+    if "$py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
+        # macOS Python 3.14 + Hatchling: clear UF_HIDDEN on the editable
+        # .pth so site.py picks it up. See docs/tui.md.
+        if [ "$(detect_os)" = "macos" ]; then
+            local site_pkgs
+            site_pkgs=$("$py" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "")
+            if [ -n "$site_pkgs" ]; then
+                find "$site_pkgs" -name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true
+            fi
+        fi
+        color_green "✓ cab-tui installed; setup will auto-launch the TUI."
+    else
+        color_yellow "  cab-tui install failed; continuing with the legacy Read-Host CLI."
+        color_yellow "  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)"
+    fi
+}
+
 main() {
     color_blue "ca-bootstrap — preparing your environment"
     echo
@@ -139,6 +199,10 @@ main() {
         git clone --quiet --depth 1 --branch "$REPO_REF" "$REPO_URL" "$CACHE_DIR"
     fi
     color_green "✓ ca-bootstrap ready."
+
+    # Optionally install Python + cab-tui so the rich TUI is the default.
+    # Best-effort: any failure here is a soft fallback to the CLI.
+    install_python_and_tui "$CACHE_DIR"
     echo
 
     exec pwsh -NoLogo -File "$CACHE_DIR/ca-bootstrap.ps1" setup "$@"

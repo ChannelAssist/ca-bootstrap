@@ -57,7 +57,11 @@ function Start-CABTuiBridge {
     param(
         [string]$PythonBinary,
         [string]$Command,
-        [string]$Version
+        [string]$Version,
+        # Override the child's command-line. Default invokes the cab_tui
+        # module in --rpc mode; tests use this to spawn a stub that
+        # speaks the protocol without needing a TTY.
+        [string]$Arguments = '-m cab_tui --rpc'
     )
     if (-not $PythonBinary) {
         $PythonBinary = if ($IsWindows) { 'python.exe' } else { 'python3' }
@@ -65,7 +69,7 @@ function Start-CABTuiBridge {
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $PythonBinary
-    $psi.Arguments = '-m cab_tui --rpc'
+    $psi.Arguments = $Arguments
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput  = $true
     $psi.RedirectStandardOutput = $true

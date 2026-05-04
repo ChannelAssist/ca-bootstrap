@@ -47,8 +47,36 @@ smoke-clean: ## Remove smoke-test temp state
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
 
 .PHONY: setup
-setup: ## Run setup wizard against the current user (`make setup`)
+setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS)
+
+.PHONY: setup-no-tui
+setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS)
+
+.PHONY: tui-install
+tui-install: ## Install the cab-tui Python front-end (pip install -e cab-tui/)
+	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
+	@if ! command -v python3 >/dev/null 2>&1; then \
+		printf "$(RED)python3 not found. Install Python 3.10+ first.$(RESET)\n"; exit 1; \
+	fi
+	@cd cab-tui && python3 -m pip install -e . --quiet
+	@# Hatchling marks its editable .pth file with the macOS UF_HIDDEN flag,
+	@# and Python 3.14's site.py skips hidden .pth files — meaning `import
+	@# cab_tui` would fail from any CWD other than the cab-tui dir. Clearing
+	@# the flag is the supported fix; PYTHONPATH workaround remains as
+	@# defense-in-depth in lib/tui-rpc.ps1.
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		find cab-tui -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+		find $$(python3 -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
+			-name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+	fi
+	@printf "$(GREEN)✓ cab-tui installed; \`make setup\` will now auto-launch the TUI$(RESET)\n"
+
+.PHONY: tui-test
+tui-test: ## Run the cab-tui pytest suite
+	@printf "$(BLUE)Running cab-tui pytest suite...$(RESET)\n"
+	@cd cab-tui && python3 -m pytest -q
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)
@@ -68,6 +96,9 @@ undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--fo
 test: ## Run Pester unit tests under tests/
 	@printf "$(BLUE)Running Pester tests...$(RESET)\n"
 	@$(PWSH) -NoLogo -Command "Invoke-Pester -Path ./tests -Output Detailed -CI"
+
+.PHONY: test-all
+test-all: test tui-test ## Run both Pester (PowerShell) and pytest (cab-tui) suites
 
 .PHONY: lint
 lint: ## Run PSScriptAnalyzer and markdownlint

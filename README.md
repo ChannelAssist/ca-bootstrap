@@ -29,15 +29,20 @@ That's it. The bootstrap script ensures PowerShell 7+ and git are installed (pro
 If you've cloned this repo (e.g. for development), the daily-driver invocation is the make targets:
 
 ```bash
-make setup                          # the wizard
+make setup                          # the wizard (auto-launches TUI if cab-tui is installed)
+make setup-no-tui                   # force the legacy Read-Host CLI
+make tui-install                    # one-time: pip install the optional Textual TUI front-end
 make doctor                         # diagnose (drift = ok, not a make failure)
 make repair ARGS='--all'            # fix everything
 make repair ARGS='--target dotnet-10'  # fix one thing
 make undo ARGS='--force'            # reverse
 make smoke                          # quick end-to-end test
 make test                           # Pester
+make test-all                       # Pester + cab-tui pytest
 make release VERSION=X.Y.Z          # cut a new release
 ```
+
+> **Optional TUI** — when [cab-tui](docs/tui.md) (Textual front-end) is installed, `make setup` switches to a rich terminal UI with live progress bars, tab/enter-driven prompts, and a step Tree pane. Pass `-NoTui` (or run `make setup-no-tui`) to keep the legacy Read-Host flow.
 
 Or directly invoke any of the three equivalent entry points:
 

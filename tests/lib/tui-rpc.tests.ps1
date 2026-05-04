@@ -191,9 +191,18 @@ Start-Sleep -Seconds 5
 }
 
 Describe 'Start-CABTuiBridge handshake' {
-    AfterEach { Stop-CABTuiBridge }
+    AfterEach {
+        Stop-CABTuiBridge
+        if ($script:handshakeStub -and (Test-Path $script:handshakeStub)) {
+            Remove-Item $script:handshakeStub -Force -ErrorAction SilentlyContinue
+        }
+    }
 
     It 'completes when the child acks within the timeout' {
+        # Stub child speaks the protocol: read welcome → emit ack → idle.
+        # Spawn pwsh via Start-CABTuiBridge's -Arguments seam (added to
+        # support exactly this kind of test without bypassing the public
+        # API).
         $body = @'
 $line = [Console]::In.ReadLine()
 $msg = $line | ConvertFrom-Json
@@ -203,31 +212,21 @@ if ($msg.type -eq 'welcome') {
     Start-Sleep -Seconds 5
 }
 '@
-        $stubFile = Join-Path ([System.IO.Path]::GetTempPath()) "cab-handshake-$(Get-Random).ps1"
-        Set-Content $stubFile $body
-        try {
-            $proc = Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path -Command 'setup' -Version 'test'
-            # Smuggled the pwsh path as if it were python; bridge's only
-            # requirement is that the child speaks the protocol.
-            # Awkward: bridge passes `-m cab_tui --rpc` which our stub
-            # ignores via positional args, and then reads from stdin.
-            $proc | Should -Not -BeNullOrEmpty
-        } finally {
-            if (Test-Path $stubFile) { Remove-Item $stubFile -Force }
-        }
-    } -Skip   # Skipping: Start-CABTuiBridge hard-codes `-m cab_tui --rpc` args.
-              # Tested via the Python integration test below instead.
+        $script:handshakeStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-handshake-$(Get-Random).ps1"
+        Set-Content $script:handshakeStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:handshakeStub`""
+        $proc = Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path -Command 'setup' -Version 'test' -Arguments $stubArgs
+        $proc | Should -Not -BeNullOrEmpty
+        $proc.HasExited | Should -BeFalse
+    }
 
-    It 'throws CABTuiHandshakeException-shaped error if the child never acks' {
-        # Stub that reads the welcome but never replies.
-        $body = '[Console]::In.ReadLine() | Out-Null; Start-Sleep -Seconds 5'
-        $stubFile = Join-Path ([System.IO.Path]::GetTempPath()) "cab-noack-$(Get-Random).ps1"
-        Set-Content $stubFile $body
-        try {
-            { Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path -Command 'setup' -Version 'test' } |
-                Should -Throw '*handshake failed*'
-        } finally {
-            if (Test-Path $stubFile) { Remove-Item $stubFile -Force }
-        }
-    } -Skip   # Same reason as above.
+    It 'throws if the child never acks within the handshake timeout' {
+        # Stub reads the welcome and goes silent — handshake should time out.
+        $body = '[Console]::In.ReadLine() | Out-Null; Start-Sleep -Seconds 10'
+        $script:handshakeStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-noack-$(Get-Random).ps1"
+        Set-Content $script:handshakeStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:handshakeStub`""
+        { Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path -Command 'setup' -Version 'test' -Arguments $stubArgs } |
+            Should -Throw '*handshake failed*'
+    }
 }

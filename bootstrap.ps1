@@ -94,6 +94,54 @@ function Install-Git {
     Write-Color Green '✓ git installed.'
 }
 
+# Optional: Python 3.10+ + cab-tui so the rich TUI is the default. Best
+# effort — silent fallback to Read-Host if any step fails. CA_BOOTSTRAP_NO_TUI
+# (any value) skips the install attempt entirely.
+function Install-PythonAndTui {
+    param([string]$Cache)
+    if ($env:CA_BOOTSTRAP_NO_TUI) { return }
+    if (-not $Cache -or -not (Test-Path $Cache)) { return }
+    $cabTuiDir = Join-Path $Cache 'cab-tui'
+    if (-not (Test-Path $cabTuiDir)) { return }   # older release without TUI
+
+    # Find a usable Python 3.10+ on PATH.
+    $py = $null
+    foreach ($cand in 'python3','python','py') {
+        if (Test-Command $cand) {
+            $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+            if ($verLine -match '^(\d+)\.(\d+)$') {
+                $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+                if ($major -ge 3 -and $minor -ge 10) { $py = $cand; break }
+            }
+        }
+    }
+
+    if (-not $py) {
+        Write-Color Yellow 'Python 3.10+ not found — skipping cab-tui install (legacy CLI will be used).'
+        if (Test-Command 'winget') {
+            Write-Color Yellow '  Optional: `winget install Python.Python.3.12` then re-run to enable the TUI.'
+        }
+        return
+    }
+
+    # Already importable? Nothing to do.
+    & $py -m cab_tui --check 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Color Green '✓ cab-tui already installed.'
+        return
+    }
+
+    Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
+    & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
+    & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Color Green '✓ cab-tui installed; setup will auto-launch the TUI.'
+    } else {
+        Write-Color Yellow '  cab-tui install failed; continuing with the legacy Read-Host CLI.'
+        Write-Color Yellow '  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)'
+    }
+}
+
 Write-Color Blue 'ca-bootstrap — preparing your environment'
 Write-Host ''
 
@@ -149,6 +197,9 @@ if (Test-Path (Join-Path $CacheDir '.git')) {
     git clone --quiet --depth 1 --branch $RepoRef $RepoUrl $CacheDir
 }
 Write-Color Green '✓ ca-bootstrap ready.'
+
+# Best-effort cab-tui install so the rich TUI is the default for new users.
+Install-PythonAndTui -Cache $CacheDir
 Write-Host ''
 
 $caBootstrapPs1 = Join-Path $CacheDir 'ca-bootstrap.ps1'
