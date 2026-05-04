@@ -6,7 +6,7 @@ Sequential answers consumed by Read-Host during `make smoke`. Assumes a develope
 
 On a host with missing tools, step 20 will prompt and consume one of these lines, shifting all subsequent answers — the test will misbehave. For hermetic CI use `-Unattended -ConfigFile <answers.yaml>` (phase 11), where every prompt has a named answer key and order doesn't matter.
 
-Current answer order (host with all tools installed):
+Current answer order (host with all tools installed AND already gh-authed):
 
 | # | Step | Answer | Meaning |
 |---|---|---|---|
@@ -16,3 +16,6 @@ Current answer order (host with all tools installed):
 | 4 | 60-repos / docs | `y` | clone all 3 docs repos |
 | 5 | 60-repos / ca-platform | `n` | skip in smoke test |
 | 6 | 60-repos / cm-product | `n` | skip in smoke test |
+| 7 | 70-git-identity | `n` | skip — don't touch the real ~/.gitconfig |
+
+Steps 20 (prereqs install) and 30 (gh auth) are silent on a fully-provisioned host.

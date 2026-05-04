@@ -10,9 +10,9 @@ function Invoke-CABCommandSetup {
         [hashtable]$Context = @{}
     )
 
-    # Phase 3: welcome → prereqs (detect) → workspace → folders → clone repos.
-    # Phase 5 will insert gh-auth (30) between prereqs and workspace.
-    $stepIds = @('10-welcome','20-prereqs','40-workspace','50-folders','60-repos')
+    # Phase 5: welcome → prereqs → gh-auth → workspace → folders → repos → identity.
+    # Phase 6 will append step 80 (extras) after identity.
+    $stepIds = @('10-welcome','20-prereqs','30-gh-auth','40-workspace','50-folders','60-repos','70-git-identity')
     $Context.TotalSteps = 8   # display the eventual total so step numbering matches the design
 
     foreach ($stepId in $stepIds) {
@@ -49,8 +49,8 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Phase 4 complete: prereqs (detect+install) + workspace + folders + repos.'
-    Write-Host '    Phase 5 (gh auth + git identity) and phase 6 (extras) come next.'
+    Write-CABStatus -Status ok -Message 'Phase 5 complete: prereqs + gh auth + workspace + folders + repos + identity.'
+    Write-Host '    Phase 6 (extras: VS Code workspace file, Claude Code, ca-claude-plugin, WSL2) comes next.'
     Write-Host ''
     Write-Host "  Transcript: $(Get-CABTranscriptPath)"
     Write-Host "  Journal   : $(Get-CABJournalPath)"
