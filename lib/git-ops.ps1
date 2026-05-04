@@ -46,12 +46,19 @@ function Invoke-CABRepoClone {
         [Parameter(Mandatory)][string]$Into,
         [string]$Branch
     )
-    if (-not (Test-CABCommandAvailable 'gh')) {
-        return @{ ok = $false; details = 'gh CLI not installed' }
-    }
     $parent = Split-Path -Parent $Into
     if (-not (Test-Path $parent)) { [void](New-Item -ItemType Directory -Path $parent -Force) }
-    $output = & gh repo clone $Repo $Into 2>&1
+
+    # `file://` URLs (used by integration tests with local fixture repos)
+    # bypass gh and use plain git, so tests don't need gh auth.
+    if ($Repo -like 'file://*' -or $Repo -like '/*' -or $Repo -match '^[A-Za-z]:[\\/]') {
+        $output = & git clone $Repo $Into 2>&1
+    } else {
+        if (-not (Test-CABCommandAvailable 'gh')) {
+            return @{ ok = $false; details = 'gh CLI not installed' }
+        }
+        $output = & gh repo clone $Repo $Into 2>&1
+    }
     if ($LASTEXITCODE -ne 0) {
         return @{ ok = $false; details = ($output -join "`n") }
     }

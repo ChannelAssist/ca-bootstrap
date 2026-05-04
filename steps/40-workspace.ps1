@@ -45,11 +45,15 @@ function ConvertTo-CABAbsolutePath {
         throw "$Source path is empty."
     }
     $expanded = [Environment]::ExpandEnvironmentVariables($Path.Replace('~', $HOME))
+    # Reject relative input *before* GetFullPath has a chance to silently
+    # resolve it against cwd (which would defeat the whole point — a user-
+    # supplied "docs/foo" would become "<cwd>/docs/foo" and we'd happily
+    # create files in their current directory).
+    if (-not [System.IO.Path]::IsPathRooted($expanded)) {
+        throw "$Source path '$Path' is not absolute. Refusing to proceed (would create files in your current directory)."
+    }
     $absolute = try { [System.IO.Path]::GetFullPath($expanded) } catch {
         throw "$Source path '$Path' could not be resolved: $($_.Exception.Message)"
-    }
-    if (-not [System.IO.Path]::IsPathRooted($absolute)) {
-        throw "$Source path '$Path' resolved to a non-absolute value '$absolute'. Refusing to proceed (would create files in your current directory)."
     }
     return $absolute
 }

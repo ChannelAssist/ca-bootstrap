@@ -4,6 +4,10 @@
 function Test-CABStep30 {
     [CmdletBinding()]
     param([hashtable]$Context)
+    # Test-mode seam: pretend the user is logged in as the supplied name.
+    if ($Context -and $Context.TestMode -and $Context.TestGhUser) {
+        return @{ status = 'ok'; details = "Logged in as $($Context.TestGhUser) (TEST MODE stub)"; user = $Context.TestGhUser }
+    }
     if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
         return @{ status = 'fail'; details = 'gh CLI not installed (install in step 20).' }
     }

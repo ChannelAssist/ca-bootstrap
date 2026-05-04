@@ -50,7 +50,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Script:CABootstrapVersion = '1.0.3'
+$Script:CABootstrapVersion = '1.1.0'
 
 # Resolve the repo root (where this script lives), not the user's cwd.
 $Script:CABootstrapRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -124,11 +124,21 @@ $context = @{
     Json         = [bool]$Json
     Summary      = [bool]$Summary
     Quiet        = [bool]$Quiet
+    # Test-mode seam (see TEST_PLAN.md §8.1). Picked up by every step
+    # that would otherwise shell out to a real tool / browser / sudo.
+    TestMode     = [bool]$env:CA_BOOTSTRAP_TEST_MODE
+    TestGhUser   = $env:CA_BOOTSTRAP_TEST_GH_USER
+    TestToolsOk  = if ($env:CA_BOOTSTRAP_TEST_TOOLS_OK) { $env:CA_BOOTSTRAP_TEST_TOOLS_OK -split ',' } else { @() }
+    TestNoInstall = [bool]$env:CA_BOOTSTRAP_TEST_NO_INSTALL
+    TestReposFile = $env:CA_BOOTSTRAP_TEST_REPOS_FILE
 }
 
 # Banner + session start. Suppressed when --json or --quiet is set so the
 # JSON / one-line-summary output isn't polluted with banner text on stdout.
 $silent = $Json -or $Quiet
+if ($context.TestMode -and -not $silent) {
+    Write-CABColor Yellow '  ⚠ TEST MODE — gh auth, tool installs, and remote clones may be stubbed.'
+}
 if (-not $silent) {
     Write-CABBanner -Version $Script:CABootstrapVersion
 }

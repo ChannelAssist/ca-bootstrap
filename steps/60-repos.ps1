@@ -53,13 +53,18 @@ function Invoke-CABStep60 {
         Write-Host '    Install gh, then re-run setup.'
         return @{ status = 'fail'; details = 'gh missing' }
     }
-    if (-not (Test-CABGhAuth)) {
-        Write-CABStatus -Status fail -Message 'gh CLI is not authenticated.'
-        Write-Host '    Run `gh auth login` and try again. The dedicated auth step lands in phase 5.'
-        return @{ status = 'fail'; details = 'gh not authed' }
+    # Test-mode seam: skip gh auth check; use a fixture manifest that points
+    # at file:// repos clonable without auth (see TEST_PLAN.md §8.1).
+    if (-not ($Context.TestMode -and $Context.TestGhUser)) {
+        if (-not (Test-CABGhAuth)) {
+            Write-CABStatus -Status fail -Message 'gh CLI is not authenticated.'
+            Write-Host '    Run `gh auth login` and try again. The dedicated auth step lands in phase 5.'
+            return @{ status = 'fail'; details = 'gh not authed' }
+        }
     }
 
-    $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml')
+    $reposPath = if ($Context.TestMode -and $Context.TestReposFile) { $Context.TestReposFile } else { Join-Path $Context.RepoRoot 'manifest/repos.yaml' }
+    $manifest = Read-CABManifest -Path $reposPath
 
     Write-Host '  Repository groups:'
     foreach ($g in $manifest.groups) {
