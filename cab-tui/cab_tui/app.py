@@ -10,20 +10,26 @@ from __future__ import annotations
 
 import asyncio
 
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Container, Horizontal
 from textual.widgets import (
+    Button,
+    Checkbox,
     Footer,
     Header,
+    Input,
     Log,
     MarkdownViewer,
+    RadioSet,
     TabbedContent,
     TabPane,
     Tree,
 )
 from textual.widgets.tree import TreeNode
 
+from cab_tui import prompts as _prompts
 from cab_tui.rpc import RpcBridge, RpcMessage
 
 # The eight setup steps in execution order. Phase 2 will populate this
@@ -87,6 +93,10 @@ class CabTuiApp(App):
         super().__init__(*args, **kwargs)
         self._rpc = rpc
         self._step_nodes: dict[str, TreeNode[str]] = {}
+        # Active prompt id — set when a `prompt` event arrives, cleared
+        # when the user submits an answer. Lets button/input handlers
+        # know which prompt they're answering.
+        self._pending_prompt_id: str | None = None
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -111,6 +121,10 @@ class CabTuiApp(App):
                         show_table_of_contents=False,
                         id="step-body",
                     )
+                    # Prompt area gets populated dynamically when a
+                    # `prompt` RPC event arrives; lib/prompts.py mounts
+                    # the right widgets per kind.
+                    yield Container(id="prompt-area")
                 with TabPane("Transcript", id="transcript"):
                     yield Log(highlight=True, id="transcript-log")
 
@@ -130,6 +144,7 @@ class CabTuiApp(App):
         self._rpc.on("step",    self._handle_rpc_step)
         self._rpc.on("log",     self._handle_rpc_log)
         self._rpc.on("notify",  self._handle_rpc_notify)
+        self._rpc.on("prompt",  self._handle_rpc_prompt)
         self._rpc.on("done",    self._handle_rpc_done)
         # Run the consumer concurrently with the UI loop.
         self._rpc_task = asyncio.create_task(self._rpc.start())
@@ -170,6 +185,25 @@ class CabTuiApp(App):
             title=msg.raw.get("title", ""),
         )
 
+    async def _handle_rpc_prompt(self, msg: RpcMessage) -> None:
+        """A `prompt` event from the parent: render the right widget kind."""
+        # Make sure the user can see the prompt by switching to the
+        # active-step tab.
+        try:
+            self.query_one(TabbedContent).active = "step"
+        except Exception:
+            pass
+
+        prompt_id = str(msg.raw.get("id", ""))
+        self._pending_prompt_id = prompt_id
+
+        try:
+            area = self.query_one("#prompt-area", Container)
+        except Exception:
+            self._append_log("error", f"prompt-area not mounted; can't render {prompt_id}")
+            return
+        await _prompts.render_prompt(area, msg.raw)
+
     async def _handle_rpc_done(self, msg: RpcMessage) -> None:
         summary = msg.raw.get("summary", "")
         exit_code = int(msg.raw.get("exit_code", 0))
@@ -189,6 +223,67 @@ class CabTuiApp(App):
         # Strip the leading "X " icon to recover the original title.
         label = str(node.label)
         return label.split(" ", 1)[1] if " " in label else label
+
+    # ----- Prompt answer dispatch (Textual events) -----
+
+    @on(Button.Pressed)
+    async def _on_prompt_button(self, event: Button.Pressed) -> None:
+        """Catch every prompt button. Routes to the right answer shape
+        based on the button id, and clears the prompt area on submit."""
+        if not self._pending_prompt_id or self._rpc is None:
+            return
+        bid = event.button.id or ""
+
+        # confirm: button id encodes the answer value
+        confirm_value = _prompts.confirm_value_from_button_id(bid)
+        if confirm_value is not None:
+            await self._send_answer(confirm_value)
+            return
+
+        # choice / multi / text submit buttons: pick up state from siblings
+        if bid == "prompt-choice-submit":
+            try:
+                rs = self.query_one("#prompt-radioset", RadioSet)
+            except Exception:
+                return
+            value = _prompts.choice_value_from_radio(rs)
+            if value is not None:
+                await self._send_answer(value)
+            return
+
+        if bid == "prompt-multi-submit":
+            area = self.query_one("#prompt-area", Container)
+            values = _prompts.multi_values_from_checks(area)
+            await self._send_answer(values)
+            return
+
+        if bid == "prompt-text-submit":
+            try:
+                inp = self.query_one("#prompt-input", Input)
+            except Exception:
+                return
+            await self._send_answer(inp.value)
+            return
+
+    @on(Input.Submitted, "#prompt-input")
+    async def _on_prompt_input_submit(self, event: Input.Submitted) -> None:
+        """Pressing Enter inside the text Input submits the answer."""
+        if not self._pending_prompt_id or self._rpc is None:
+            return
+        await self._send_answer(event.value)
+
+    async def _send_answer(self, value: object) -> None:
+        if self._rpc is None or not self._pending_prompt_id:
+            return
+        self._rpc.send_answer(self._pending_prompt_id, value)
+        self._pending_prompt_id = None
+        # Clear the prompt area — the parent will arrange the next step's
+        # content via subsequent step/log events.
+        try:
+            area = self.query_one("#prompt-area", Container)
+            await area.remove_children()
+        except Exception:
+            pass
 
     # ----- Actions (bound to keys via BINDINGS) -----
 

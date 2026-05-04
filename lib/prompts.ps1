@@ -6,15 +6,26 @@
 
 $Script:CABootstrapUnattended = $false
 $Script:CABootstrapAnswers    = @{}
+$Script:CABootstrapTuiMode    = $false
 
 function Set-CABPromptMode {
     [CmdletBinding()]
     param(
         [bool]$Unattended,
-        [hashtable]$Answers
+        [hashtable]$Answers,
+        [bool]$TuiMode
     )
     $Script:CABootstrapUnattended = $Unattended
-    if ($Answers) { $Script:CABootstrapAnswers = $Answers }
+    if ($Answers)        { $Script:CABootstrapAnswers = $Answers }
+    if ($PSBoundParameters.ContainsKey('TuiMode')) {
+        $Script:CABootstrapTuiMode = $TuiMode
+    }
+}
+
+# New-CABPromptId — short unique id used to correlate prompt requests
+# with answer replies over the RPC bridge.
+function New-CABPromptId {
+    "p-$([Guid]::NewGuid().ToString('N').Substring(0, 12))"
 }
 
 # Read-CABConfirm — yes/no prompt with a default.
@@ -33,6 +44,25 @@ function Read-CABConfirm {
         [string]$AnswerKey
     )
     $defaultStr = if ($Default) { 'yes' } else { 'no' }
+
+    # TUI mode: dispatch through the JSON-RPC bridge so the Python
+    # front-end renders the prompt with stock widgets (Button row).
+    # Unattended-mode answers still take priority, so a -ConfigFile run
+    # never blocks on the bridge.
+    if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
+        $promptId = New-CABPromptId
+        Send-CABTuiEvent -Event @{
+            type     = 'prompt'
+            id       = $promptId
+            kind     = 'confirm'
+            question = $Question
+            default  = $defaultStr
+            options  = @('yes', 'no', 'quit')
+        }
+        $answer = Receive-CABTuiAnswer -PromptId $promptId
+        if (-not $answer) { return $defaultStr }   # bridge died → safe default
+        return [string]$answer
+    }
 
     if ($Script:CABootstrapUnattended) {
         if ($AnswerKey -and $Script:CABootstrapAnswers.ContainsKey($AnswerKey)) {
@@ -79,6 +109,22 @@ function Read-CABChoice {
         [string]$Default,
         [string]$AnswerKey
     )
+    # TUI mode: render as a RadioSet of RadioButtons.
+    if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
+        $promptId = New-CABPromptId
+        $optionsForRpc = $Options | ForEach-Object { @{ value = $_.Key; label = $_.Label } }
+        Send-CABTuiEvent -Event @{
+            type     = 'prompt'
+            id       = $promptId
+            kind     = 'choice'
+            question = $Question
+            options  = @($optionsForRpc)
+            default  = $Default
+        }
+        $answer = Receive-CABTuiAnswer -PromptId $promptId
+        if (-not $answer) { return $Default }
+        return [string]$answer
+    }
     if ($Script:CABootstrapUnattended) {
         if ($AnswerKey -and $Script:CABootstrapAnswers.ContainsKey($AnswerKey)) {
             return [string]$Script:CABootstrapAnswers[$AnswerKey]

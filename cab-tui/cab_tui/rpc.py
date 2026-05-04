@@ -13,6 +13,7 @@ appropriate widget and the user's choice gets serialized back as an
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import sys
 from dataclasses import dataclass
@@ -78,7 +79,14 @@ class RpcBridge:
     async def start(self) -> None:
         """Consume the input stream until EOF or stop()."""
         if self._reader is None:
-            self._reader = await self._connect_stdin()
+            try:
+                self._reader = await self._connect_stdin()
+            except (io.UnsupportedOperation, OSError, ValueError) as exc:
+                # No usable stdin (test harness has captured it, or stdin
+                # isn't a pipe). The consumer is a no-op in that case;
+                # outbound `send()` still works for direct-call tests.
+                print(f"cab-tui: stdin unavailable ({exc!r}); RPC consumer disabled", file=sys.stderr)
+                return
         while not self._stop.is_set():
             try:
                 line = await self._reader.readline()
