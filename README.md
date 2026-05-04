@@ -6,7 +6,7 @@ One command to take a fresh laptop to a working ChannelAssist development enviro
 
 ---
 
-## Quick start (planned)
+## Quick start
 
 ### Windows
 
@@ -20,7 +20,28 @@ iwr -useb https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/boot
 curl -fsSL https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/bootstrap.sh | bash
 ```
 
-That's it. The bootstrap script ensures PowerShell 7+ is installed, clones this repository to a cache directory, and launches the interactive onboarding wizard.
+(Pin to a release tag instead of `main` if you want stability — e.g. swap `main` for `v1.0.0`.)
+
+That's it. The bootstrap script ensures PowerShell 7+ and git are installed (prompting first; uses `winget` on Windows, `brew` on macOS, `apt`/`dnf` on Linux), clones this repository to a cache directory, and launches the interactive onboarding wizard.
+
+### Manual prerequisite install
+
+If you'd rather install PowerShell 7 yourself first:
+
+| OS | Command |
+|---|---|
+| Windows | `winget install Microsoft.PowerShell` |
+| macOS | `brew install --cask powershell` |
+| Debian/Ubuntu | See [Microsoft's install guide](https://learn.microsoft.com/powershell/scripting/install/install-debian) |
+| RHEL/Fedora | `sudo dnf install powershell` (after adding the Microsoft repo) |
+
+Then:
+
+```bash
+git clone https://github.com/ChannelAssist/ca-bootstrap
+cd ca-bootstrap
+pwsh ./ca-bootstrap.ps1 setup
+```
 
 ---
 
@@ -42,7 +63,7 @@ Every step is **interactive and optional**. Defaults are sensible. You can quit 
 
 ## What gets installed
 
-See [`docs/install-matrix.md`](docs/install-matrix.md) for the full table. Summary:
+See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable list. Summary:
 
 | Tool | Windows | macOS | Linux |
 |---|---|---|---|
@@ -149,7 +170,16 @@ ca-bootstrap/
 
 ## Contributing
 
-To add a new repo, tool, or step, see [`docs/contributing.md`](docs/contributing.md). Most changes are YAML edits — no code required.
+Most changes are YAML edits, no code required:
+
+| Change | Edit |
+|---|---|
+| Add a repo | [`manifest/repos.yaml`](manifest/repos.yaml) |
+| Add a tool / change install method | [`manifest/tools.yaml`](manifest/tools.yaml) |
+| Add a folder to the workspace skeleton | [`manifest/folders.yaml`](manifest/folders.yaml) |
+| Adjust default unattended answers | [`manifest/answers.example.yaml`](manifest/answers.example.yaml) |
+
+For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
 
 ---
 
@@ -161,6 +191,8 @@ Proprietary to ChannelAssist Inc. Public-readable for the bootstrap one-liner; t
 
 ## See also
 
-- [`DESIGN.md`](DESIGN.md) — full design specification
-- [`docs/troubleshooting.md`](docs/troubleshooting.md) — common failures and fixes
-- [Public org profile](https://github.com/ChannelAssist) — repo landscape this bootstraps
+- [`DESIGN.md`](DESIGN.md) — full design specification (architecture, data shapes, design rationale)
+- [`docs/commands.md`](docs/commands.md) — per-command reference: flags, exit codes, output formats
+- [`docs/action-journal.md`](docs/action-journal.md) — journal format, recovery, per-action reversal rules
+- [Wiki](https://github.com/ChannelAssist/ca-bootstrap/wiki) — same docs, GitHub-rendered
+- [Public org profile](https://github.com/ChannelAssist) — the repo landscape this bootstraps
