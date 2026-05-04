@@ -128,10 +128,14 @@ def test_child_processes_a_burst_of_events_in_order() -> None:
     assert any(p.get("type") == "report" and p["order"] == steps for p in payloads)
 
 
-def test_child_logs_malformed_lines_to_stderr_and_continues() -> None:
-    """A garbage line followed by a valid line → handler runs once, stderr has the parse error."""
+def test_child_treats_malformed_line_as_fatal_per_protocol() -> None:
+    """A garbage line stops the consumer: handler MUST NOT run on the
+    trailing valid line, stderr names the parse error, exit is clean
+    (the script's main() returns normally after the loop breaks).
+    docs/rpc-protocol.md says parse failure is fatal on the receiving
+    side — silent recovery would diverge parent and child state."""
     script = textwrap.dedent("""
-        import asyncio
+        import asyncio, sys
         from cab_tui.rpc import RpcBridge
 
         async def main():
@@ -141,9 +145,10 @@ def test_child_logs_malformed_lines_to_stderr_and_continues() -> None:
                 nonlocal count
                 count += 1
                 bridge.send({"type": "received", "n": count})
-                bridge.stop()
             bridge.on("step", on_step)
             await bridge.start()
+            # Surface the fatal flag so the test can assert on it.
+            print(f"FATAL_PARSE={bridge._fatal_parse_error}", file=sys.stderr)
 
         asyncio.run(main())
     """)
@@ -154,8 +159,10 @@ def test_child_logs_malformed_lines_to_stderr_and_continues() -> None:
     stdout, stderr, rc = _run_child_script(script, stdin_lines)
     assert rc == 0, f"stderr={stderr!r}"
     assert "failed to parse" in stderr
+    assert "FATAL_PARSE=True" in stderr
+    # The on_step handler must NOT have fired for the trailing valid line.
     payloads = [json.loads(l) for l in stdout.strip().splitlines() if l]
-    assert {"type": "received", "n": 1} in payloads
+    assert all(p.get("type") != "received" for p in payloads), payloads
 
 
 def test_child_handles_large_payload() -> None:

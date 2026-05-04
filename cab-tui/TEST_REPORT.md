@@ -78,16 +78,18 @@
 
 ## What's NOT yet covered (deferred to later phases)
 
-| Item | Phase | Why deferred |
+> **Update (v1.4.0):** Every line in this table has shipped. Kept here as a historical record of how the original phase-1+2 test report read; see the v1.4.0 commit history and `docs/tui.md` for the current state. The "Phase" column refers to the original 12-phase plan in `docs/textual-plan.md`, all of which are now complete.
+
+| Item | Phase | Status |
 |---|---|---|
-| Real PowerShell ↔ Python end-to-end through `ca-bootstrap.ps1` | Phase 3 | The orchestrator doesn't yet have a `-Tui` flag; phase 3 adds it and the integration test goes there. |
-| Prompt-kind rendering (`confirm` → Button row, `choice` → RadioSet, etc.) | Phase 3 | The widgets aren't wired yet. |
-| Tree state driven by journal events (✓/▶/○/✗ updates) | Phase 4 | Phase 2 just stubs in the icons; phase 4 plumbs them through journal-load. |
-| Progress bar / loading-indicator behaviour | Phase 5 | Widgets aren't wired. |
-| Error recovery panel | Phase 6 | Widgets aren't wired. |
-| Auto-detect: orchestrator launches TUI when available, falls back to Read-Host when not | Phase 7 | The auto-detect logic hasn't been added to `ca-bootstrap.ps1` yet. |
-| CI matrix coverage on Windows | Phase 12 | The `.github/workflows/ci.yml` doesn't yet build cab-tui on its matrix. |
-| Snapshot tests (Textual's `pilot.assert_snapshot`) | Phase 9 | We don't have stable layouts for snapshots until phases 4-6 land. |
+| Real PowerShell ↔ Python end-to-end through `ca-bootstrap.ps1` | Phase 3–4 | ✅ shipped — `tests/lib/setup-tui-events.tests.ps1` and `setup-recovery.tests.ps1` |
+| Prompt-kind rendering (`confirm` → Button row, `choice` → RadioSet, etc.) | Phase 3 | ✅ shipped — `cab-tui/tests/test_prompts.py` |
+| Tree state driven by journal events (✓/▶/○/✗ updates) | Phase 4 | ✅ shipped — `tests/lib/setup-tui-events.tests.ps1` |
+| Progress bar / loading-indicator behaviour | Phase 5 | ✅ shipped — `cab-tui/tests/test_progress.py` |
+| Error recovery panel | Phase 6 | ✅ shipped — `cab-tui/tests/test_prompts.py` (recovery cases) + `tests/lib/setup-recovery.tests.ps1` |
+| Auto-detect: orchestrator launches TUI when available, falls back to Read-Host when not | Phase 7 | ✅ shipped — `Test-CABTuiAvailable` + `-Tui`/`-NoTui`/auto |
+| CI matrix coverage on Windows | Phase 12 | ✅ shipped — `cab-tui-pytest` and `cab-tui-rpc-pester` jobs in `.github/workflows/ci.yml` |
+| Snapshot tests (Textual's `pilot.assert_snapshot`) | Phase 9 | ✅ shipped (lighter form) — `cab-tui/tests/test_scenarios.py` drives multi-event sequences and asserts the resulting widget tree, which catches the same regression class without the SVG-diff fragility |
 
 ## Risk assessment for phase 3
 

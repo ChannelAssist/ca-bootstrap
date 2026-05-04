@@ -9,6 +9,7 @@ phase 2 can drive it via RPC.
 from __future__ import annotations
 
 import asyncio
+import sys
 
 from textual import on
 from textual.app import App, ComposeResult
@@ -179,7 +180,24 @@ class CabTuiApp(App):
         # Run the consumer concurrently with the UI loop.
         self._rpc_task = asyncio.create_task(self._rpc.start())
 
+    # JSON-RPC schema version this TUI knows how to speak. Bumped only on
+    # protocol-incompatible changes (renamed event types, restructured
+    # prompt shape, etc.). docs/rpc-protocol.md tracks the matrix.
+    _SUPPORTED_SCHEMA_VERSION = 1
+
     async def _handle_rpc_welcome(self, msg: RpcMessage) -> None:
+        # Per docs/rpc-protocol.md: child must close on schema_version
+        # mismatch instead of acking. Otherwise the parent assumes the
+        # child speaks its protocol and may drive an incompatible UI.
+        schema = msg.raw.get("schema_version", 0)
+        if schema != self._SUPPORTED_SCHEMA_VERSION:
+            print(
+                f"cab-tui: protocol schema_version mismatch "
+                f"(parent={schema}, child supports={self._SUPPORTED_SCHEMA_VERSION}); exiting",
+                file=sys.stderr,
+            )
+            self.exit(return_code=2, message="schema_version mismatch")
+            return
         self._rpc.send_ack("welcome")
         v = msg.raw.get("version", "?")
         self._append_log("info", f"Connected to ca-bootstrap v{v}")

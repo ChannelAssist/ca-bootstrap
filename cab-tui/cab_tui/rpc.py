@@ -49,6 +49,10 @@ class RpcBridge:
         self._handlers: dict[str, Callable[[RpcMessage], Awaitable[None]]] = {}
         self._on_unknown: Callable[[RpcMessage], Awaitable[None]] | None = None
         self._stop = asyncio.Event()
+        # Set when the input loop encounters a malformed line. Per the
+        # protocol spec, parse failure is fatal — the host should exit
+        # non-zero. Tests inspect this to verify the contract.
+        self._fatal_parse_error = False
 
     # -- Outbound -----------------------------------------------------------
 
@@ -97,10 +101,19 @@ class RpcBridge:
             try:
                 payload = json.loads(line.decode("utf-8").rstrip("\n"))
             except json.JSONDecodeError as exc:
-                # Per spec: parse failure → log to stderr and exit. We
-                # only log here; the host decides whether to exit.
-                print(f"cab-tui: failed to parse incoming RPC line: {exc!r}", file=sys.stderr)
-                continue
+                # docs/rpc-protocol.md: parse failure on either side is
+                # fatal — log the offending bytes and stop the consumer
+                # so the host process exits non-zero. Continuing would
+                # leave the parent thinking we'd processed a message we
+                # actually dropped.
+                print(
+                    f"cab-tui: failed to parse RPC line ({exc}); offending bytes: "
+                    f"{line[:200]!r}{'…' if len(line) > 200 else ''}",
+                    file=sys.stderr,
+                )
+                self._stop.set()
+                self._fatal_parse_error = True
+                break
             msg = RpcMessage(raw=payload)
             handler = self._handlers.get(msg.type, self._on_unknown)
             if handler is not None:

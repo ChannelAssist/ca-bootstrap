@@ -143,4 +143,18 @@ If the parent doesn't see an ack within 5 seconds, it kills the child and falls 
 
 ## Phase coverage
 
-Phase 2 implements: `welcome`, `ack`, `step` (start/end), `log`, `quit`. Other event types are reserved here so callers don't have to revisit the protocol when phases 3–6 land.
+As of v1.4.0 the full message catalog is implemented on both sides:
+
+| Event | Direction | Shipped in |
+|----|----|----|
+| `welcome` / `ack` (handshake + schema_version check) | parent → child / child → parent | phase 2 / phase 7 |
+| `step` (start / end / skip) | parent → child | phase 4 |
+| `log` | parent → child | phase 2 |
+| `progress` (determinate ProgressBar / indeterminate LoadingIndicator / done) | parent → child | phase 5 |
+| `prompt` (`confirm` / `choice` / `multi` / `text` / `recovery`) | parent → child | phase 3 / phase 6 |
+| `answer` | child → parent | phase 3 |
+| `notify` | parent → child | phase 2 |
+| `done` | parent → child | phase 2 |
+| `quit` | child → parent | phase 2 |
+
+Schema version is currently `1`. Bumped only on protocol-incompatible changes (renamed event types, restructured prompt shape, etc.). On a mismatch, the child closes without acking and the parent falls back to the legacy Read-Host CLI.

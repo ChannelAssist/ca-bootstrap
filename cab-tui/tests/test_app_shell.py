@@ -53,3 +53,49 @@ async def test_help_action_emits_a_notification() -> None:
         await pilot.press("?")
         # Notifications are queued; just ensure the action ran without
         # raising. Phase 7 will assert specific severities.
+
+
+@pytest.mark.asyncio
+async def test_welcome_acks_supported_schema_version() -> None:
+    """A welcome carrying the supported schema_version must trigger an ack."""
+    import io
+    from cab_tui.rpc import RpcBridge
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    async with app.run_test():
+        class _M:
+            raw = {"type": "welcome", "version": "1.4.0",
+                   "schema_version": app._SUPPORTED_SCHEMA_VERSION,
+                   "command": "setup"}
+            type = "welcome"
+        await app._handle_rpc_welcome(_M())
+        await app.workers.wait_for_complete()
+
+    import json
+    lines = [json.loads(l) for l in cap.getvalue().strip().splitlines() if l]
+    assert any(m.get("type") == "ack" and m.get("of") == "welcome" for m in lines), lines
+
+
+@pytest.mark.asyncio
+async def test_welcome_with_mismatched_schema_version_does_not_ack() -> None:
+    """Per docs/rpc-protocol.md, child must close on schema_version mismatch.
+    The TUI must not ack — the parent infers mismatch from the missing ack
+    plus the child's stderr message and falls back to CLI."""
+    import io
+    from cab_tui.rpc import RpcBridge
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    async with app.run_test():
+        class _M:
+            raw = {"type": "welcome", "version": "9.9.9",
+                   "schema_version": 99,        # incompatible
+                   "command": "setup"}
+            type = "welcome"
+        await app._handle_rpc_welcome(_M())
+        await app.workers.wait_for_complete()
+
+    import json
+    lines = [json.loads(l) for l in cap.getvalue().strip().splitlines() if l]
+    assert not any(m.get("type") == "ack" for m in lines), lines

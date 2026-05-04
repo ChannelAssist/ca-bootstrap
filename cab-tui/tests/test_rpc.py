@@ -84,7 +84,11 @@ async def test_unknown_event_routes_to_on_unknown() -> None:
 
 
 @pytest.mark.asyncio
-async def test_malformed_line_is_logged_and_loop_continues(capsys) -> None:
+async def test_malformed_line_is_fatal_per_protocol(capsys) -> None:
+    """docs/rpc-protocol.md: parse failure is fatal — the consumer must
+    log the offending bytes and stop, so the host process exits non-zero.
+    Continuing past a malformed line would leave the parent thinking we'd
+    processed something we silently dropped."""
     received_types: list[str] = []
 
     async def on_step(msg: RpcMessage) -> None:
@@ -100,5 +104,7 @@ async def test_malformed_line_is_logged_and_loop_continues(capsys) -> None:
 
     err = capsys.readouterr().err
     assert "failed to parse" in err
-    # The well-formed event after the malformed one was still processed.
-    assert received_types == ["step"]
+    # Bridge should have stopped at the malformed line — the trailing
+    # well-formed event must NOT have been processed.
+    assert received_types == []
+    assert bridge._fatal_parse_error is True

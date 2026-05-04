@@ -28,6 +28,37 @@ function New-CABPromptId {
     "p-$([Guid]::NewGuid().ToString('N').Substring(0, 12))"
 }
 
+# Invoke-CABTuiPrompt — best-effort dispatch of a prompt event over the
+# RPC bridge. Returns @{ ok = $bool; value = <answer> }. On any failure
+# (Send throws because the bridge already exited; Receive times out and
+# returns $null mid-conversation), the helper switches the prompt mode
+# back to CLI so future prompts don't keep retrying a dead bridge, and
+# returns ok=$false so the caller can fall through to its Read-Host
+# path. Centralized here instead of repeated in every Read-CAB* helper.
+function Invoke-CABTuiPrompt {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][hashtable]$Event,
+        [Parameter(Mandatory)][string]$PromptId
+    )
+    try {
+        Send-CABTuiEvent -Event $Event
+        $answer = Receive-CABTuiAnswer -PromptId $PromptId
+        if ($null -eq $answer -or $answer -eq '') {
+            # Bridge died waiting for the user's reply (or the user
+            # closed the TUI). Either way we should switch to CLI.
+            Set-CABPromptMode -Unattended $Script:CABootstrapUnattended -Answers $Script:CABootstrapAnswers -TuiMode $false
+            Write-CABColor Yellow '  ⚠ TUI bridge stopped responding; continuing in CLI mode.'
+            return @{ ok = $false; value = $null }
+        }
+        return @{ ok = $true; value = $answer }
+    } catch {
+        Set-CABPromptMode -Unattended $Script:CABootstrapUnattended -Answers $Script:CABootstrapAnswers -TuiMode $false
+        Write-CABColor Yellow "  ⚠ TUI bridge failed ($($_.Exception.Message)); continuing in CLI mode."
+        return @{ ok = $false; value = $null }
+    }
+}
+
 # Read-CABConfirm — yes/no prompt with a default.
 #   $Default: $true → "[Y/n/q]", $false → "[y/N/q]"
 #   Returns: one of 'yes' | 'no' | 'quit' (always a string).
@@ -51,7 +82,7 @@ function Read-CABConfirm {
     # never blocks on the bridge.
     if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
         $promptId = New-CABPromptId
-        Send-CABTuiEvent -Event @{
+        $r = Invoke-CABTuiPrompt -PromptId $promptId -Event @{
             type     = 'prompt'
             id       = $promptId
             kind     = 'confirm'
@@ -59,9 +90,8 @@ function Read-CABConfirm {
             default  = $defaultStr
             options  = @('yes', 'no', 'quit')
         }
-        $answer = Receive-CABTuiAnswer -PromptId $promptId
-        if (-not $answer) { return $defaultStr }   # bridge died → safe default
-        return [string]$answer
+        if ($r.ok) { return [string]$r.value }
+        # else: fall through to CLI path (TuiMode already disabled by helper).
     }
 
     if ($Script:CABootstrapUnattended) {
@@ -113,7 +143,7 @@ function Read-CABChoice {
     if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
         $promptId = New-CABPromptId
         $optionsForRpc = $Options | ForEach-Object { @{ value = $_.Key; label = $_.Label } }
-        Send-CABTuiEvent -Event @{
+        $r = Invoke-CABTuiPrompt -PromptId $promptId -Event @{
             type     = 'prompt'
             id       = $promptId
             kind     = 'choice'
@@ -121,9 +151,8 @@ function Read-CABChoice {
             options  = @($optionsForRpc)
             default  = $Default
         }
-        $answer = Receive-CABTuiAnswer -PromptId $promptId
-        if (-not $answer) { return $Default }
-        return [string]$answer
+        if ($r.ok) { return [string]$r.value }
+        # else: fall through to CLI path (TuiMode already disabled by helper).
     }
     if ($Script:CABootstrapUnattended) {
         if ($AnswerKey -and $Script:CABootstrapAnswers.ContainsKey($AnswerKey)) {
@@ -162,7 +191,7 @@ function Read-CABRecovery {
     )
     if ($Script:CABootstrapTuiMode -and -not $Script:CABootstrapUnattended) {
         $promptId = New-CABPromptId
-        Send-CABTuiEvent -Event @{
+        $r = Invoke-CABTuiPrompt -PromptId $promptId -Event @{
             type     = 'prompt'
             id       = $promptId
             kind     = 'recovery'
@@ -171,10 +200,13 @@ function Read-CABRecovery {
             options  = @('retry', 'skip', 'quit')
             default  = $Default
         }
-        $answer = Receive-CABTuiAnswer -PromptId $promptId
-        if (-not $answer) { return 'quit' }   # bridge died → fail safe
-        $answer = [string]$answer
-        if ($answer -in 'retry','skip','quit') { return $answer }
+        if ($r.ok) {
+            $answer = [string]$r.value
+            if ($answer -in 'retry','skip','quit') { return $answer }
+            return 'quit'   # whitelist failed → safe default
+        }
+        # Bridge dead — preserve the existing CLI fallback behavior of
+        # going straight to rollback. (CLI never had a recovery prompt.)
         return 'quit'
     }
     # CLI mode (and unattended): preserve long-standing behavior of going

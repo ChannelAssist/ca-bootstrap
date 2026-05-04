@@ -95,6 +95,60 @@ Start-Sleep -Seconds 5
         $r = Read-CABConfirm -Question 'q' -Default $true -AnswerKey 'k'
         $r | Should -Be 'no'
     }
+
+}
+
+Describe 'Invoke-CABTuiPrompt fallback contract' {
+    BeforeEach { Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true }
+    AfterEach  { Stop-StubChild; Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false }
+
+    It 'returns ok=$false and disables TuiMode when Send throws (dead bridge)' {
+        # No stub child — $Script:CABTuiProcess is null, so Send-CABTuiEvent
+        # throws "cab-tui process is not running". The helper must catch,
+        # disable TuiMode, and surface the failure so callers fall back
+        # to CLI instead of aborting setup.
+        $Script:CABTuiProcess = $null
+        $r = Invoke-CABTuiPrompt -PromptId 'p1' -Event @{
+            type = 'prompt'; id = 'p1'; kind = 'confirm';
+            question = 'q'; default = 'yes'; options = @('yes','no','quit')
+        }
+        $r.ok | Should -BeFalse
+        $r.value | Should -BeNullOrEmpty
+        $Script:CABootstrapTuiMode | Should -BeFalse
+    }
+
+    It 'returns ok=$false and disables TuiMode when child closes mid-Receive' {
+        # Stub reads the prompt then exits without replying — Receive
+        # returns $null. Helper must treat $null identically to a Send
+        # exception (both mean "the child can't drive the UI any more").
+        $stub = '[Console]::In.ReadLine() | Out-Null'
+        Start-StubChild -AnswerScript $stub | Out-Null
+        $r = Invoke-CABTuiPrompt -PromptId 'p2' -Event @{
+            type = 'prompt'; id = 'p2'; kind = 'confirm';
+            question = 'q'; default = 'yes'; options = @('yes','no','quit')
+        }
+        $r.ok | Should -BeFalse
+        $Script:CABootstrapTuiMode | Should -BeFalse
+    }
+
+    It 'returns ok=$true with the answer when the bridge replies normally' {
+        $stub = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+$reply = @{ type = 'answer'; id = $msg.id; value = 'no' } | ConvertTo-Json -Compress
+[Console]::Out.WriteLine($reply)
+[Console]::Out.Flush()
+Start-Sleep -Seconds 5
+'@
+        Start-StubChild -AnswerScript $stub | Out-Null
+        $r = Invoke-CABTuiPrompt -PromptId 'p3' -Event @{
+            type = 'prompt'; id = 'p3'; kind = 'confirm';
+            question = 'q'; default = 'yes'; options = @('yes','no','quit')
+        }
+        $r.ok | Should -BeTrue
+        $r.value | Should -Be 'no'
+        $Script:CABootstrapTuiMode | Should -BeTrue
+    }
 }
 
 Describe 'Read-CABRecovery in TuiMode (real subprocess)' {
