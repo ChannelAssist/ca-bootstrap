@@ -24,7 +24,7 @@ Describe 'Lock-CABSession / Unlock-CABSession' {
 
     It 'acquires the lock when no other session holds it' {
         Lock-CABSession | Should -BeTrue
-        Test-Path (Join-Path $script:tempState 'session.lock') | Should -BeTrue
+        Test-Path (Join-Path $script:tempState 'session.lock.d') | Should -BeTrue
     }
 
     It 'rejects a second concurrent acquire (via subprocess)' {

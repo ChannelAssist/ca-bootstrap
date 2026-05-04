@@ -62,7 +62,7 @@ function Invoke-CABStep40 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 4 -Total $Context.TotalSteps -Title 'Workspace location'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 4) -Total $Context.TotalSteps -Title 'Workspace location'
 
     # Resolve the default workspace path (absolute, guaranteed).
     try {

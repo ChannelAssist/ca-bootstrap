@@ -45,7 +45,7 @@ function Invoke-CABStep70 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 7 -Total $Context.TotalSteps -Title 'Git identity for ChannelAssist'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 7) -Total $Context.TotalSteps -Title 'Git identity for ChannelAssist'
 
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set.' }

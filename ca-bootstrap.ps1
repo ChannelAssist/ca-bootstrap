@@ -46,7 +46,10 @@ param(
     # doctor flags
     [switch]$Json,
     [switch]$Summary,
-    [switch]$Quiet
+    [switch]$Quiet,
+
+    # break-glass: forcibly remove a stale lock before running
+    [switch]$ForceUnlock
 )
 
 $ErrorActionPreference = 'Stop'
@@ -142,12 +145,40 @@ if ($context.TestMode -and -not $silent) {
 if (-not $silent) {
     Write-CABBanner -Version $Script:CABootstrapVersion
 }
-if ($silent) {
-    # Still need the journal session, but skip the on-screen banner.
-    Read-CABJournal | Out-Null
-    $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
-} else {
-    Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+# Honor --force-unlock by clearing any existing lockfile before the
+# session tries to acquire one. Useful when a previous run crashed.
+if ($ForceUnlock) {
+    $stateDir = if ($env:CA_BOOTSTRAP_STATE) { $env:CA_BOOTSTRAP_STATE } else { Join-Path $HOME '.ca-bootstrap' }
+    foreach ($p in @((Join-Path $stateDir 'session.lock.d'), (Join-Path $stateDir 'session.lock'))) {
+        if (Test-Path $p) {
+            Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue
+            if (-not $silent) { Write-CABColor Yellow "  ⚠ -ForceUnlock: removed $p" }
+        }
+    }
+}
+
+try {
+    if ($silent) {
+        # Still need the journal session, but skip the on-screen banner.
+        Read-CABJournal | Out-Null
+        $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
+    } else {
+        Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+    }
+}
+catch [CABSessionLockedException] {
+    Write-CABColor Red ''
+    Write-CABColor Red '  Another ca-bootstrap session is already running.'
+    Write-Host  "    Lock file: $($_.Exception.LockPath)"
+    if ($_.Exception.Holder -and $_.Exception.Holder.pid) {
+        Write-Host  "    Holder   : pid=$($_.Exception.Holder.pid) started=$($_.Exception.Holder.started)"
+    }
+    Write-Host ''
+    Write-Host  '  If the previous run crashed and the lock is stale, run:'
+    Write-CABColor Cyan '      ca-bootstrap.ps1 ' "$Command -ForceUnlock"
+    Write-Host  '  Otherwise wait for the other session to finish.'
+    Write-Host ''
+    exit 5
 }
 
 $exitCode = 0

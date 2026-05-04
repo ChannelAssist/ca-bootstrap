@@ -10,14 +10,27 @@ function Invoke-CABCommandSetup {
         [hashtable]$Context = @{}
     )
 
-    # Phase 6: full setup happy path — eight steps, end to end.
+    # Workspace location moved earlier in the flow so the user confirms
+    # the destination directory BEFORE any tool installs, browser auth
+    # flows, or other time-investment. Order:
+    #   1. welcome    — explain + consent
+    #   2. workspace  — confirm destination (the "where will this go?" question)
+    #   3. prereqs    — detect + install missing tools
+    #   4. gh-auth    — sign in to GitHub
+    #   5. folders    — create the workspace skeleton
+    #   6. repos      — clone
+    #   7. identity   — per-folder git config
+    #   8. extras     — VS Code workspace, plugin, WSL2
     $stepIds = @(
-        '10-welcome','20-prereqs','30-gh-auth','40-workspace',
+        '10-welcome','40-workspace','20-prereqs','30-gh-auth',
         '50-folders','60-repos','70-git-identity','80-extras'
     )
-    $Context.TotalSteps = 8   # display the eventual total so step numbering matches the design
+    $Context.TotalSteps = 8
 
+    $ordinal = 0
     foreach ($stepId in $stepIds) {
+        $ordinal++
+        $Context.StepOrdinal = $ordinal
         $stepPath = Join-Path $Context.RepoRoot "steps/$stepId.ps1"
         if (-not (Test-Path $stepPath)) {
             Write-CABStatus -Status fail -Message "Step file missing: $stepPath"

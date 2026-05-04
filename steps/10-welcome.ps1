@@ -18,7 +18,7 @@ function Invoke-CABStep10 {
     param([hashtable]$Context)
 
     $totalSteps = if ($Context.TotalSteps) { $Context.TotalSteps } else { 8 }
-    Write-CABStep -Number 1 -Total $totalSteps -Title 'Welcome'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 1) -Total $totalSteps -Title 'Welcome'
 
     Write-Host '  This wizard will set up your machine for ChannelAssist development:'
     Write-Host '    • install missing tools (git, gh, .NET 10, Node 20, Python 3.12,'

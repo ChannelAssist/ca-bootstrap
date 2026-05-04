@@ -26,24 +26,38 @@ That's it. The bootstrap script ensures PowerShell 7+ and git are installed (pro
 
 ### From a clone
 
-If you've cloned this repo (e.g. for development), the daily-driver invocation is:
+If you've cloned this repo (e.g. for development), the daily-driver invocation is the make targets:
 
 ```bash
-make setup
-make doctor
-make repair ARGS='--all'
-make undo ARGS='--force'
+make setup                          # the wizard
+make doctor                         # diagnose (drift = ok, not a make failure)
+make repair ARGS='--all'            # fix everything
+make repair ARGS='--target dotnet-10'  # fix one thing
+make undo ARGS='--force'            # reverse
+make smoke                          # quick end-to-end test
+make test                           # Pester
+make release VERSION=X.Y.Z          # cut a new release
 ```
 
-Or directly:
+Or directly invoke any of the three equivalent entry points:
 
 ```bash
-pwsh ./ca-bootstrap.ps1 doctor
-./bootstrap.sh doctor    # also works — short-circuits when invoked from a clone
-./bootstrap.ps1 doctor   # likewise on Windows
+pwsh ./ca-bootstrap.ps1 doctor      # the orchestrator itself
+./bootstrap.sh doctor               # forwards to ca-bootstrap.ps1 from a clone
+./bootstrap.ps1 doctor              # likewise on Windows
 ```
 
 > `bootstrap.sh` / `bootstrap.ps1` are the curl-pipe entrypoints. From a clone they auto-detect their sibling `ca-bootstrap.ps1` and forward args, so you never need to remember which is which.
+
+### Recovering from a stale lock
+
+ca-bootstrap holds an exclusive `~/.ca-bootstrap/session.lock` so two parallel `setup` runs can't corrupt the journal. If a previous run crashed, the next run normally auto-detects the stale lock and clears it. If that heuristic fails:
+
+```bash
+./ca-bootstrap.ps1 setup -ForceUnlock     # break the lock and retry
+```
+
+`doctor` doesn't take the lock (read-only).
 
 ### Manual prerequisite install
 

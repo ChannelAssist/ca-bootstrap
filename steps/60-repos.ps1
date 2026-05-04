@@ -26,7 +26,7 @@ function Invoke-CABStep60 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 6 -Total $Context.TotalSteps -Title 'Clone repositories'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 6) -Total $Context.TotalSteps -Title 'Clone repositories'
 
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set — step 40 must run first.' }

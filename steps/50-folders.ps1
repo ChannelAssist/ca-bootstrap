@@ -20,7 +20,7 @@ function Invoke-CABStep50 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 5 -Total $Context.TotalSteps -Title 'Folder structure'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 5) -Total $Context.TotalSteps -Title 'Folder structure'
 
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set — step 40 must run first.' }

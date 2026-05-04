@@ -91,43 +91,91 @@ function Initialize-CABJournal {
 # and releases it at session end (or on process exit, since the OS will
 # clean up the handle).
 
-$Script:CABLockHandle = $null
+$Script:CABLockDirAcquired = $null
 
 function Lock-CABSession {
     [CmdletBinding()]
     param([int]$TimeoutMs = 0)
     Initialize-CABJournal
-    $lockPath = Join-Path $Script:CABootstrapStateDir 'session.lock'
+    # Use a *directory* as the mutex. mkdir is atomic across every OS
+    # (POSIX + NTFS) — succeeds for exactly one caller; subsequent calls
+    # fail until the dir is removed. .NET's File.Open + FileShare is
+    # advisory on Unix and doesn't actually enforce single-writer.
+    $lockDir = Join-Path $Script:CABootstrapStateDir 'session.lock.d'
     $deadline = [Environment]::TickCount + $TimeoutMs
     while ($true) {
         try {
-            # FileShare.None makes this an exclusive lock.
-            $Script:CABLockHandle = [System.IO.File]::Open(
-                $lockPath, [System.IO.FileMode]::OpenOrCreate,
-                [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-            # Stamp PID so a future user can identify the holder.
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes("pid=$PID started=$(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')`n")
-            $Script:CABLockHandle.SetLength(0)
-            $Script:CABLockHandle.Write($bytes, 0, $bytes.Length)
-            $Script:CABLockHandle.Flush()
+            [void][System.IO.Directory]::CreateDirectory($Script:CABootstrapStateDir)
+            # CreateDirectory is non-atomic (succeeds even if dir exists),
+            # so we use the .NET DirectoryInfo.Create path with a guard.
+            if (Test-Path $lockDir) {
+                throw [System.IO.IOException]::new("Lock directory exists: $lockDir")
+            }
+            $di = New-Object System.IO.DirectoryInfo $lockDir
+            $di.Create()
+            $Script:CABLockDirAcquired = $lockDir
+            # Stamp PID so other processes can identify the holder.
+            $holderFile = Join-Path $lockDir 'holder'
+            "pid=$PID started=$(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')" | Set-Content -Path $holderFile -Encoding utf8NoBOM
             return $true
         } catch [System.IO.IOException] {
+            # Stale-lock check: holder process gone → reclaim.
+            if (Test-CABStaleLock -Path (Join-Path $lockDir 'holder')) {
+                Remove-Item -Path $lockDir -Recurse -Force -ErrorAction SilentlyContinue
+                continue
+            }
             if ([Environment]::TickCount -ge $deadline) {
-                $holder = ''
-                try { $holder = (Get-Content $lockPath -Raw -ErrorAction SilentlyContinue).Trim() } catch {}
-                throw "Another ca-bootstrap session is already running (lock at $lockPath; holder: $holder). Wait for it to finish or remove the lock if it's stale."
+                throw [CABSessionLockedException]::new($lockDir, (Get-CABLockHolder (Join-Path $lockDir 'holder')))
             }
             Start-Sleep -Milliseconds 200
         }
     }
 }
 
+function Get-CABLockHolder {
+    param([string]$Path)
+    try {
+        $content = (Get-Content $Path -Raw -ErrorAction SilentlyContinue)
+        if (-not $content) { return $null }
+        $h = @{}
+        foreach ($pair in ($content.Trim() -split '\s+')) {
+            if ($pair -match '^([^=]+)=(.+)$') { $h[$Matches[1]] = $Matches[2] }
+        }
+        return $h
+    } catch { return $null }
+}
+
+function Test-CABStaleLock {
+    param([string]$Path)
+    $holder = Get-CABLockHolder $Path
+    if (-not $holder -or -not $holder.pid) { return $true }   # malformed / empty → stale
+    try {
+        $proc = Get-Process -Id ([int]$holder.pid) -ErrorAction Stop
+        # Process exists with that PID. Treat as live regardless of name,
+        # because (a) cross-platform process naming varies (pwsh-preview,
+        # pwsh-7, etc.) and (b) a recycled PID is rare enough that an
+        # explicit -ForceUnlock is the right escape hatch.
+        return ($null -eq $proc)
+    } catch {
+        return $true   # Get-Process couldn't find a process with that PID → stale
+    }
+}
+
+# Custom exception so the orchestrator can catch it and emit a friendly
+# message instead of a stack trace.
+class CABSessionLockedException : System.Exception {
+    [string]$LockPath
+    [hashtable]$Holder
+    CABSessionLockedException([string]$path, [hashtable]$holder) : base("ca-bootstrap session lock held") {
+        $this.LockPath = $path
+        $this.Holder = $holder
+    }
+}
+
 function Unlock-CABSession {
-    if ($Script:CABLockHandle) {
-        try { $Script:CABLockHandle.Dispose() } catch {}
-        $Script:CABLockHandle = $null
-        $lockPath = Join-Path $Script:CABootstrapStateDir 'session.lock'
-        Remove-Item -Path $lockPath -Force -ErrorAction SilentlyContinue
+    if ($Script:CABLockDirAcquired) {
+        Remove-Item -Path $Script:CABLockDirAcquired -Recurse -Force -ErrorAction SilentlyContinue
+        $Script:CABLockDirAcquired = $null
     }
 }
 

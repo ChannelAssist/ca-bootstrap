@@ -1,12 +1,31 @@
 # Command reference
 
-ca-bootstrap is a multi-command CLI. Every invocation has the shape:
+ca-bootstrap is a multi-command CLI. Three equivalent entry points:
 
-```
-./ca-bootstrap.ps1 <command> [<targets>] [<flags>]
+```bash
+make <command>                                         # from a clone, friendliest
+./ca-bootstrap.ps1 <command> [<targets>] [<flags>]     # direct invocation
+./bootstrap.{ps1,sh} <command> [<targets>] [<flags>]   # forwards to ca-bootstrap.ps1
+                                                        # when run from a clone;
+                                                        # bootstraps the cache when
+                                                        # piped from curl.
 ```
 
 If `<command>` is omitted, `setup` runs.
+
+### Make targets
+
+| Target | Equivalent direct invocation |
+|---|---|
+| `make setup` | `pwsh ./ca-bootstrap.ps1 setup` |
+| `make doctor` | `pwsh ./ca-bootstrap.ps1 doctor` (exits 0 even when drift is found, since drift is a valid output) |
+| `make repair ARGS='--all'` | `pwsh ./ca-bootstrap.ps1 repair -All` |
+| `make repair ARGS='--target dotnet-10'` | `pwsh ./ca-bootstrap.ps1 repair -Target dotnet-10` |
+| `make undo ARGS='--force'` | `pwsh ./ca-bootstrap.ps1 undo -Force` |
+| `make smoke` | end-to-end smoke test against a /tmp workspace |
+| `make test` | full Pester suite |
+| `make release VERSION=X.Y.Z` | full release: bump version, smoke + tests, commit, tag, push, GH release |
+| `make release-dry-run VERSION=X.Y.Z` | same, no writes |
 
 ---
 
@@ -246,8 +265,29 @@ These flags work on every command:
 | `--manifest-dir <path>` | Override the manifest directory (defaults to bundled) |
 | `--journal <path>` | Override the journal location (defaults to `~/.ca-bootstrap/journal.yaml`) |
 | `--no-color` | Disable ANSI color output |
+| `-ForceUnlock` | Remove `~/.ca-bootstrap/session.lock` before acquiring; for breaking out of stale locks left by a crashed run |
 | `--help` / `-h` | Show command help |
 | `--version` | Print ca-bootstrap version and exit |
+
+## Concurrency
+
+ca-bootstrap holds an exclusive `session.lock` for the duration of any session that mutates state (`setup`, `repair`, `undo`). `doctor` is read-only and bypasses the lock.
+
+If a previous run crashed without releasing the lock, the next invocation auto-detects the stale lock (the recorded PID either no longer exists or isn't a PowerShell process) and removes it transparently.
+
+If the auto-clean heuristic fails for any reason, the user sees a clean message:
+
+```
+  Another ca-bootstrap session is already running.
+    Lock file: /Users/.../.ca-bootstrap/session.lock
+    Holder   : pid=12345 started=2026-05-04T15:00:00Z
+
+  If the previous run crashed and the lock is stale, run:
+      ca-bootstrap.ps1 setup -ForceUnlock
+  Otherwise wait for the other session to finish.
+```
+
+Exit code: **5** when locked.
 
 ---
 

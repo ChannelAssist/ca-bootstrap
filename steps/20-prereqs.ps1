@@ -29,7 +29,7 @@ function Invoke-CABStep20 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 2 -Total $Context.TotalSteps -Title 'Prerequisites'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 2) -Total $Context.TotalSteps -Title 'Prerequisites'
 
     $detection = Test-CABStep20 -Context $Context
     Format-CABToolReport -Report $detection.report

@@ -15,7 +15,19 @@
 
 BeforeAll {
     $repoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
-    $script:bootstrapPs1 = Join-Path $repoRoot 'bootstrap.ps1'
+    # Copy bootstrap.ps1 into a tmp dir WITHOUT a sibling ca-bootstrap.ps1
+    # so the new "short-circuit when invoked from a clone" logic doesn't
+    # bypass the cache code path we're testing.
+    $script:bootstrapStaging = Join-Path ([System.IO.Path]::GetTempPath()) "cab-boot-stage-$(Get-Random)"
+    [void](New-Item -ItemType Directory -Path $script:bootstrapStaging -Force)
+    Copy-Item -Path (Join-Path $repoRoot 'bootstrap.ps1') -Destination $script:bootstrapStaging
+    $script:bootstrapPs1 = Join-Path $script:bootstrapStaging 'bootstrap.ps1'
+}
+
+AfterAll {
+    if ($script:bootstrapStaging -and (Test-Path $script:bootstrapStaging)) {
+        Remove-Item -Recurse -Force $script:bootstrapStaging -ErrorAction SilentlyContinue
+    }
 }
 
 Describe 'bootstrap.ps1 — cache recovery (regression v1.0.2)' {

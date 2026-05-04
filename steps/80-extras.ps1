@@ -49,7 +49,7 @@ function Invoke-CABStep80 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 8 -Total $Context.TotalSteps -Title 'Optional extras'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 8) -Total $Context.TotalSteps -Title 'Optional extras'
 
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set.' }

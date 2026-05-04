@@ -23,7 +23,7 @@ function Invoke-CABStep30 {
     [CmdletBinding()]
     param([hashtable]$Context)
 
-    Write-CABStep -Number 3 -Total $Context.TotalSteps -Title 'GitHub authentication'
+    Write-CABStep -Number ($Context.StepOrdinal ?? 3) -Total $Context.TotalSteps -Title 'GitHub authentication'
 
     $detection = Test-CABStep30 -Context $Context
 
