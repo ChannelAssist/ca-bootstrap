@@ -11,7 +11,12 @@ from cab_tui.app import CabTuiApp
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="cab-tui",
-        description="Textual TUI for ca-bootstrap. Phase 1: layout-only shell.",
+        description=(
+            "Textual TUI for ca-bootstrap. Subscribes to a JSON-RPC stdio "
+            "stream from ca-bootstrap.ps1 and renders the interactive setup "
+            "flow with stock Textual widgets (Tree, ProgressBar, "
+            "LoadingIndicator, RadioSet, Button row, etc.). See docs/tui.md."
+        ),
     )
     parser.add_argument(
         "--check",

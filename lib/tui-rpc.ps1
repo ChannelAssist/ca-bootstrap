@@ -93,7 +93,16 @@ function Start-CABTuiBridge {
     }
     $ack = Receive-CABTuiMessage -TimeoutMs 5000
     if (-not $ack -or $ack.type -ne 'ack' -or $ack.of -ne 'welcome') {
-        Stop-CABTuiBridge
+        # Handshake failed → the child is in an undefined state. Don't go
+        # through Stop-CABTuiBridge (which waits for the user to dismiss
+        # the TUI); just kill it now since no protocol contract applies.
+        if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
+            try { $Script:CABTuiProcess.StandardInput.Close() } catch { }
+            if (-not $Script:CABTuiProcess.WaitForExit(2000)) {
+                try { $Script:CABTuiProcess.Kill() } catch { }
+            }
+        }
+        $Script:CABTuiProcess = $null
         throw "cab-tui handshake failed (expected ack of welcome, got: $($ack | ConvertTo-Json -Compress))"
     }
     return $proc
@@ -204,11 +213,37 @@ function Stop-CABTuiBridge {
     if (-not $Script:CABTuiProcess.HasExited) {
         try {
             Send-CABTuiEvent -Event @{ type = 'done'; exit_code = $ExitCode; summary = $Summary }
-            $Script:CABTuiProcess.StandardInput.Close()
         } catch { }
-        # Give the TUI 2s to drain and exit gracefully, then terminate.
-        if (-not $Script:CABTuiProcess.WaitForExit(2000)) {
-            try { $Script:CABTuiProcess.Kill() } catch { }
+
+        # docs/rpc-protocol.md: after `done`, the TUI may keep running so
+        # the user can review the transcript. The orchestrator therefore
+        # waits for the user to dismiss (press q in the TUI) instead of
+        # forcing EOF on stdin and killing within seconds. The wait is
+        # bounded so headless / CI runs don't hang forever — set
+        # CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT in seconds (default 300, i.e.
+        # 5 minutes; 0 means wait indefinitely).
+        $timeoutSec = 300
+        if ($env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT) {
+            $parsed = 0
+            if ([int]::TryParse($env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT, [ref]$parsed)) {
+                $timeoutSec = $parsed
+            }
+        }
+        $exited = $false
+        if ($timeoutSec -le 0) {
+            $Script:CABTuiProcess.WaitForExit()
+            $exited = $true
+        } else {
+            $exited = $Script:CABTuiProcess.WaitForExit($timeoutSec * 1000)
+        }
+        if (-not $exited) {
+            # Final safety net: the user walked away or the TUI hung.
+            # Close stdin first so the consumer task drains cleanly,
+            # then kill if it still hasn't exited.
+            try { $Script:CABTuiProcess.StandardInput.Close() } catch { }
+            if (-not $Script:CABTuiProcess.WaitForExit(2000)) {
+                try { $Script:CABTuiProcess.Kill() } catch { }
+            }
         }
     }
     $Script:CABTuiProcess = $null

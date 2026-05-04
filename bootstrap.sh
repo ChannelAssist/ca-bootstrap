@@ -37,6 +37,29 @@ color_green()  { printf '\033[0;32m%s\033[0m\n' "$*"; }
 color_yellow() { printf '\033[0;33m%s\033[0m\n' "$*"; }
 color_blue()   { printf '\033[0;34m%s\033[0m\n' "$*"; }
 
+# Read a yes/no answer from the user. Defaults to "Y" for the curl-pipe
+# entrypoint (`curl ... | bash` has no usable stdin: it's already at EOF
+# because the script body itself was just consumed from it). Reading from
+# /dev/tty is the standard escape hatch — it's the controlling terminal
+# even when stdin is a pipe. If /dev/tty isn't available either (CI,
+# headless), we fall through to the documented default of "Y" so the
+# bootstrap behavior matches the docs/tui.md promise of "first-time
+# users get the TUI by default".
+prompt_yn() {
+    local prompt="$1" default="${2:-Y}"
+    local ans
+    if [ -t 0 ]; then
+        read -r -p "$prompt " ans
+    elif [ -e /dev/tty ]; then
+        read -r -p "$prompt " ans </dev/tty
+    else
+        # Non-interactive (curl-pipe, CI). Honor the default silently.
+        ans="$default"
+    fi
+    [ -z "$ans" ] && ans="$default"
+    case "$ans" in [Yy]*) return 0 ;; *) return 1 ;; esac
+}
+
 detect_os() {
     case "$(uname -s)" in
         Darwin) echo "macos" ;;
@@ -165,24 +188,19 @@ install_python_and_tui() {
 
     if [ -z "$py" ]; then
         color_yellow "Python 3.10+ not found — installing now to enable the TUI."
-        read -p "Install Python automatically? [Y/n] " ans
-        case "${ans:-Y}" in
-            [Yy]*|"")
-                if ! install_python; then
-                    color_yellow "  Python install failed/declined; continuing with the legacy CLI."
-                    return 0
-                fi
-                py=$(detect_python)
-                if [ -z "$py" ]; then
-                    color_yellow "  Python still not detected post-install; continuing with the legacy CLI."
-                    return 0
-                fi
-                ;;
-            *)
-                color_yellow "  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run)."
-                return 0
-                ;;
-        esac
+        if ! prompt_yn "Install Python automatically? [Y/n]" Y; then
+            color_yellow "  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run)."
+            return 0
+        fi
+        if ! install_python; then
+            color_yellow "  Python install failed/declined; continuing with the legacy CLI."
+            return 0
+        fi
+        py=$(detect_python)
+        if [ -z "$py" ]; then
+            color_yellow "  Python still not detected post-install; continuing with the legacy CLI."
+            return 0
+        fi
     fi
 
     # Probe whether cab_tui is already importable (e.g. previous run).
@@ -218,14 +236,22 @@ main() {
 
     if ! command -v pwsh >/dev/null 2>&1; then
         color_yellow "PowerShell 7+ is not installed. ca-bootstrap requires it."
-        read -p "Install now? [Y/n] " ans
-        case "${ans:-Y}" in [Yy]*|"") install_pwsh ;; *) color_red "Cannot continue without PowerShell. Exiting."; exit 1 ;; esac
+        if prompt_yn "Install now? [Y/n]" Y; then
+            install_pwsh
+        else
+            color_red "Cannot continue without PowerShell. Exiting."
+            exit 1
+        fi
     fi
 
     if ! command -v git >/dev/null 2>&1; then
         color_yellow "git is not installed. ca-bootstrap requires it."
-        read -p "Install now? [Y/n] " ans
-        case "${ans:-Y}" in [Yy]*|"") install_git ;; *) color_red "Cannot continue without git. Exiting."; exit 1 ;; esac
+        if prompt_yn "Install now? [Y/n]" Y; then
+            install_git
+        else
+            color_red "Cannot continue without git. Exiting."
+            exit 1
+        fi
     fi
 
     mkdir -p "$CACHE_DIR"

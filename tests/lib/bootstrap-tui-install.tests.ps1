@@ -1,0 +1,62 @@
+#requires -Version 7.0
+# tests/lib/bootstrap-tui-install.tests.ps1 — coverage for the new
+# Python+cab-tui install path added to bootstrap.ps1 in v1.4.0.
+#
+# Full end-to-end coverage of the install function is impractical: it
+# spawns winget, prompts via Read-Host, and assumes a freshly-cloned
+# cache directory — none of which we want to drive in unit tests. So we
+# test the regression-prone surfaces:
+#   - the script parses (catches syntax errors that would silently
+#     break the curl-pipe entrypoint)
+#   - the new helper functions are present and have the expected
+#     signatures (catches accidental renames / removals during
+#     refactors)
+#   - the mode-2 short-circuit still fires when a sibling
+#     ca-bootstrap.ps1 exists (which in turn means Install-PythonAndTui
+#     is NEVER invoked from a clone, so a regression in that function
+#     can't break daily-driver `./bootstrap.ps1 doctor` use)
+
+BeforeAll {
+    $script:repoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
+    $script:bootstrapPs1 = Join-Path $script:repoRoot 'bootstrap.ps1'
+    Test-Path $script:bootstrapPs1 | Should -BeTrue
+}
+
+Describe 'bootstrap.ps1 — Python/cab-tui install path' {
+    It 'parses without syntax errors' {
+        $errors = $null
+        $tokens = $null
+        [System.Management.Automation.Language.Parser]::ParseFile(
+            $script:bootstrapPs1, [ref]$tokens, [ref]$errors) | Out-Null
+        $errors | Should -BeNullOrEmpty
+    }
+
+    It 'declares the new helper functions added in v1.4.0' {
+        $content = Get-Content -Raw $script:bootstrapPs1
+        $content | Should -Match 'function\s+Find-Python310Plus'
+        $content | Should -Match 'function\s+Install-Python\b'
+        $content | Should -Match 'function\s+Install-PythonAndTui'
+    }
+
+    It 'Install-PythonAndTui has the expected guards (env var + cache dir)' {
+        # Defensive read of the function body — the early-out branches
+        # are what keep the install path from running in mode-2 / opt-out.
+        $content = Get-Content -Raw $script:bootstrapPs1
+        $content | Should -Match 'CA_BOOTSTRAP_NO_TUI'
+        # Check for the "older release without TUI" guard.
+        $content | Should -Match 'Test-Path\s+\$cabTuiDir'
+    }
+
+    It 'mode-2 short-circuit forwards to the sibling ca-bootstrap.ps1 (skipping the install path)' {
+        # The mode-2 short-circuit lives at the top of bootstrap.ps1 and
+        # exec's the sibling orchestrator without going through any of
+        # the install logic. Run with `version` so the orchestrator
+        # exits cleanly without prompting. This test confirms that
+        # daily-driver `./bootstrap.ps1 <command>` use remains
+        # unaffected by the new install path — regressions there have
+        # historically been the most painful failure mode.
+        $output = & pwsh -NoLogo -NoProfile -File $script:bootstrapPs1 version 2>&1
+        $LASTEXITCODE | Should -Be 0
+        ($output -join "`n") | Should -Match 'ca-bootstrap'
+    }
+}

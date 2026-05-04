@@ -10,6 +10,11 @@ BeforeAll {
     . (Join-Path $repoRoot 'lib/ui.ps1')
     . (Join-Path $repoRoot 'lib/tui-rpc.ps1')
 
+    # Tests use a stub child that doesn't honor the post-`done` "let the
+    # user dismiss" contract, so Stop-CABTuiBridge would otherwise wait
+    # the full 300s default. Force a short timeout so the suite stays fast.
+    $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '2'
+
     # Helper: launch a pwsh subprocess with a tiny scriptblock as the
     # "child" so we don't need Python on the runner to test the wire
     # protocol. The scriptblock reads JSON lines from stdin and writes
@@ -200,6 +205,96 @@ Start-Sleep -Seconds 5
         # Child is now sleeping; second read should time out fast.
         $msg = Receive-CABTuiMessage -TimeoutMs 200
         $msg | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Stop-CABTuiBridge dismiss-timeout contract' {
+    AfterEach {
+        if ($Script:CABTuiProcess -and -not $Script:CABTuiProcess.HasExited) {
+            try { $Script:CABTuiProcess.Kill() } catch { }
+        }
+        $Script:CABTuiProcess = $null
+        if ($script:dismissStub -and (Test-Path $script:dismissStub)) {
+            Remove-Item $script:dismissStub -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'sends `done` without immediately closing stdin so the user can dismiss the TUI' {
+        # Stub: ack the welcome, then read until EOF and emit anything
+        # received to a side-channel file so we can verify what the parent
+        # actually sent during shutdown.
+        $captured = Join-Path ([System.IO.Path]::GetTempPath()) "cab-dismiss-cap-$(Get-Random).jsonl"
+        $body = @"
+`$out = '$($captured -replace '\\','\\')'
+`$line = [Console]::In.ReadLine()
+`$msg = `$line | ConvertFrom-Json
+if (`$msg.type -eq 'welcome') {
+    [Console]::Out.WriteLine('{"type":"ack","of":"welcome"}')
+    [Console]::Out.Flush()
+}
+while (`$true) {
+    `$line = [Console]::In.ReadLine()
+    if (`$null -eq `$line) { break }
+    Add-Content -Path `$out -Value `$line
+}
+"@
+        $script:dismissStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-dismiss-$(Get-Random).ps1"
+        Set-Content $script:dismissStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:dismissStub`""
+
+        # Run with a tight timeout so the test is fast; production default
+        # is 300s but we just want to verify the `done` event shape.
+        $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '3'
+        Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path `
+            -Command 'setup' -Version 'test' -Arguments $stubArgs | Out-Null
+
+        # Stop should send `done` and wait the dismiss-timeout. Stub stays
+        # in its read loop until stdin closes (which only happens after
+        # the timeout expires + the safety-net stdin.Close()).
+        Stop-CABTuiBridge -ExitCode 0 -Summary '8 steps complete'
+
+        Test-Path $captured | Should -BeTrue
+        $events = Get-Content $captured | ForEach-Object { $_ | ConvertFrom-Json }
+        $doneEvent = $events | Where-Object { $_.type -eq 'done' } | Select-Object -First 1
+        $doneEvent | Should -Not -BeNullOrEmpty
+        $doneEvent.exit_code | Should -Be 0
+        $doneEvent.summary | Should -Be '8 steps complete'
+
+        Remove-Item $captured -Force -ErrorAction SilentlyContinue
+    }
+
+    It 'CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT=0 means wait indefinitely (until child exits naturally)' {
+        # Stub: ack and exit immediately. With timeout=0, Stop-CABTuiBridge
+        # would wait forever — but since the child exits on its own right
+        # away, the test still completes quickly. This proves the "no
+        # forced kill" path actually waits.
+        $body = @'
+$line = [Console]::In.ReadLine()
+$msg = $line | ConvertFrom-Json
+if ($msg.type -eq 'welcome') {
+    [Console]::Out.WriteLine('{"type":"ack","of":"welcome"}')
+    [Console]::Out.Flush()
+}
+exit 0
+'@
+        $script:dismissStub = Join-Path ([System.IO.Path]::GetTempPath()) "cab-dismiss-$(Get-Random).ps1"
+        Set-Content $script:dismissStub $body
+        $stubArgs = "-NoLogo -NoProfile -File `"$script:dismissStub`""
+
+        $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '0'
+        $proc = Start-CABTuiBridge -PythonBinary (Get-Process -Id $PID).Path `
+            -Command 'setup' -Version 'test' -Arguments $stubArgs
+        # Bound the test itself with a watchdog: if Stop hangs, fail fast.
+        $job = Start-Job { param($p) Start-Sleep -Seconds 5; if (-not $p.HasExited) { $p.Kill() } } -ArgumentList $proc
+        try {
+            Stop-CABTuiBridge
+            $proc.HasExited | Should -BeTrue
+            $proc.ExitCode | Should -Be 0
+        } finally {
+            Stop-Job $job -ErrorAction SilentlyContinue
+            Remove-Job $job -ErrorAction SilentlyContinue
+            $env:CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT = '2'
+        }
     }
 }
 
