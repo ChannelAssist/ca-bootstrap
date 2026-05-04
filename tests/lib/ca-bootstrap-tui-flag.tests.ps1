@@ -13,30 +13,48 @@ BeforeAll {
 }
 
 Describe 'ca-bootstrap.ps1 -Tui / -NoTui flag binding' {
-    It 'rejects setup -Tui when python3 / cab_tui is not importable' {
-        # Force the probe to fail by pointing PYTHONPATH at a non-existent
-        # dir (and by making sure cab_tui is not on the default path).
-        # The orchestrator prints an ERROR and exits 1 per phase 7's contract.
+    It 'rejects setup -Tui when python / cab_tui is not importable' {
+        # We can't simply set PYTHONPATH to garbage: Test-CABTuiAvailable
+        # PREPENDS the repo's cab-tui/ to PYTHONPATH (via _CABTuiPythonPath)
+        # so a hostile PYTHONPATH would still resolve cab_tui from source.
+        # The deterministic way to fail the probe is to put a python
+        # shim earlier on PATH that exits non-zero on `-m cab_tui --check`.
         $tempState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-tui-flag-$(Get-Random)"
         New-Item -ItemType Directory -Path $tempState -Force | Out-Null
-        # Empty answers file — the orchestrator validates -ConfigFile
-        # exists before doing anything else, so a real path is needed.
-        # Cross-platform: don't hardcode /dev/null (Windows doesn't have it).
-        $emptyAnswers = Join-Path $tempState 'answers.yaml'
-        Set-Content -Path $emptyAnswers -Value ''
+        $shimDir = Join-Path $tempState 'shim'
+        New-Item -ItemType Directory -Path $shimDir -Force | Out-Null
+        if ($IsWindows) {
+            # Windows: a .cmd that always exits 99 stands in for the
+            # python.exe / py.exe / python3.exe Find-CABPython tries.
+            foreach ($name in 'python.exe','py.exe','python3.exe') {
+                # On Windows, .exe matches a real PE. We can't easily forge
+                # one, so use a .cmd of the same stem; cmd.exe resolves
+                # `python` to python.cmd ahead of python.exe when the
+                # PATHEXT order has .CMD first (which it does by default).
+                Set-Content -Path (Join-Path $shimDir ($name -replace '\.exe$','.cmd')) -Value '@echo off`r`nexit /b 99'
+            }
+        } else {
+            foreach ($name in 'python3','python') {
+                $shim = Join-Path $shimDir $name
+                Set-Content -Path $shim -Value "#!/bin/sh`nexit 99`n"
+                & chmod +x $shim
+            }
+        }
+        $sep = if ($IsWindows) { ';' } else { ':' }
+        $origPath = $env:PATH
         try {
             $env:CA_BOOTSTRAP_STATE = $tempState
-            $env:PYTHONPATH = if ($IsWindows) { 'C:\Definitely\Does\Not\Exist' } else { '/definitely/does/not/exist' }
-            # We need pwsh to use a python that doesn't have cab_tui.
-            # `python3` on this machine shouldn't have it either (only
-            # the venv does). The orchestrator will probe `python3 -m cab_tui --check`,
-            # get a non-zero exit, and surface the ERROR.
-            $output = & pwsh -NoLogo -NoProfile -File $script:orch setup -Tui -ConfigFile $emptyAnswers 2>&1
+            # Prepend the shim dir so the bridge probe finds OUR python
+            # before the real one. Test-CABTuiAvailable's `-m cab_tui --check`
+            # will then exit 99 and Test- returns $false → the orchestrator's
+            # `-Tui` path errors out per the documented contract.
+            $env:PATH = "$shimDir$sep$origPath"
+            $output = & pwsh -NoLogo -NoProfile -File $script:orch setup -Tui 2>&1
             $LASTEXITCODE | Should -Not -Be 0
             ($output -join "`n") | Should -Match '(?i)cab-tui is not available'
         } finally {
+            $env:PATH = $origPath
             Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
-            Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
             if (Test-Path $tempState) { Remove-Item -Recurse -Force $tempState -ErrorAction SilentlyContinue }
         }
     }

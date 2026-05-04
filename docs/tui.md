@@ -72,13 +72,18 @@ Or by hand:
 ```bash
 cd cab-tui
 python3 -m pip install -e .
-
-# `poetry.lock` is committed for reproducibility (per SDLC), but the
-# orchestrator probes the active Python via PATH (`python3 -m cab_tui`),
-# not Poetry's virtualenv. If you want a strict-locked install,
-# activate your own venv first, then run pip — the dependency set
-# matches poetry.lock because the build backend is poetry-core.
 ```
+
+`poetry.lock` is committed for reproducibility (per SDLC), but `pip install` doesn't read it — pip resolves transitively from the version specifiers in `pyproject.toml`. For a strict lockfile-based install, use Poetry directly and put its venv on PATH so the orchestrator picks up the locked interpreter:
+
+```bash
+cd cab-tui
+poetry install                           # populates Poetry's virtualenv
+export PATH="$(poetry env info --path)/bin:$PATH"   # so Find-CABPython sees it
+ca-bootstrap.ps1 setup                   # auto-detect now picks up the locked python
+```
+
+Or export the lockfile to a pip-compatible constraints file (`poetry export --without-hashes -o constraints.txt`) and pip-install with `--constraint`.
 
 The bootstrap one-liners (`bootstrap.sh` / `bootstrap.ps1`) install Python and cab-tui automatically when missing — no manual step required for first-time users.
 

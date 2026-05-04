@@ -14,7 +14,7 @@ See [`docs/textual-plan.md`](../docs/textual-plan.md) for the architecture and [
 
 ```bash
 cd cab-tui
-pip install -e '.[dev]'
+python -m pip install -e '.[dev]'   # binds the install to the current interpreter
 ```
 
 Requires Python 3.10+. The build-backend is `poetry-core` and `poetry.lock` is committed for reproducibility, but the orchestrator probes the active Python on PATH, so `pip install` (which targets the active interpreter) is the supported install path. `poetry install` would put deps into a Poetry-managed venv that the bridge can't see.
