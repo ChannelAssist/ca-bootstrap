@@ -149,7 +149,17 @@ try {
         }
         'doctor' {
             . (Join-Path $Script:CABootstrapRoot 'commands/doctor.ps1')
-            $exitCode = Invoke-CABCommandDoctor -Context $context
+            if ($Json) {
+                # JSON mode: function writes the JSON to the success
+                # stream (which is this script's stdout), and the exit
+                # code is communicated via $Script:CABDoctorExitCode
+                # so we don't pollute the JSON with a trailing int.
+                $Script:CABDoctorExitCode = $null
+                Invoke-CABCommandDoctor -Context $context
+                $exitCode = [int]$Script:CABDoctorExitCode
+            } else {
+                $exitCode = [int](Invoke-CABCommandDoctor -Context $context)
+            }
         }
         'repair' {
             . (Join-Path $Script:CABootstrapRoot 'commands/repair.ps1')
