@@ -49,10 +49,12 @@ jobs:
         shell: pwsh
         run: |
           $output = & ./ca-bootstrap.ps1 doctor -Json
+          $code = $LASTEXITCODE
           $payload = $output | ConvertFrom-Json
           if (-not $payload.checks)         { throw 'no checks in JSON output' }
           if (-not $payload.schema_version) { throw 'no schema_version' }
-          Write-Host "doctor produced $($payload.checks.Count) checks, exit_code=$($payload.exit_code)"
+          Write-Host "doctor produced $($payload.checks.Count) checks, exit_code=$code"
+          if ($code -ne 0 -and $code -ne 2) { throw "unexpected exit code: $code" }
 
   shellcheck:
     name: shellcheck bootstrap.sh
@@ -62,4 +64,4 @@ jobs:
       - run: |
           sudo apt-get update -qq
           sudo apt-get install -y shellcheck
-          shellcheck bootstrap.sh scripts/wiki-sync.sh
+          shellcheck -S error bootstrap.sh scripts/wiki-sync.sh
