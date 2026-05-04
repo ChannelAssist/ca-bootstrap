@@ -24,11 +24,10 @@ dev = [
 cab-tui = "cab_tui.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cab_tui"]
+packages = ["cab_tui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-# Editable installs aren't picked up reliably across all our envs; this
-# pythonpath entry lets `pytest` find cab_tui regardless.
-pythonpath = ["src"]
+# Flat layout — package lives directly at cab_tui/, no src/ shim needed.
+pythonpath = ["."]

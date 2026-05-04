@@ -101,10 +101,17 @@ class RpcBridge:
     def stop(self) -> None:
         self._stop.set()
 
+    # Large enough to comfortably hold any plausible RPC message. The
+    # default StreamReader limit is 64 KiB, which a long log stream
+    # (e.g. a verbose `winget install` chunk) can blow through and
+    # crash the bridge with LimitOverrunError. 1 MiB is overkill but
+    # cheap.
+    _READER_BUFFER_LIMIT = 1024 * 1024
+
     @staticmethod
     async def _connect_stdin() -> asyncio.StreamReader:
         loop = asyncio.get_event_loop()
-        reader = asyncio.StreamReader()
+        reader = asyncio.StreamReader(limit=RpcBridge._READER_BUFFER_LIMIT)
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, sys.stdin)
         return reader
