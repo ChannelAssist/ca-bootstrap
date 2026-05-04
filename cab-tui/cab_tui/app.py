@@ -225,9 +225,42 @@ class CabTuiApp(App):
             )
             self.exit(return_code=2, message="schema_version mismatch")
             return
+        # If the parent shipped its step list (welcome.steps), use it as
+        # the source of truth for the Tree pane — supersedes our built-in
+        # SETUP_STEPS default. This keeps cab_tui from drifting away
+        # from commands/setup.ps1's Get-CABSetupStepDefs whenever the
+        # orchestrator renames or reorders a step.
+        steps = msg.raw.get("steps") or []
+        if steps:
+            await self._rebuild_step_tree(steps)
         self._rpc.send_ack("welcome")
         v = msg.raw.get("version", "?")
         self._append_log("info", f"Connected to ca-bootstrap v{v}")
+
+    async def _rebuild_step_tree(self, steps: list) -> None:
+        """Rebuild the Tree pane from a list of {id, title} dicts.
+
+        Called when the parent ships its step list in the welcome event.
+        Falls back silently on any malformed entry — the static SETUP_STEPS
+        default is still mounted from compose() so the user never sees a
+        blank tree."""
+        try:
+            tree = self.query_one("#steps-pane", Tree)
+        except Exception:
+            return
+        # Drop the existing children + node map and rebuild.
+        tree.root.remove_children()
+        self._step_nodes.clear()
+        for entry in steps:
+            if not isinstance(entry, dict):
+                continue
+            step_id = str(entry.get("id", "")).strip()
+            title = str(entry.get("title", step_id)).strip() or step_id
+            if not step_id:
+                continue
+            node = tree.root.add_leaf(f"{_STATUS_ICON['pending']} {title}", data=step_id)
+            self._step_nodes[step_id] = node
+        tree.root.expand()
 
     async def _handle_rpc_step(self, msg: RpcMessage) -> None:
         step_id = msg.raw.get("step", "")

@@ -124,6 +124,66 @@ async def test_schema_version_mismatch_sets_nonzero_return_code() -> None:
 
 
 @pytest.mark.asyncio
+async def test_welcome_steps_rebuilds_tree_from_parent() -> None:
+    """If the parent ships welcome.steps, the TUI rebuilds its Tree pane
+    from that list — single source of truth for step id → title lives
+    in commands/setup.ps1's Get-CABSetupStepDefs, and cab_tui's static
+    SETUP_STEPS becomes a fallback default."""
+    import io
+    from cab_tui.rpc import RpcBridge
+    from textual.widgets import Tree
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    custom_steps = [
+        {"id": "00-foo", "title": "Foo step"},
+        {"id": "01-bar", "title": "Bar step"},
+        {"id": "02-baz", "title": "Baz step"},
+    ]
+    async with app.run_test():
+        class _M:
+            raw = {
+                "type": "welcome", "version": "1.4.0",
+                "schema_version": app._SUPPORTED_SCHEMA_VERSION,
+                "command": "setup", "steps": custom_steps,
+            }
+            type = "welcome"
+        await app._handle_rpc_welcome(_M())
+        await app.workers.wait_for_complete()
+        # Tree now reflects the parent's list, not the built-in SETUP_STEPS.
+        tree = app.query_one("#steps-pane", Tree)
+        labels = [str(node.label) for node in tree.root.children]
+        assert len(labels) == 3
+        assert "Foo step" in labels[0]
+        assert "Bar step" in labels[1]
+        assert "Baz step" in labels[2]
+        # _step_nodes keyed by id so subsequent step events route correctly.
+        assert set(app._step_nodes.keys()) == {"00-foo", "01-bar", "02-baz"}
+
+
+@pytest.mark.asyncio
+async def test_welcome_without_steps_keeps_built_in_default() -> None:
+    """No welcome.steps → built-in SETUP_STEPS list survives. Backwards
+    compatible with older orchestrators that don't ship the field."""
+    import io
+    from cab_tui.rpc import RpcBridge
+    from textual.widgets import Tree
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=RpcBridge(reader=None, writer_fp=cap))
+    async with app.run_test():
+        class _M:
+            raw = {"type": "welcome", "version": "1.4.0",
+                   "schema_version": app._SUPPORTED_SCHEMA_VERSION,
+                   "command": "setup"}
+            type = "welcome"
+        await app._handle_rpc_welcome(_M())
+        await app.workers.wait_for_complete()
+        tree = app.query_one("#steps-pane", Tree)
+        assert len(list(tree.root.children)) == len(SETUP_STEPS) == 8
+
+
+@pytest.mark.asyncio
 async def test_q_press_post_done_self_exits_without_sending_quit() -> None:
     """After `done` arrives, the parent has stopped reading stdout. A
     subsequent `q` keypress must self-exit the TUI, not send another

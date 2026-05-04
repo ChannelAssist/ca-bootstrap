@@ -145,14 +145,32 @@ if (-not $Unattended -and $Command -eq 'setup') {
     }
 
     if ($shouldUseTui) {
+        # Dot-source commands/setup.ps1 early so Get-CABSetupStepDefs is
+        # available to ship in the welcome event (single source of truth
+        # for step id → title; see commands/setup.ps1).
+        . (Join-Path $Script:CABootstrapRoot 'commands/setup.ps1')
+        $tuiSteps = Get-CABSetupStepDefs
         try {
-            Start-CABTuiBridge -Command $Command -Version $Script:CABootstrapVersion | Out-Null
+            Start-CABTuiBridge -Command $Command -Version $Script:CABootstrapVersion -Steps $tuiSteps | Out-Null
             Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $true
             $Script:CABTuiActive = $true
             if (-not $tuiExplicitlyOn) {
                 Write-CABColor DarkGray '  (Using TUI — pass -NoTui to fall back to the CLI prompt.)'
             }
         } catch {
+            # Bridge failed to start. Two paths:
+            #  - Auto-detect (no flag): silently fall back to the CLI so
+            #    the user still gets a working setup.
+            #  - Explicit -Tui: hard-fail. The user explicitly asked for
+            #    the TUI; silently downgrading would hide handshake
+            #    regressions, schema_version mismatches, and Python
+            #    import errors from CI and from interactive users.
+            if ($tuiExplicitlyOn) {
+                Write-CABColor Red ''
+                Write-CABColor Red "ERROR: -Tui requested but the bridge failed to start: $($_.Exception.Message)"
+                Write-Host  '       Investigate the cab-tui install, or rerun without -Tui to use the CLI.'
+                exit 1
+            }
             Write-CABColor Yellow "  ⚠ Could not start TUI ($($_.Exception.Message)); falling back to CLI."
             Set-CABPromptMode -Unattended $false -Answers @{} -TuiMode $false
         }

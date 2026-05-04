@@ -89,7 +89,14 @@ function Start-CABTuiBridge {
         # Override the child's command-line. Default invokes the cab_tui
         # module in --rpc mode; tests use this to spawn a stub that
         # speaks the protocol without needing a TTY.
-        [string]$Arguments = '-m cab_tui --rpc'
+        [string]$Arguments = '-m cab_tui --rpc',
+        # Step list shipped to the TUI in the welcome event so it can
+        # build its Tree pane from a single source of truth (commands/
+        # setup.ps1's Get-CABSetupStepDefs). Optional; if omitted the
+        # TUI falls back to its built-in default — which is the path
+        # tests use to avoid threading the orchestrator's step list
+        # through every harness.
+        [array]$Steps = @()
     )
     if (-not $PythonBinary) {
         $PythonBinary = Find-CABPython
@@ -139,12 +146,14 @@ function Start-CABTuiBridge {
     $Script:CABTuiReaderHandle = $ps.BeginInvoke()
 
     # Handshake: send welcome, await ack. 5s budget.
-    Send-CABTuiEvent -Event @{
+    $welcome = @{
         type           = 'welcome'
         version        = $Version
         schema_version = $Script:CABTuiSchemaVersion
         command        = $Command
     }
+    if ($Steps -and $Steps.Count -gt 0) { $welcome.steps = @($Steps) }
+    Send-CABTuiEvent -Event $welcome
     $ack = Receive-CABTuiMessage -TimeoutMs 5000
     if (-not $ack -or $ack.type -ne 'ack' -or $ack.of -ne 'welcome') {
         # Handshake failed → the child is in an undefined state. Don't go
