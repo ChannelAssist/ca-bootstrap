@@ -20,8 +20,12 @@ Describe 'Journal round-trip' {
         $Script:CABJournalState        = $null
     }
     AfterEach {
+        # Stop any active transcript so Windows releases the file handle
+        # before we try to delete the temp dir. Linux/macOS allow deletion
+        # of open files, but NTFS does not.
+        try { Stop-Transcript | Out-Null } catch { }
         if ($script:tempState -and (Test-Path $script:tempState)) {
-            Remove-Item -Recurse -Force $script:tempState
+            Remove-Item -Recurse -Force $script:tempState -ErrorAction SilentlyContinue
         }
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
     }
