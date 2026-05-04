@@ -50,7 +50,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$Script:CABootstrapVersion = '0.6.0-phase6'
+$Script:CABootstrapVersion = '0.10.0-phase10'
 
 # Resolve the repo root (where this script lives), not the user's cwd.
 $Script:CABootstrapRoot = Split-Path -Parent $MyInvocation.MyCommand.Path

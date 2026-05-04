@@ -51,10 +51,10 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Setup happy path complete (phase 6).'
-    Write-Host '    Phases 7-12 (full journal layer, doctor/repair/undo implementations,'
-    Write-Host '    unattended mode, CI matrix) refine the experience but the user-facing'
-    Write-Host '    setup flow is now feature-complete.'
+    Write-CABStatus -Status ok -Message 'Setup complete.'
+    Write-Host '    `ca-bootstrap.ps1 doctor` — verify the result.'
+    Write-Host '    `ca-bootstrap.ps1 repair --all` — fix anything doctor reports.'
+    Write-Host '    `ca-bootstrap.ps1 undo` — reverse what was done.'
     Write-Host ''
     Write-Host "  Transcript: $(Get-CABTranscriptPath)"
     Write-Host "  Journal   : $(Get-CABJournalPath)"

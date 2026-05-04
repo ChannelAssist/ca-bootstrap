@@ -1,9 +1,193 @@
 #requires -Version 7.0
 # commands/doctor.ps1 — diagnostic-only run.
 #
-# Phase 3 wires the prerequisite tool detection from manifest/tools.yaml.
-# Phase 8 will extend this with workspace/folder/repo/identity checks
-# (the full "is my setup right?" report).
+# Phase 8 implementation. Walks every step's Test function and the journal
+# to produce a green/yellow/red report. Never modifies anything.
+#
+# Output formats:
+#   default     human-readable
+#   --json      structured JSON for CI / scripting
+#   --summary   one-line per check
+#
+# Exit codes (per docs/commands.md):
+#   0   everything ✓
+#   2   any ⚠ or ✗ found
+#  99   unexpected error
+
+# Run-CABDoctorChecks — produce the full check list. Returns an array of
+# [ordered]@{ id; status; details; ...extra }.
+function Run-CABDoctorChecks {
+    [CmdletBinding()]
+    param([hashtable]$Context)
+
+    $checks = New-Object System.Collections.Generic.List[hashtable]
+
+    # ----- Workspace -----
+    $workspace = $null
+    $workspaceEntries = @(Get-CABJournalEntries -Action 'create_folder' -Step '40-workspace')
+    if ($workspaceEntries.Count -gt 0) {
+        $workspace = [string]$workspaceEntries[0].path
+    } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {
+        $workspace = $env:CA_BOOTSTRAP_WORKSPACE
+    } else {
+        # Best-effort default per the workspace step.
+        $workspace = if ($IsWindows) {
+            Join-Path $env:USERPROFILE 'Documents\Projects\Work\ChannelAssist\ChannelAssistDev'
+        } else {
+            Join-Path $HOME 'Documents/Projects/Work/ChannelAssist/ChannelAssistDev'
+        }
+    }
+    $Context.WorkspacePath = $workspace
+
+    if (Test-Path $workspace) {
+        $checks.Add([ordered]@{ id = 'workspace'; status = 'ok'; details = "exists at $workspace"; path = $workspace })
+    } else {
+        $checks.Add([ordered]@{ id = 'workspace'; status = 'fail'; details = "missing: $workspace"; path = $workspace; fix = 'setup' })
+    }
+
+    # ----- Folders -----
+    if (Test-Path $workspace) {
+        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
+        $expected = @($manifest.folders | Where-Object { -not $_.optional })
+        $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) })
+        $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path)) })
+        if ($missing.Count -eq 0) {
+            $checks.Add([ordered]@{ id = 'folders'; status = 'ok'; details = "$($present.Count)/$($expected.Count) present" })
+        } else {
+            $checks.Add([ordered]@{
+                id = 'folders'; status = 'fail'
+                details = "$($missing.Count)/$($expected.Count) missing: $(($missing.path) -join ', ')"
+                fix = 'repair --target folders'
+            })
+        }
+    }
+
+    # ----- Prerequisites -----
+    $prereqReport = Get-CABToolReport -ManifestPath (Join-Path $Context.RepoRoot 'manifest/tools.yaml')
+    foreach ($r in $prereqReport) {
+        $entry = [ordered]@{
+            id        = "tool.$($r.id)"
+            status    = $r.status
+            details   = $r.details
+            tool_id   = $r.id
+            required  = $r.is_required
+        }
+        if ($r.status -in 'fail','warn') {
+            $entry.fix = "repair --target $($r.id)"
+        }
+        $checks.Add($entry)
+    }
+
+    # ----- gh auth -----
+    if (Get-Command 'gh' -ErrorAction SilentlyContinue) {
+        & gh auth status 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $user = (& gh api user --jq .login 2>$null) -join ''
+            $checks.Add([ordered]@{ id = 'gh-auth'; status = 'ok'; details = "logged in as $user" })
+        } else {
+            $checks.Add([ordered]@{ id = 'gh-auth'; status = 'fail'; details = 'not authenticated'; fix = 'repair --target gh-auth' })
+        }
+    } else {
+        $checks.Add([ordered]@{ id = 'gh-auth'; status = 'fail'; details = 'gh CLI not installed'; fix = 'repair --target gh' })
+    }
+
+    # ----- Repositories (compare journal expectations vs disk) -----
+    if (Test-Path $workspace) {
+        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml')
+        $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object { -not $_.opt_in })
+        $missingRepos = New-Object System.Collections.Generic.List[string]
+        $okRepos = 0
+        foreach ($r in $expectedRepos) {
+            $into = Join-Path $workspace $r.into
+            $state = Test-CABRepoCloned -Path $into -ExpectedRepo $r.repo
+            if ($state -eq 'matches') { $okRepos++ }
+            else { $missingRepos.Add("$($r.repo) ($state)") }
+        }
+        # Also surface entries the journal recorded that have since been
+        # deleted from disk (drift detection).
+        foreach ($je in (Get-CABJournalEntries -Action 'clone_repo')) {
+            $jePath = [string]$je.path
+            if ($jePath -and -not (Test-Path $jePath)) {
+                $missingRepos.Add("$($je.repo) (deleted from disk)")
+            }
+        }
+        if ($missingRepos.Count -eq 0) {
+            $checks.Add([ordered]@{ id = 'repos'; status = 'ok'; details = "$okRepos/$($expectedRepos.Count) cloned" })
+        } else {
+            $checks.Add([ordered]@{
+                id = 'repos'; status = 'warn'
+                details = "$($missingRepos.Count) issue(s): $($missingRepos -join '; ')"
+                fix = 'repair --target repos'
+            })
+        }
+    }
+
+    # ----- Git identity -----
+    if (Test-Path $workspace) {
+        $globalGitconfig = if ($IsWindows) { Join-Path $env:USERPROFILE '.gitconfig' } else { Join-Path $HOME '.gitconfig' }
+        if (Test-Path $globalGitconfig) {
+            $content = Get-Content -Raw $globalGitconfig
+            $needle = "gitdir:$($workspace.Replace('\','/').TrimEnd('/'))/"
+            if ($content -like "*$needle*") {
+                $wsConfig = Join-Path $workspace '.gitconfig'
+                if (Test-Path $wsConfig) {
+                    $checks.Add([ordered]@{ id = 'git-identity'; status = 'ok'; details = "scoped to $workspace" })
+                } else {
+                    $checks.Add([ordered]@{
+                        id = 'git-identity'; status = 'warn'
+                        details = "includeIf points at $wsConfig but file is missing"
+                        fix = 'repair --target identity'
+                    })
+                }
+            } else {
+                $checks.Add([ordered]@{
+                    id = 'git-identity'; status = 'warn'
+                    details = 'no includeIf for this workspace'
+                    fix = 'repair --target identity'
+                })
+            }
+        } else {
+            $checks.Add([ordered]@{ id = 'git-identity'; status = 'warn'; details = 'no global .gitconfig'; fix = 'repair --target identity' })
+        }
+    }
+
+    # ----- Action journal -----
+    if (Test-Path (Get-CABJournalPath)) {
+        try {
+            Read-CABJournal | Out-Null
+            $sessionCount = @($Script:CABJournalState.sessions).Count
+            $actionCount = ($Script:CABJournalState.sessions | ForEach-Object { @($_.actions).Count } | Measure-Object -Sum).Sum
+            $checks.Add([ordered]@{ id = 'journal'; status = 'ok'; details = "$sessionCount session(s), $actionCount recorded action(s)" })
+        } catch {
+            $checks.Add([ordered]@{ id = 'journal'; status = 'fail'; details = "parse failed: $($_.Exception.Message)"; fix = 'repair --target journal' })
+        }
+    } else {
+        $checks.Add([ordered]@{ id = 'journal'; status = 'warn'; details = 'no journal yet'; fix = 'setup' })
+    }
+
+    return $checks.ToArray()
+}
+
+function Format-CABDoctorReport {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][array]$Checks, [switch]$Summary)
+    foreach ($c in $Checks) {
+        $icon, $color = switch ($c.status) {
+            'ok'    { '✓', 'Green'    }
+            'warn'  { '⚠', 'Yellow'   }
+            'fail'  { '✗', 'Red'      }
+            'na'    { '–', 'DarkGray' }
+            'error' { '!', 'Magenta'  }
+            default { '?', 'White'    }
+        }
+        $label = "$($c.id)".PadRight(28)
+        if ($Summary) {
+            Write-CABColor ([ConsoleColor]$color) "$icon $($c.id) — $($c.details)"
+        } else {
+            Write-CABColor ([ConsoleColor]$color) "  $icon  $label  $($c.details)"
+        }
+    }
+}
 
 function Invoke-CABCommandDoctor {
     [CmdletBinding()]
@@ -12,37 +196,41 @@ function Invoke-CABCommandDoctor {
     Write-CABHeader 'ca-bootstrap doctor'
     Write-Host ''
 
-    Write-CABColor White 'Prerequisites'
-    $report = Get-CABToolReport -ManifestPath (Join-Path $Context.RepoRoot 'manifest/tools.yaml')
-    Format-CABToolReport -Report $report
+    $checks = Run-CABDoctorChecks -Context $Context
+
+    if ($Context.Json) {
+        # Emit a single JSON object; suppresses other formatting.
+        $payload = [ordered]@{
+            schema_version = 1
+            generated_at   = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
+            host           = [ordered]@{
+                os = if ($IsWindows){'windows'} elseif ($IsMacOS){'macos'} else {'linux'}
+            }
+            checks         = $checks
+            exit_code      = if ($checks | Where-Object { $_.status -in 'warn','fail' }) { 2 } else { 0 }
+        }
+        $payload | ConvertTo-Json -Depth 6
+        return $payload.exit_code
+    }
+
+    Format-CABDoctorReport -Checks $checks -Summary:$Context.Summary
     Write-Host ''
 
-    $required = @($report | Where-Object { $_.is_required })
-    $optional = @($report | Where-Object { -not $_.is_required })
-    $reqFail  = @($required | Where-Object { $_.status -in 'fail','warn','error' })
-    $optFail  = @($optional | Where-Object { $_.status -in 'fail','warn' })
-
-    Write-CABColor White 'Workspace, folders, repos, identity'
-    Write-CABStatus -Status info -Message 'Phase 8 deliverable — not yet implemented.'
-    Write-Host ''
-
-    Write-CABColor White 'Summary'
-    if ($reqFail.Count -eq 0 -and $optFail.Count -eq 0) {
+    $issues = @($checks | Where-Object { $_.status -in 'warn','fail' })
+    if ($issues.Count -eq 0) {
         Write-CABStatus -Status ok -Message 'All checks ✓'
         Write-Host ''
         return 0
     }
-    if ($reqFail.Count -gt 0) {
-        Write-CABStatus -Status fail -Message "$($reqFail.Count) required issue(s) found"
-    }
-    if ($optFail.Count -gt 0) {
-        Write-CABStatus -Status warn -Message "$($optFail.Count) optional issue(s) found"
-    }
-    Write-Host ''
-    Write-Host '  To fix:  ca-bootstrap.ps1 repair --all'
-    Write-Host '  Or, e.g.: ca-bootstrap.ps1 repair --target dotnet-10'
-    Write-Host ''
 
-    if ($reqFail.Count -gt 0) { return 2 }
-    return 2   # warnings also exit 2 per docs/commands.md
+    Write-CABColor White "  $($issues.Count) issue(s) found:"
+    foreach ($i in $issues) {
+        if ($i.fix) {
+            Write-Host "    • $($i.id) — fix: ca-bootstrap.ps1 $($i.fix)"
+        }
+    }
+    Write-Host ''
+    Write-Host '  Run `ca-bootstrap.ps1 repair --all` to fix them all.'
+    Write-Host ''
+    return 2
 }
