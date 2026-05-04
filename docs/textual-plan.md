@@ -73,45 +73,66 @@ Doctor and the other commands are CLI-shaped and don't need a TUI. Setup is the 
 
 The protocol is small enough to spec in one page. PowerShell side is a thin `lib/tui-rpc.ps1` that wraps `Read-CABConfirm`/`Read-CABChoice` to dispatch over the protocol when `$Context.TuiMode` is set.
 
-## 4. UI sketch
+## 4. UI built from Textual's widget gallery
+
+Use Textual's built-in widgets — not hand-rolled approximations. Reference: https://textual.textualize.io/widget_gallery/. Each pane and prompt below maps to a stock widget so we benefit from Textual's accessibility, theming, and keyboard handling rather than duplicating that work.
+
+### Layout
 
 ```
-╭─ ca-bootstrap setup ─────────────────────────────────────────────────╮
+╭─ ca-bootstrap setup ─────────────────────────────────────────────────╮  ← Header
 │                                                                       │
-│  Step 4 of 8 — Workspace location                                     │
+│  ┌──── Steps ────────┐  ┌──── Active step ─────────────────────────┐ │
+│  │                    │  │                                          │ │
+│  │  Tree widget       │  │  Question (Static + Markdown)            │ │
+│  │  ✓ 1. Welcome      │  │                                          │ │
+│  │  ✓ 2. Workspace    │  │  ProgressBar (during clones/installs)    │ │
+│  │  ▶ 3. Prereqs      │  │                                          │ │
+│  │    ├─ git ✓        │  │  Input (for custom-path prompts)         │ │
+│  │    ├─ gh ✓         │  │                                          │ │
+│  │    └─ dotnet-10 ✗  │  │  RadioSet / Checkbox (for selections)    │ │
+│  │  ○ 4. gh-auth      │  │                                          │ │
+│  │  ○ 5. Folders      │  │  Button row: [ Yes ] [ No ] [ Quit ]     │ │
+│  │  ○ 6. Repos        │  │                                          │ │
+│  │  ○ 7. Identity     │  │                                          │ │
+│  │  ○ 8. Extras       │  │                                          │ │
+│  └────────────────────┘  └──────────────────────────────────────────┘ │
 │                                                                       │
-│  ✓ 1. Welcome                                                         │
-│  ✓ 2. Prerequisites                                                   │
-│  ✓ 3. GitHub authentication                                           │
-│  ▶ 4. Workspace location           ← you are here                     │
-│  ○ 5. Folder structure                                                │
-│  ○ 6. Clone repositories                                              │
-│  ○ 7. Git identity                                                    │
-│  ○ 8. Optional extras                                                 │
+│  ┌──── Transcript (Log widget) ────────────────────────────────────┐ │
+│  │ 14:23:08  → Workspace step starting                              │ │
+│  │ 14:23:01  Step 1 — User consented to proceed.                    │ │
+│  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                       │
-│  ┌──────────────────────────────────────────────────────────────┐    │
-│  │ Default location:                                            │    │
-│  │   /Users/peter/Documents/Projects/Work/ChannelAssist/        │    │
-│  │   ChannelAssistDev                                           │    │
-│  │                                                              │    │
-│  │ Use this default?                                            │    │
-│  │                                                              │    │
-│  │   [ Yes ]  [ No, choose another ]  [ Quit ]                  │    │
-│  └──────────────────────────────────────────────────────────────┘    │
-│                                                                       │
-├─ Transcript ──────────────────────────────────────────────────────────┤
-│ 14:23:01  Step 1 — User consented to proceed.                         │
-│ 14:23:02  Step 2 — All 9 prerequisites present                        │
-│ 14:23:04  Step 3 — Logged in as petergi                               │
-│ 14:23:08  → Workspace step starting                                   │
-╰───────────────────────────────────────────────────────────────────────╯
-  ↑↓ navigate · enter select · q quit · l toggle log · r recover
+╰─ q quit · l toggle log · r recover · ? help ─────────────────────────╯  ← Footer
 ```
 
-Three panes:
-- **Step list** (left): all 8 steps with state icon (✓/▶/○/✗); resumable from current position
-- **Active step body** (center): question text + buttons; replaced with a progress widget during long-running work (clones, installs)
-- **Transcript** (bottom): scrollable, copyable, live-updating
+### Widget mapping
+
+For every UI element below, we use the named Textual widget from the gallery rather than building one from primitives. Linked anchors point at the widget's gallery entry.
+
+| UI element | Widget | Why this widget |
+|---|---|---|
+| Step list (left pane) | [`Tree`](https://textual.textualize.io/widgets/tree/) | Native tree expansion / collapse / icons (✓ ▶ ○ ✗). Each step is a top-level node; sub-checks (per-tool, per-repo) are child nodes. Built-in keyboard navigation (↑↓ / left-right / enter). |
+| Confirm prompts (`Yes / No / Quit`) | [`Button`](https://textual.textualize.io/widgets/button/) row | Stock button styling, focus ring, mouse-clickable, Enter activates. Variant `success` for Yes, `default` for No, `error` for Quit. |
+| Multi-choice prompts (`[Y / n / select]`) | [`RadioSet`](https://textual.textualize.io/widgets/radioset/) of [`RadioButton`](https://textual.textualize.io/widgets/radiobutton/) | Single-select with arrow-key navigation; pressing space toggles. Replaces the text-line `[Y/n/select]` mess. |
+| Per-repo opt-in checkboxes | [`Checkbox`](https://textual.textualize.io/widgets/checkbox/) | The user can scroll through 14 repo checkboxes and toggle each — much friendlier than 14 separate `[y/N]` line prompts. |
+| Heavy-install opt-in toggle (Docker, WSL) | [`Switch`](https://textual.textualize.io/widgets/switch/) | The "are you sure" affordance for irreversible installs. |
+| Custom workspace path entry | [`Input`](https://textual.textualize.io/widgets/input/) with [`SelectionList`](https://textual.textualize.io/widgets/selection_list/) recent-paths | `Input` for typing; `SelectionList` shows recent paths from the journal. |
+| Prereq table (tool / version / required / status) | [`DataTable`](https://textual.textualize.io/widgets/data_table/) | Sortable, scrollable, color-codable rows. Replaces the eight-line dot-status output today. |
+| Welcome screen body | [`MarkdownViewer`](https://textual.textualize.io/widgets/markdown_viewer/) | Renders the existing welcome copy with bold / lists / links — no string-concat templating. |
+| Transcript pane | [`Log`](https://textual.textualize.io/widgets/log/) | Append-only, auto-scroll, color spans, line wrapping handled. Doesn't need to be reimplemented as a `Static` with manual scroll. |
+| Long-running step progress | [`ProgressBar`](https://textual.textualize.io/widgets/progress_bar/) | Clone-of-N-of-M, install percentages. |
+| Per-tool spinners during install | [`LoadingIndicator`](https://textual.textualize.io/widgets/loading_indicator/) | One per active install; sits in the active-step pane next to the tool name. |
+| Switching between Steps / Transcript / Doctor | [`Tabs`](https://textual.textualize.io/widgets/tabs/) + [`TabbedContent`](https://textual.textualize.io/widgets/tabbed_content/) | `Steps` ↔ `Transcript` ↔ `Doctor report` views without rebuilding the layout. |
+| Top chrome | [`Header`](https://textual.textualize.io/widgets/header/) | Title + clock + version. |
+| Bottom chrome | [`Footer`](https://textual.textualize.io/widgets/footer/) | Auto-displays bound keys. |
+| Error / warning toasts | [Toast notifications via `app.notify()`](https://textual.textualize.io/api/app/#textual.app.App.notify) | Built-in with severity levels. |
+
+### Hard rule
+
+**Don't reinvent any of the above.** If a UI need doesn't have a stock Textual widget, that's a signal to either (a) compose existing widgets, (b) check the gallery again with different terms, or (c) raise it as an open question rather than building a custom widget. Custom widgets are a last resort because they accumulate maintenance burden and miss accessibility / theme / keyboard work that Textual's stock widgets get for free.
+
+The full gallery is curated and screenshot/animation-rich at https://textual.textualize.io/widget_gallery/ — review it before designing any new screen.
 
 ## 5. Resumability
 
@@ -123,12 +144,12 @@ With TUI: same, but the resumed UI opens at the first non-`ok` step. Steps alrea
 
 | Phase | Deliverable | Effort |
 |---|---|---|
-| 1 | `cab-tui/` Python package skeleton; pyproject.toml; pinned Textual; basic Textual app shell with the three-pane layout | 1 day |
+| 1 | `cab-tui/` Python package skeleton; pyproject.toml; pinned Textual; app shell composed from `Header` + `Tree` + `TabbedContent` + `Log` + `Footer` (no custom widgets) | 1 day |
 | 2 | JSON-RPC protocol spec doc; `lib/tui-rpc.ps1` (pwsh side) handling `prompt`/`step`/`log`/`progress`/`answer`/`quit`; `cab-tui/rpc.py` (py side) | 2 days |
-| 3 | Wire `Read-CABConfirm` / `Read-CABChoice` to dispatch through tui-rpc when `$Context.TuiMode` is true; existing Read-Host path stays as fallback | 1 day |
-| 4 | Step-list pane with state-icon updates from journal events | 1 day |
-| 5 | Long-running-step support: progress widget for step 60 (cloning), live transcript for step 20 (installing), per-tool spinner | 2 days |
-| 6 | Error recovery panel: when a step returns `fail`, show a panel with `Retry / Skip / Quit / View transcript` actions | 1 day |
+| 3 | Wire `Read-CABConfirm` / `Read-CABChoice` to dispatch through tui-rpc when `$Context.TuiMode` is true; pwsh prompts render as `Button` / `RadioSet` / `Checkbox` / `Input` per the §4 widget map; existing Read-Host path stays as fallback | 1 day |
+| 4 | Step-list pane: `Tree` widget driven by journal events (✓ / ▶ / ○ / ✗ icons via Tree node labels) | 1 day |
+| 5 | Long-running-step support: `ProgressBar` for step 60 (cloning), `Log` widget for step 20 install output, `LoadingIndicator` per tool | 2 days |
+| 6 | Error recovery: `app.notify()` for transient warnings; full-screen panel using `Container` + `Button` row (`Retry / Skip / Quit / View transcript`) for hard fails | 1 day |
 | 7 | Auto-detect: orchestrator launches TUI when (a) interactive, (b) `python3 -m cab_tui --check` succeeds, (c) `--no-tui` not set; otherwise falls back to current Read-Host flow | 1 day |
 | 8 | Make-target plumbing: `make setup` runs the TUI; `make setup-no-tui` keeps the old flow for debugging | 0.5 day |
 | 9 | Tests: Textual has a snapshot-test framework; record golden TUIs for each step's prompt screen, error panel, completion screen; the existing wizard subprocess tests stay since they use `-Unattended` | 2 days |
