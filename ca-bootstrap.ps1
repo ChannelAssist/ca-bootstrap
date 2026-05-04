@@ -62,7 +62,7 @@ if ($NoColor -or $env:NO_COLOR) { $env:CA_BOOTSTRAP_NO_COLOR = '1' }
 if ($LogPath) { $env:CA_BOOTSTRAP_STATE = (Split-Path -Parent (Resolve-Path $LogPath -ErrorAction SilentlyContinue) ?? $LogPath) }
 
 # Dot-source libraries into the orchestrator's scope.
-$libs = @('ui.ps1','prompts.ps1','journal.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
+$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
 foreach ($lib in $libs) {
     if (-not (Test-Path $lib)) { Write-Error "Required library missing: $lib"; exit 99 }
     . $lib
