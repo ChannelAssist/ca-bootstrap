@@ -54,35 +54,36 @@ setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
 setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS)
 
-# Python detection: shared shell snippet inlined into each Python-using
-# recipe. Mirrors bootstrap.sh's detect_python so pyenv/conda envs that
-# only ship `python` (no `python3` symlink) work here too. Defined as a
-# multi-line shell pipeline that echoes the first 3.10+ interpreter on
-# PATH, or empty.
+# Python detection: shared single-line shell snippet inlined into each
+# Python-using recipe. Mirrors bootstrap.sh's detect_python so pyenv/
+# conda envs that only ship `python` (no `python3` symlink) work here
+# too. The snippet sets a shell variable `py` to the first 3.10+
+# interpreter on PATH from the candidate list, or empty if none found.
+# Recipes that follow it test `[ -z "$py" ]` and bail.
 #
-# Why not `PY := $(shell …)`: make would evaluate it at parse time on
-# every invocation (including `make help`), which is wasteful, and the
-# nested parens inside `print(sys.version_info[…])` confuse make's
-# `$(shell …)` paren-balancing scanner — Makefile:NN unterminated-call
-# error. Inlining sidesteps both issues; the recipe lines are passed
-# verbatim to the shell.
-
-define DETECT_PY
-	py=""; \
-	for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do \
-		if command -v "$$cand" >/dev/null 2>&1; then \
-			ver=$$("$$cand" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); \
-			if [ "$$ver" -ge 310 ] 2>/dev/null; then py="$$cand"; break; fi; \
-		fi; \
-	done
-endef
+# Single-line on purpose. A multi-line `define … endef` would expand
+# into multiple recipe lines, and recipe lines are normally fed to
+# separate shell invocations — meaning `done` would land in a different
+# shell from `for`, breaking the loop. Backslash-newline continuations
+# can paper over this when used carefully, but a single-line variable
+# is unambiguous.
+#
+# Why not `PY := $(shell …)`: that would run at parse time on every
+# make invocation (including `make help`), and the nested parens in the
+# Python expression confuse make's $(shell …) paren-balancing scanner —
+# Makefile:NN unterminated-call error.
+#
+# Candidate order matches bootstrap.sh / Find-CABPython:
+#   python3 → python3.13 → python3.12 → python3.11 → python3.10 → python
+DETECT_PY = py=""; for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do if command -v "$$cand" >/dev/null 2>&1; then ver=$$("$$cand" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); if [ "$$ver" -ge 310 ] 2>/dev/null; then py="$$cand"; break; fi; fi; done
+PY_CANDIDATES_HUMAN = python3 / python3.13 / python3.12 / python3.11 / python3.10 / python
 
 .PHONY: tui-install
 tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
 	@$(DETECT_PY); \
 	if [ -z "$$py" ]; then \
-		printf "$(RED)No Python 3.10+ found on PATH (tried python3 / python). Install one first.$(RESET)\n"; \
+		printf "$(RED)No Python 3.10+ found on PATH (tried $(PY_CANDIDATES_HUMAN)). Install one first.$(RESET)\n"; \
 		exit 1; \
 	fi; \
 	printf "  Using interpreter: $$py\n"; \
@@ -108,7 +109,7 @@ tui-test: ## Run the cab-tui pytest suite
 	@printf "$(BLUE)Running cab-tui pytest suite...$(RESET)\n"
 	@$(DETECT_PY); \
 	if [ -z "$$py" ]; then \
-		printf "$(RED)No Python 3.10+ found on PATH.$(RESET)\n"; \
+		printf "$(RED)No Python 3.10+ found on PATH (tried $(PY_CANDIDATES_HUMAN)).$(RESET)\n"; \
 		exit 1; \
 	fi; \
 	cd cab-tui && $$py -m pytest -q
