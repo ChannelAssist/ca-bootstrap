@@ -97,8 +97,10 @@ tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 	{ \
 		if [ "$$(uname -s)" = "Darwin" ]; then \
 			find . -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-			find $$($$py -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
-				-name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+			site_pkgs=$$($$py -c "import site; print(site.getsitepackages()[0])" 2>/dev/null); \
+			if [ -n "$$site_pkgs" ] && [ -d "$$site_pkgs" ]; then \
+				find "$$site_pkgs" -name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+			fi; \
 		fi; \
 	} && \
 	printf "$(GREEN)✓ cab-tui installed; \`make setup\` will now auto-launch the TUI$(RESET)\n"
