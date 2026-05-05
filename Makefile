@@ -78,6 +78,12 @@ setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
 DETECT_PY = py=""; for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do if command -v "$$cand" >/dev/null 2>&1; then ver=$$("$$cand" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); if [ "$$ver" -ge 310 ] 2>/dev/null; then py="$$cand"; break; fi; fi; done
 PY_CANDIDATES_HUMAN = python3 / python3.13 / python3.12 / python3.11 / python3.10 / python
 
+# tui-install — every shell step in the recipe chains via `&&` so a
+# non-zero exit (e.g. pip refused by PEP 668's EXTERNALLY-MANAGED on
+# Homebrew/system Pythons) stops the recipe instead of falling through
+# to the success printf. The Darwin .pth cleanup is idempotent —
+# `|| true` keeps the find from breaking the chain on non-Hatchling
+# installs.
 .PHONY: tui-install
 tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
@@ -86,13 +92,15 @@ tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 		printf "$(RED)No Python 3.10+ found on PATH (tried $(PY_CANDIDATES_HUMAN)). Install one first.$(RESET)\n"; \
 		exit 1; \
 	fi; \
-	printf "  Using interpreter: $$py\n"; \
-	cd cab-tui && $$py -m pip install -e . --quiet; \
-	if [ "$$(uname -s)" = "Darwin" ]; then \
-		find cab-tui -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-		find $$($$py -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
-			-name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-	fi; \
+	printf "  Using interpreter: $$py\n" && \
+	cd cab-tui && $$py -m pip install -e . --quiet && \
+	{ \
+		if [ "$$(uname -s)" = "Darwin" ]; then \
+			find . -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+			find $$($$py -c "import site; print(site.getsitepackages()[0])" 2>/dev/null) \
+				-name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+		fi; \
+	} && \
 	printf "$(GREEN)✓ cab-tui installed; \`make setup\` will now auto-launch the TUI$(RESET)\n"
 	@# Install path note: pip into the same Python the orchestrator
 	@# probes via Find-CABPython. `poetry install` would create a
