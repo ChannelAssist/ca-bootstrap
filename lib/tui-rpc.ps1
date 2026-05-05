@@ -47,11 +47,13 @@ function _CABTuiPythonPath {
 }
 
 # Find-CABPython — return the first usable Python 3.10+ on PATH, or
-# $null. Candidate order matches bootstrap.sh's detect_python and the
-# Makefile's DETECT_PY: pyenv/conda environments may only ship a
-# version-suffixed `python3.12` (no `python3` symlink), so we probe
-# those names too — otherwise the orchestrator would silently fall
-# back to CLI on a setup the installer happily accepts.
+# $null. On Unix-like systems, candidate order matches bootstrap.sh's
+# detect_python and the Makefile's DETECT_PY; on Windows we prepend
+# `python.exe` and `py` as platform-specific additions. pyenv/conda
+# environments may only ship a version-suffixed `python3.12` (no
+# `python3` symlink), so we probe those names too — otherwise the
+# orchestrator would silently fall back to CLI on a setup the
+# installer happily accepts.
 function Get-CABPythonCandidates {
     if ($IsWindows) {
         @('python.exe', 'py', 'python3', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python')
