@@ -60,6 +60,43 @@ Describe 'bootstrap.ps1 — Python/cab-tui install path' {
         $content | Should -Match 'for cand in [^;]*\bpython\b'
     }
 
+    It 'bootstrap.sh recreates a stale (<3.10) cab-tui/.venv before installing' {
+        # Behavioral regression guard for Copilot iter-4 #2 (PR #5):
+        # source the install_python_and_tui function from bootstrap.sh,
+        # point it at a fake cab-tui dir whose .venv is a 3.9 stub, and
+        # confirm the function recreates the venv (i.e. removes the
+        # marker file we plant in the stale venv).
+        $bash = Join-Path $script:repoRoot 'bootstrap.sh'
+        $content = Get-Content -Raw $bash
+        # Static guards (cheap, catch the most common refactor mistake):
+        $content | Should -Match 'Existing.*venv_dir.*Python <3.10'
+        $content | Should -Match 'rm -rf "\$venv_dir"'
+        # Behavioral check: the recreate path is gated on a Python
+        # version probe via `-c 'import sys; v=sys.version_info; ...'`.
+        $content | Should -Match 'venv_ver=\$\(.*v\[0\]\*100\+v\[1\]'
+        $content | Should -Match '\$venv_ver.*-lt 310'
+    }
+
+    It 'bootstrap.ps1 recreates a stale (<3.10) cab-tui/.venv before installing' {
+        # Same regression guard for the PowerShell side.
+        $content = Get-Content -Raw $script:bootstrapPs1
+        $content | Should -Match 'Existing.*venvDir.*Python <3.10'
+        $content | Should -Match 'Remove-Item -Recurse -Force \$venvDir'
+        $content | Should -Match 'venvVer.*v\[0\]\*100\+v\[1\]'
+        $content | Should -Match '\[int\]\$venvVer.*-lt 310'
+    }
+
+    It 'bootstrap.ps1 clears UF_HIDDEN on macOS after pip install' {
+        # Copilot iter-4 #10: the bash + Makefile install paths both
+        # clear the macOS hidden flag on the editable .pth shim;
+        # bootstrap.ps1 was missing this. macOS users running pwsh-
+        # bootstrap would otherwise hit the same Python 3.14 site.py
+        # skip-hidden bug.
+        $content = Get-Content -Raw $script:bootstrapPs1
+        $content | Should -Match 'IsMacOS'
+        $content | Should -Match 'chflags nohidden'
+    }
+
     It 'mode-2 short-circuit forwards to the sibling ca-bootstrap.ps1 (skipping the install path)' {
         # The mode-2 short-circuit lives at the top of bootstrap.ps1 and
         # exec's the sibling orchestrator without going through any of

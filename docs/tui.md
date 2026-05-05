@@ -67,23 +67,30 @@ cab-tui needs Python 3.10 or newer.
 make tui-install
 ```
 
-Or by hand:
+Or by hand — install into `cab-tui/.venv` (the orchestrator's `Find-CABPython` looks there first, and `pip install` against the system Python is blocked by PEP 668 on Homebrew/system Pythons anyway):
 
 ```bash
-cd cab-tui
-python3 -m pip install -e .
+python3 -m venv cab-tui/.venv
+cab-tui/.venv/bin/python -m pip install -e 'cab-tui[dev]'   # quote so zsh doesn't treat [dev] as a glob
 ```
 
-`poetry.lock` is committed for reproducibility (per SDLC), but `pip install` doesn't read it — pip resolves transitively from the version specifiers in `pyproject.toml`. For a strict lockfile-based install, use Poetry directly and put its venv on PATH so the orchestrator picks up the locked interpreter:
+`poetry.lock` is committed for reproducibility (per SDLC), but `pip install` doesn't read it — pip resolves transitively from the version specifiers in `pyproject.toml`. For a strict lockfile-based install, use Poetry directly. Note: the orchestrator's `Find-CABPython` checks `cab-tui/.venv` **before** PATH, so a Poetry venv on PATH is silently ignored when `cab-tui/.venv/` exists. Set `CA_BOOTSTRAP_NO_VENV=1` to skip the venv-first lookup and let Poetry's interpreter win:
 
 ```bash
-cd cab-tui
-poetry install                           # populates Poetry's virtualenv
-export PATH="$(poetry env info --path)/bin:$PATH"   # so Find-CABPython sees it
-ca-bootstrap.ps1 setup                   # auto-detect now picks up the locked python
+(cd cab-tui && poetry install)                       # populates Poetry's virtualenv
+export PATH="$(cd cab-tui && poetry env info --path)/bin:$PATH"   # add it to PATH
+export CA_BOOTSTRAP_NO_VENV=1                        # skip cab-tui/.venv preference
+./ca-bootstrap.ps1 setup                             # run from repo root
 ```
 
-Or export the lockfile to a pip-compatible constraints file (`poetry export --without-hashes -o constraints.txt`) and pip-install with `--constraint`.
+Alternatively, point Poetry at `cab-tui/.venv` directly so the standard venv-first lookup works:
+
+```bash
+(cd cab-tui && POETRY_VIRTUALENVS_IN_PROJECT=true poetry install)   # creates cab-tui/.venv
+./ca-bootstrap.ps1 setup                                            # default lookup finds it
+```
+
+Or export the lockfile to a pip-compatible constraints file (`poetry export --without-hashes -o constraints.txt`) and pip-install into `cab-tui/.venv` with `--constraint`.
 
 The bootstrap one-liners (`bootstrap.sh` / `bootstrap.ps1`) install Python and cab-tui automatically when missing — no manual step required for first-time users.
 

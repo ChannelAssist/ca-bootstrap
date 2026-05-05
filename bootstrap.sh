@@ -207,36 +207,51 @@ install_python_and_tui() {
         fi
     fi
 
-    # Probe whether cab_tui is already importable (e.g. previous run).
-    if "$py" -m cab_tui --check >/dev/null 2>&1; then
-        color_green "✓ cab-tui already installed."
-        return 0
+    # If a previous run already populated cab-tui/.venv with a 3.10+
+    # python AND cab_tui imports correctly, reuse it. Stale venvs
+    # (e.g. created with 3.9 in a cached clone) get recreated below.
+    local venv_dir="$cab_tui_dir/.venv"
+    local venv_py="$venv_dir/bin/python"
+    if [ -x "$venv_py" ]; then
+        local venv_ver
+        venv_ver=$("$venv_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0)
+        if [ "$venv_ver" -lt 310 ] 2>/dev/null; then
+            color_yellow "  Existing $venv_dir/ is Python <3.10; recreating..."
+            rm -rf "$venv_dir"
+        elif "$venv_py" -m cab_tui --check >/dev/null 2>&1; then
+            color_green "✓ cab-tui already installed in $venv_dir/."
+            return 0
+        fi
     fi
 
     color_blue "Installing cab-tui (optional rich TUI front-end)..."
-    # Install via pip into the same Python the orchestrator probes.
-    # `poetry install` would create a Poetry-managed virtualenv that
-    # the orchestrator's Find-CABPython can't see, so the TUI would
-    # be unreachable despite a successful install. poetry.lock stays
-    # in the repo as the spec-of-record for strict reproducibility.
-    local install_ok=0
-    if ! "$py" -m pip install --quiet --upgrade pip 2>/dev/null; then
-        color_yellow "  pip upgrade failed; continuing with whatever pip is available."
+    # Install into a virtualenv at cab-tui/.venv. We do NOT pip-install
+    # into the system Python: PEP 668-protected distros (Homebrew
+    # Python on macOS, Debian/Ubuntu's python3) refuse `pip install`
+    # against the system interpreter and would silently fail. The
+    # orchestrator's Find-CABPython prefers the venv anyway.
+    if [ ! -e "$venv_py" ]; then
+        if ! "$py" -m venv "$venv_dir" 2>/dev/null; then
+            color_yellow "  Failed to create virtualenv at $venv_dir/."
+            color_yellow "  (Make sure $py has the venv module: \`$py -m ensurepip\` or your distro's python3-venv package.)"
+            color_yellow "  Continuing with the legacy Read-Host CLI."
+            return 0
+        fi
     fi
-    if "$py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
-        install_ok=1
-    fi
-    if [ "$install_ok" = "1" ]; then
+
+    "$venv_py" -m pip install --quiet --upgrade pip 2>/dev/null || true
+    if "$venv_py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
         # macOS Python 3.14 + Hatchling: clear UF_HIDDEN on the editable
         # .pth so site.py picks it up. See docs/tui.md.
         if [ "$(detect_os)" = "macos" ]; then
-            local site_pkgs
-            site_pkgs=$("$py" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "")
-            if [ -n "$site_pkgs" ]; then
-                find "$site_pkgs" -name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true
-            fi
+            # Both hatchling and poetry-core editable backends mark
+            # their .pth shims with macOS UF_HIDDEN; Python 3.14's
+            # site.py skips hidden .pth files. Clear the flag on every
+            # .pth in the venv's site-packages — harmless for non-
+            # hidden ones.
+            find "$venv_dir" -path "*site-packages/*.pth" -exec chflags nohidden {} \; 2>/dev/null || true
         fi
-        color_green "✓ cab-tui installed; setup will auto-launch the TUI."
+        color_green "✓ cab-tui installed in $venv_dir/; setup will auto-launch the TUI."
     else
         color_yellow "  cab-tui install failed; continuing with the legacy Read-Host CLI."
         color_yellow "  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)"
