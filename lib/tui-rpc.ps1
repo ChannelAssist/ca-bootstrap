@@ -47,12 +47,23 @@ function _CABTuiPythonPath {
 }
 
 # Find-CABPython — return the first usable Python 3.10+ on PATH, or
-# $null. Mirrors bootstrap.ps1's Find-Python310Plus so the orchestrator
-# accepts the same interpreters the installer accepts:
-# 'python3' / 'python.exe' on Unix-likes, plus the Windows 'py' launcher.
+# $null. On Unix-like systems, candidate order matches bootstrap.sh's
+# detect_python and the Makefile's DETECT_PY; on Windows we prepend
+# `python.exe` and `py` as platform-specific additions. pyenv/conda
+# environments may only ship a version-suffixed `python3.12` (no
+# `python3` symlink), so we probe those names too — otherwise the
+# orchestrator would silently fall back to CLI on a setup the
+# installer happily accepts.
+function Get-CABPythonCandidates {
+    if ($IsWindows) {
+        @('python.exe', 'py', 'python3', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python')
+    } else {
+        @('python3', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python')
+    }
+}
+
 function Find-CABPython {
-    $candidates = if ($IsWindows) { @('python.exe', 'py', 'python3') } else { @('python3', 'python') }
-    foreach ($cand in $candidates) {
+    foreach ($cand in (Get-CABPythonCandidates)) {
         if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
         try {
             $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
@@ -110,7 +121,8 @@ function Start-CABTuiBridge {
     if (-not $PythonBinary) {
         $PythonBinary = Find-CABPython
         if (-not $PythonBinary) {
-            throw "cab-tui: no usable Python 3.10+ found on PATH (tried python3 / python / python.exe / py)."
+            $tried = (Get-CABPythonCandidates) -join ' / '
+            throw "cab-tui: no usable Python 3.10+ found on PATH (tried $tried)."
         }
     }
 
