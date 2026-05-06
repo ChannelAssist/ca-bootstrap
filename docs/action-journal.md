@@ -196,7 +196,7 @@ Listed in the order steps typically produce them.
   undone: false
 ```
 
-**Undone by**: not undoable. The action is informational only — the agents and prompts in `ca-copilot-plugin/agents/` and `.github/prompts/` resolve when synced into a consumer repo's `.github/agents/` and `.github/prompts/` (handled out-of-band by `cm-platform-infra` `make agents-sync`). There is no per-developer install state to reverse.
+**Undone by**: not undoable. The action is informational only — the agents and prompts in `ca-copilot-plugin/.github/agents/` and `ca-copilot-plugin/.github/prompts/` resolve when synced into a consumer repo's `.github/agents/` and `.github/prompts/` (handled out-of-band by `cm-platform-infra` `make agents-sync`). There is no per-developer install state to reverse.
 
 ### `install_wsl`
 
