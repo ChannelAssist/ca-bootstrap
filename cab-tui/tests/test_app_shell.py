@@ -8,10 +8,18 @@ once the RPC layer is in place.
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import pytest
+from textual.widgets import MarkdownViewer
 
 from cab_tui.app import CabTuiApp, SETUP_STEPS
+
+
+class FakeRpcMessage:
+    def __init__(self, raw: dict):
+        self.raw = raw
+        self.type = raw.get("type", "")
 
 
 @pytest.mark.asyncio
@@ -266,8 +274,6 @@ def test_main_unit_propagates_app_return_code() -> None:
 @pytest.mark.asyncio
 async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
     """step.start should reset Active step body, and log events append to it."""
-    from textual.widgets import MarkdownViewer
-    from unittest.mock import AsyncMock
 
     app = CabTuiApp()
     async with app.run_test():
@@ -276,11 +282,6 @@ async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
 
         spy_update = AsyncMock(side_effect=original_update)
         viewer.document.update = spy_update  # type: ignore[assignment]
-
-        class FakeRpcMessage:
-            def __init__(self, raw: dict):
-                self.raw = raw
-                self.type = raw.get("type", "")
 
         await app._handle_rpc_step(FakeRpcMessage({
             "type": "step", "phase": "start", "step": "60-repos",
