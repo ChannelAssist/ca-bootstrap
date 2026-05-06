@@ -106,7 +106,7 @@ function Invoke-CABCommandSetup {
         if ($Script:CABQuitRequested) {
             Save-CABJournal
             Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'Ctrl+C received'
-            return 1
+            return 10
         }
         $ordinal++
         $Context.StepOrdinal = $ordinal
@@ -167,7 +167,7 @@ function Invoke-CABCommandSetup {
                 'quit'    {
                     Save-CABJournal
                     Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'You quit'
-                    return 1
+                    return 10
                 }
                 'fail'    {
                     Write-CABStatus -Status fail -Message $result.details

@@ -102,6 +102,13 @@ class CabTuiApp(App):
         margin-bottom: 1;
         padding: 0 1;
     }
+
+    .prompt-question {
+        width: 100%;
+        height: auto;
+        padding: 0 1;
+        margin-bottom: 1;
+    }
     """
 
     BINDINGS = [
@@ -129,6 +136,21 @@ class CabTuiApp(App):
         # has stopped reading our stdout and is just waiting for the
         # process to terminate.
         self._post_done: bool = False
+        # Track the currently-running step so log events from it can
+        # populate the Active step body. Without this the body shows
+        # the welcome markdown forever — fine when the user is on step
+        # 10, but wrong (and confusing) when they advance to 40/60/etc.
+        # and the body doesn't reflect what's currently happening.
+        self._active_step_id: str | None = None
+        # Markdown text shown in #step-body. Reset on every step.start so
+        # each step's context is rendered fresh, then appended to via
+        # log events. Initial value is the welcome markdown so the
+        # first paint matches what the user expects before any RPC
+        # event has arrived.
+        self._step_body_text: str = _welcome_markdown()
+        # Debounce MarkdownViewer updates for high-volume log streams.
+        self._step_body_refresh_task: asyncio.Task[None] | None = None
+        self._step_body_last_log_at: float = 0.0
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -211,6 +233,7 @@ class CabTuiApp(App):
     # protocol-incompatible changes (renamed event types, restructured
     # prompt shape, etc.). docs/rpc-protocol.md tracks the matrix.
     _SUPPORTED_SCHEMA_VERSION = 1
+    _STEP_BODY_REFRESH_DEBOUNCE_SECONDS = 0.1
 
     async def _handle_rpc_welcome(self, msg: RpcMessage) -> None:
         # Per docs/rpc-protocol.md: child must close on schema_version
@@ -272,18 +295,83 @@ class CabTuiApp(App):
         if phase == "start":
             node.set_label(f"{_STATUS_ICON['active']} {title}")
             self._append_log("info", f"→ Step start: {step_id}")
+            # Reset the step body to a fresh header for the new step.
+            # Subsequent log events from this step append below the
+            # header so the user sees this step's context inline with
+            # any prompt that fires — instead of the previous step's
+            # (or step 10's welcome) lingering text.
+            self._active_step_id = step_id
+            self._step_body_text = f"## {title}\n\n"
+            await self._refresh_step_body()
         elif phase == "end":
             status = msg.raw.get("status", "ok")
             icon = _STATUS_ICON.get(status, _STATUS_ICON["ok"])
             node.set_label(f"{icon} {title}")
             details = msg.raw.get("details", "")
             self._append_log("info", f"  Step end: {step_id} — {status}{(' — ' + details) if details else ''}")
+            # Leave _active_step_id set so any final log lines from the
+            # closing step still land in this step's body rather than
+            # bleeding into the next step's empty body. Cleared on the
+            # next step.start.
         elif phase == "skip":
             node.set_label(f"{_STATUS_ICON['skip']} {title}")
             self._append_log("info", f"  Step skipped: {step_id}")
 
     async def _handle_rpc_log(self, msg: RpcMessage) -> None:
-        self._append_log(msg.raw.get("stream", "info"), msg.raw.get("text", ""))
+        stream = msg.raw.get("stream", "info")
+        text = msg.raw.get("text", "")
+        self._append_log(stream, text)
+        # Mirror the log line into the active step body so descriptive
+        # output from steps/*.ps1 (now routed via the Write-Host override
+        # in lib/tui-rpc.ps1) is visible inline in the Active step pane
+        # alongside any prompt that's about to fire. Without this, every
+        # step's "this is what we're about to ask you about" context
+        # would only be visible by tabbing to the Transcript pane.
+        if self._active_step_id is not None:
+            self._step_body_text += (text or "") + "\n"
+            self._schedule_step_body_refresh()
+
+    def _schedule_step_body_refresh(self) -> None:
+        """Coalesce bursty log events into a single markdown refresh."""
+        loop = asyncio.get_running_loop()
+        self._step_body_last_log_at = loop.time()
+        if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
+            return
+
+        async def _debounced_refresh() -> None:
+            try:
+                while True:
+                    elapsed = loop.time() - self._step_body_last_log_at
+                    remaining = self._STEP_BODY_REFRESH_DEBOUNCE_SECONDS - elapsed
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                        continue
+                    break
+                await self._refresh_step_body()
+            except asyncio.CancelledError:
+                return
+            finally:
+                if self._step_body_refresh_task is asyncio.current_task():
+                    self._step_body_refresh_task = None
+
+        self._step_body_refresh_task = asyncio.create_task(_debounced_refresh())
+
+    async def _refresh_step_body(self) -> None:
+        """Push the current self._step_body_text into the #step-body Markdown.
+
+        Defensively no-ops if the widget isn't mounted yet (early RPC
+        events can arrive before compose finishes) or if the underlying
+        Markdown.update fails — losing a refresh is annoying but never
+        worth crashing the UI loop over.
+        """
+        try:
+            viewer = self.query_one("#step-body", MarkdownViewer)
+        except Exception:
+            return
+        try:
+            await viewer.document.update(self._step_body_text)
+        except Exception:
+            pass
 
     async def _handle_rpc_notify(self, msg: RpcMessage) -> None:
         # Stock toast — not a custom modal.

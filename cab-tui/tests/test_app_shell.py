@@ -7,9 +7,19 @@ once the RPC layer is in place.
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock
+
 import pytest
+from textual.widgets import MarkdownViewer
 
 from cab_tui.app import CabTuiApp, SETUP_STEPS
+
+
+class FakeRpcMessage:
+    def __init__(self, raw: dict):
+        self.raw = raw
+        self.type = raw.get("type", "")
 
 
 @pytest.mark.asyncio
@@ -259,3 +269,30 @@ def test_main_unit_propagates_app_return_code() -> None:
     finally:
         cab_main.CabTuiApp = orig_app
         cab_main._redirect_textual_to_tty = orig_redirect
+
+
+@pytest.mark.asyncio
+async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
+    """step.start should reset Active step body, and log events append to it."""
+
+    app = CabTuiApp()
+    async with app.run_test():
+        viewer = app.query_one("#step-body", MarkdownViewer)
+        original_update = viewer.document.update
+
+        spy_update = AsyncMock(side_effect=original_update)
+        viewer.document.update = spy_update  # type: ignore[assignment]
+
+        await app._handle_rpc_step(FakeRpcMessage({
+            "type": "step", "phase": "start", "step": "60-repos",
+        }))
+        await app._handle_rpc_log(FakeRpcMessage({
+            "type": "log", "stream": "info", "text": "Cloning ChannelAssist/Keystone...",
+        }))
+        await asyncio.sleep(app._STEP_BODY_REFRESH_DEBOUNCE_SECONDS + 0.1)
+
+        updates = [call.args[0] for call in spy_update.await_args_list]
+        assert updates, "Expected #step-body markdown update calls"
+        assert updates[0].startswith("## Clone repositories"), updates[0]
+        assert updates[-1].startswith("## Clone repositories"), updates[-1]
+        assert "Cloning ChannelAssist/Keystone..." in updates[-1], updates[-1]

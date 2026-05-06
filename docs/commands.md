@@ -59,7 +59,7 @@ First-time onboarding wizard. Runs all eight steps in order. Each step detects e
 | Exit | Meaning |
 |---|---|
 | 0 | Success (or successful re-run that found nothing to do) |
-| 1 | User quit |
+| 10 | User quit |
 | 2 | Required tool could not be installed |
 | 3 | gh authentication failed |
 | 4 | Workspace folder could not be created |
