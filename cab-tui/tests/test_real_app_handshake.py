@@ -132,6 +132,26 @@ def _read_line_with_timeout(fp, timeout: float) -> bytes | None:
     return holder[0] if holder else None
 
 
+def _read_all_with_timeout(fp, timeout: float) -> bytes:
+    """Read everything currently in `fp` with an upper bound. Returns
+    whatever bytes were available within the budget; never blocks past
+    it. Used for diagnostic stderr capture after kill — `proc.stderr.read()`
+    would normally hit EOF immediately on an exited child, but we don't
+    want a stuck/zombie child to deadlock the whole test suite."""
+    holder: list[bytes] = []
+
+    def _read() -> None:
+        try:
+            holder.append(fp.read())
+        except Exception:
+            holder.append(b"")
+
+    t = threading.Thread(target=_read, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    return holder[0] if holder else b""
+
+
 def _kill(proc: subprocess.Popen) -> None:
     for closer in (lambda: proc.stdin.close(), proc.terminate, proc.kill):
         try:
@@ -183,11 +203,11 @@ def test_welcome_with_q_chars_is_acked_not_quit() -> None:
             pass
 
     # Diagnostic: capture what the child wrote to stderr in case of failure.
-    stderr_data = b""
-    try:
-        stderr_data = proc.stderr.read() or b""
-    except Exception:
-        pass
+    # Bounded: a bare proc.stderr.read() would block indefinitely if _kill
+    # somehow failed to terminate the child (e.g. the process is wedged in
+    # an uninterruptible syscall). 2-second budget is plenty for stderr to
+    # drain on an exited child.
+    stderr_data = _read_all_with_timeout(proc.stderr, timeout=2.0)
 
     assert line, (
         f"no response from cab-tui within timeout. "
