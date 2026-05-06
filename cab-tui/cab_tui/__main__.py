@@ -116,8 +116,22 @@ def _redirect_textual_to_tty() -> tuple[IO[bytes] | None, TextIO | None]:
     # Now traceback.print_exc(), `print("oops", file=sys.stderr)`, and
     # similar diagnostics flow back to the orchestrator's stderr pipe
     # → last-run.log, while Textual's rendering keeps owning fd 2.
+    #
+    # `errors="backslashreplace"` (NOT "strict"!) so the error-reporting
+    # channel can't itself raise. A traceback containing a surrogate-
+    # escape from `os.fsdecode` of an undecodable filename, or an env
+    # var with non-UTF-8 bytes, would trip a strict encoder and silence
+    # the very diagnostic we're trying to surface. backslashreplace
+    # encodes those bytes as visible `\xNN` escapes — readable, and
+    # impossible to fail-encode. (rpc_out_fp above stays "strict" —
+    # the JSON-RPC wire format pins UTF-8 and a bad encoding there
+    # SHOULD fail loudly rather than send garbage to the parent.)
     sys.stderr = os.fdopen(
-        saved_stderr_fd, "w", buffering=1, encoding="utf-8", errors="strict"
+        saved_stderr_fd,
+        "w",
+        buffering=1,
+        encoding="utf-8",
+        errors="backslashreplace",
     )
 
     # Hand the saved fds back as Python files for the RPC bridge.
