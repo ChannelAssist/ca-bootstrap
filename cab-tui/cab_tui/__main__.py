@@ -5,11 +5,12 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import IO, TextIO
 
 from cab_tui.app import CabTuiApp
 
 
-def _redirect_textual_to_tty() -> tuple[object, object]:
+def _redirect_textual_to_tty() -> tuple[IO[bytes] | None, TextIO | None]:
     """Move Textual's I/O off the parent's RPC pipes and onto /dev/tty.
 
     The parent (ca-bootstrap.ps1) gives us pipes for fd 0 (RPC events
@@ -29,17 +30,21 @@ def _redirect_textual_to_tty() -> tuple[object, object]:
     user's terminal, and hand the saved parent-pipe fds back to the
     caller for the RPC bridge.
 
-    Returns (rpc_in_fp, rpc_out_fp) — file objects wrapping the saved
-    pipe fds, ready to pass to RpcBridge as reader_fp / writer_fp.
+    Returns:
+        (rpc_in_fp, rpc_out_fp) — file objects wrapping the saved pipe
+        fds, ready to pass to RpcBridge as `reader_fp` / `writer_fp`.
+        `rpc_in_fp` is opened in binary mode (asyncio's StreamReader
+        decodes bytes → str itself); `rpc_out_fp` is utf-8 text mode.
 
     Windows is a no-op: there's no /dev/tty, and rpc.py already disables
     the consumer cleanly when connect_read_pipe fails. Returns
-    (sys.stdin, sys.stdout) on Windows so the bridge keeps its existing
-    behavior. A real Windows TUI bridge needs a separate, thread-based
-    driver — tracked separately.
+    `(None, None)` so RpcBridge falls back to sys.stdin / sys.stdout
+    via its own None-handling — same runtime behaviour as before, with
+    a more honest type signature. A real Windows TUI bridge needs a
+    separate, thread-based driver — tracked separately.
     """
     if sys.platform == "win32":
-        return sys.stdin, sys.stdout
+        return None, None
 
     # Save the parent's pipe ends as fresh fds; if anything below fails
     # we close them in the OSError branch to avoid fd leaks.
