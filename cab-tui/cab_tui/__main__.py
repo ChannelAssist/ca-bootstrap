@@ -74,8 +74,16 @@ def _redirect_textual_to_tty() -> tuple[object, object]:
     # Binary read for the bridge's asyncio StreamReader (it expects an
     # object with fileno()); line-buffered text write for outbound
     # messages (matches the parent's line-delimited expectation).
+    # Explicit utf-8 encoding because docs/rpc-protocol.md pins the wire
+    # format as UTF-8 JSON — Python's default text-mode encoding is
+    # locale-dependent (cp1252 on a default Windows install, etc.),
+    # which would silently mangle non-ASCII payloads on misconfigured
+    # hosts. errors='strict' converts a bad encoding into a loud
+    # exception instead of a quiet replacement character.
     rpc_in_fp = os.fdopen(rpc_in_fd, "rb", buffering=0)
-    rpc_out_fp = os.fdopen(rpc_out_fd, "w", buffering=1)
+    rpc_out_fp = os.fdopen(
+        rpc_out_fd, "w", buffering=1, encoding="utf-8", errors="strict"
+    )
     return rpc_in_fp, rpc_out_fp
 
 
