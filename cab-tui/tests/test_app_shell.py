@@ -267,18 +267,15 @@ def test_main_unit_propagates_app_return_code() -> None:
 async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
     """step.start should reset Active step body, and log events append to it."""
     from textual.widgets import MarkdownViewer
+    from unittest.mock import AsyncMock
 
     app = CabTuiApp()
     async with app.run_test():
         viewer = app.query_one("#step-body", MarkdownViewer)
-        updates: list[str] = []
         original_update = viewer.document.update
 
-        async def _capture_update(markdown: str) -> None:
-            updates.append(markdown)
-            await original_update(markdown)
-
-        viewer.document.update = _capture_update  # type: ignore[assignment]
+        spy_update = AsyncMock(side_effect=original_update)
+        viewer.document.update = spy_update  # type: ignore[assignment]
 
         class _M:
             def __init__(self, raw: dict):
@@ -293,6 +290,7 @@ async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
         }))
         await asyncio.sleep(0.2)
 
+        updates = [call.args[0] for call in spy_update.await_args_list]
         assert updates, "Expected #step-body markdown update calls"
         assert updates[0].startswith("## Clone repositories"), updates[0]
         assert updates[-1].startswith("## Clone repositories"), updates[-1]
