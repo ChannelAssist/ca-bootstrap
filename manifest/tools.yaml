@@ -107,7 +107,8 @@ optional:
     requires: [vscode]
     install_method: code-cli
     extensions:
-      - GitHub.copilot
+      - GitHub.copilot          # inline completions; the chat sibling below resolves ca-copilot-plugin agents/prompts
+      - GitHub.copilot-chat     # /<prompt> and @<agent> entry points that consume ca-copilot-plugin content
       - ms-dotnettools.csharp
       - ms-azuretools.vscode-docker
       - ms-python.python

@@ -95,7 +95,7 @@ pwsh ./ca-bootstrap.ps1 setup
 6. **Create the folder structure** — `docs/`, `ca-platform/`, `cm-product/`, `ado-legacy/`
 7. **Clone repositories** — group by group, individually selectable, respects your team membership
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
-9. **Optional extras** — Claude Code, ca-claude-plugin, WSL2 (Windows), Docker Desktop license acceptance
+9. **Optional extras** — Claude Code, ca-claude-plugin (Claude Code plugin), ca-copilot-plugin (GitHub Copilot custom agents + prompts), WSL2 (Windows), Docker Desktop license acceptance
 
 Every step is **interactive and optional**. Defaults are sensible. You can quit any time. Re-running is safe and acts as a "verify my setup" check.
 

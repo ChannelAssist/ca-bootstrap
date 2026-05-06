@@ -92,6 +92,9 @@ function Convert-CABAnswersToFlat {
         if ($null -ne $Answers.extras.ca_claude_plugin) {
             $flat['extras.ca_claude_plugin'] = [bool]$Answers.extras.ca_claude_plugin
         }
+        if ($null -ne $Answers.extras.ca_copilot_plugin) {
+            $flat['extras.ca_copilot_plugin'] = [bool]$Answers.extras.ca_copilot_plugin
+        }
         if ($null -ne $Answers.extras.wsl_ubuntu_2204) {
             $flat['extras.wsl_ubuntu_2204'] = [bool]$Answers.extras.wsl_ubuntu_2204
         }

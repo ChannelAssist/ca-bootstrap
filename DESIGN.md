@@ -362,8 +362,10 @@ Step 6/8 — Clone repositories
       • ChannelAssist/Keystone               (master)
       • ChannelAssist/.github                (main)
       • ChannelAssist/.github-private        (main, members-only)
-    ca-platform/           3 repos    [Y/n/select]
+    ca-platform/           5 repos    [Y/n/select]
+      • ChannelAssist/ca-ai-agents           (master)
       • ChannelAssist/ca-claude-plugin       (main)
+      • ChannelAssist/ca-copilot-plugin      (main)
       • ChannelAssist/ca-data-dictionnary-generator (master)
       • ChannelAssist/ca-privacy-gate        (main)
     cm-product/            10 repos   [Y/n/select]
@@ -375,7 +377,7 @@ Step 6/8 — Clone repositories
   > select
 
     docs/ — clone all 3? [Y/n]: Y
-    ca-platform/ — clone all 3? [Y/n]: Y
+    ca-platform/ — clone all 5? [Y/n]: Y
     cm-product/ — clone all 10? [Y/n/individual]: individual
       ChannelAssist/channel-manager (≈4 GB)? [y/N]: N        ← skip the legacy monolith
       ChannelAssist/cm-claims-validator? [Y/n]: Y
@@ -399,13 +401,21 @@ Step 7/8 — Git identity for ChannelAssist
   ✓ Added includeIf entry to %USERPROFILE%\.gitconfig
 
 Step 8/8 — Optional extras
-  • Install Claude Code (npm i -g @anthropic-ai/claude-code)? [y/N]: Y
-    ✓ Installed.
-  • Install ca-claude-plugin (Claude Code plugin)? [y/N]: Y
-    ✓ Installed and activated.
-  • Set up WSL2 + Ubuntu 22.04 for Linux-side builds? [y/N]: N
-  • Create a VS Code multi-root workspace file? [Y/n]: Y
-    ✓ Wrote ChannelAssistDev\ChannelAssist.code-workspace
+  • Create VS Code multi-root workspace file at ChannelAssist.code-workspace? [Y/n]: Y
+    ✓ Wrote ChannelAssistDev\ChannelAssist.code-workspace (14 folders)
+  • Link ca-claude-plugin into ~/.claude/plugins so Claude Code can load it? [y/N]: Y
+    ✓ Linked: %USERPROFILE%\.claude\plugins\ca-claude-plugin →
+      ChannelAssistDev\ca-platform\ca-claude-plugin
+      ⓘ Restart Claude Code or run its plugin-reload command to pick it up.
+  • Show ca-copilot-plugin usage notes (how custom agents/prompts activate in your repos)? [y/N]: Y
+    ⓘ ca-copilot-plugin cloned at:
+        ChannelAssistDev\ca-platform\ca-copilot-plugin
+      Custom agents and prompt files in this repo become available in Copilot
+      Chat when synced into a consumer repo's .github/agents/ and
+      .github/prompts/ via cm-platform-infra `make agents-sync`.
+  • Install WSL2 + Ubuntu 22.04 (requires reboot)? [y/N]: N
+
+  (Claude Code itself was already installed by step 2 from manifest/tools.yaml.)
 
 Done in 14m 22s.
 
@@ -639,6 +649,7 @@ groups:
     repos:
       - { repo: ChannelAssist/ca-ai-agents, into: ca-platform/ca-ai-agents, branch: master }
       - { repo: ChannelAssist/ca-claude-plugin, into: ca-platform/ca-claude-plugin, branch: main }
+      - { repo: ChannelAssist/ca-copilot-plugin, into: ca-platform/ca-copilot-plugin, branch: main }
       - { repo: ChannelAssist/ca-data-dictionnary-generator, into: ca-platform/ca-data-dictionnary-generator, branch: master }
       - { repo: ChannelAssist/ca-privacy-gate, into: ca-platform/ca-privacy-gate, branch: main }
 

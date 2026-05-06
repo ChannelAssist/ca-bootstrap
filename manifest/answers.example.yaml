@@ -59,6 +59,7 @@ clone:
 extras:
   vscode_workspace_file: true
   ca_claude_plugin: true
+  ca_copilot_plugin: true            # show ca-copilot-plugin usage notes (informational only — no per-developer install state)
   wsl_ubuntu_2204: false             # ignored on non-Windows
 
 # Used only by `undo`:

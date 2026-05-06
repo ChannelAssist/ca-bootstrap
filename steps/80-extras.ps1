@@ -1,13 +1,20 @@
 #requires -Version 7.0
 # steps/80-extras.ps1 — optional finishing touches.
 #
-# Three offers (each independently confirmable):
+# Four offers (each independently confirmable):
 #   1. VS Code multi-root workspace file at <workspace>/ChannelAssist.code-workspace
 #   2. ca-claude-plugin activation pointer (creates a symlink under
 #      ~/.claude/plugins/ pointing at the cloned repo, if present)
-#   3. WSL2 + Ubuntu 22.04 install (Windows-only)
+#   3. ca-copilot-plugin info — verify the repo is cloned and explain how the
+#      custom agents and prompts activate in consumer repos via the sync flow
+#      (Copilot resolves agents per-repo from .github/agents/ and per-repo
+#      prompts from .github/prompts/, so there is no per-developer "install"
+#      symlink — the bootstrap's role is to clone the repo and surface usage)
+#   4. WSL2 + Ubuntu 22.04 install (Windows-only)
 #
 # Claude Code itself is handled by step 20 (it's in manifest/tools.yaml).
+# GitHub Copilot (the VS Code extension pair) is also in step 20 via
+# manifest/tools.yaml's vscode-extensions.
 # This step is only for things downstream of "I have a working dev env."
 
 function Get-CABClaudePluginsDir {
@@ -42,7 +49,7 @@ function Test-CABStep80 {
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set.' }
     }
-    @{ status = 'pending'; details = 'Three optional extras available.' }
+    @{ status = 'pending'; details = 'Four optional extras available.' }
 }
 
 function Invoke-CABStep80 {
@@ -155,7 +162,42 @@ function Invoke-CABStep80 {
         Write-CABStatus -Status info -Message 'ca-claude-plugin not cloned (skip its repo group to enable).'
     }
 
-    # ---------- 3. WSL2 + Ubuntu 22.04 (Windows-only) ----------
+    # ---------- 3. ca-copilot-plugin info (clone + usage explainer) ----------
+    $copilotPluginPath = Join-Path $Context.WorkspacePath 'ca-platform/ca-copilot-plugin'
+    if (Test-Path $copilotPluginPath) {
+        $showCopilot = Read-CABConfirm `
+            -Question 'Show ca-copilot-plugin usage notes (how custom agents/prompts activate in your repos)?' `
+            -Default $false `
+            -AnswerKey 'extras.ca_copilot_plugin'
+        if (Test-CABQuit $showCopilot) {
+            return @{ status = 'quit'; details = 'User quit during extras step.' }
+        }
+        if (Test-CABYes $showCopilot) {
+            Write-CABStatus -Status info -Message 'ca-copilot-plugin cloned at:'
+            Write-CABColor DarkGray "      $copilotPluginPath"
+            Write-CABColor DarkGray ''
+            Write-CABColor DarkGray '    Custom agents and prompt files in this repo become available in Copilot'
+            Write-CABColor DarkGray '    Chat when they are synced into a consumer repo''s .github/agents/ and'
+            Write-CABColor DarkGray '    .github/prompts/ directories. Sync flow:'
+            Write-CABColor DarkGray ''
+            Write-CABColor DarkGray '      cd cm-product/cm-platform-infra'
+            Write-CABColor DarkGray '      make agents-sync REPO=ChannelAssist/<your-repo>'
+            Write-CABColor DarkGray ''
+            Write-CABColor DarkGray '    Once the resulting sync PR merges in <your-repo>, opening it in VS Code'
+            Write-CABColor DarkGray '    with GitHub Copilot Chat enabled exposes the agents (@<name>) and the'
+            Write-CABColor DarkGray '    prompts (/<name>). See ca-copilot-plugin/README.md for the full reference.'
+            Add-CABJournalEntry -Step '80-extras' -Action 'show_ca_copilot_plugin_usage' -Reversible $false -Data @{
+                repo_path = $copilotPluginPath
+            } | Out-Null
+            $actions += 'ca-copilot-plugin'
+        } else {
+            Write-CABStatus -Status skip -Message 'ca-copilot-plugin usage notes skipped.'
+        }
+    } else {
+        Write-CABStatus -Status info -Message 'ca-copilot-plugin not cloned (skip its repo group to enable).'
+    }
+
+    # ---------- 4. WSL2 + Ubuntu 22.04 (Windows-only) ----------
     if ($IsWindows) {
         if (-not $Context.WhatIfMode -and (Get-Command wsl -ErrorAction SilentlyContinue) `
             -and ((& wsl -l 2>$null | Out-String) -match 'Ubuntu')) {
@@ -205,5 +247,5 @@ function Invoke-CABStep80 {
 }
 
 function Undo-CABStep80 {
-    @{ status = 'noop'; details = 'Reversed by undo per journal entry (workspace file deletion, plugin unlink, WSL refused).' }
+    @{ status = 'noop'; details = 'Reversed by undo per journal entry (workspace file deletion, plugin unlink, copilot info no-op, WSL refused).' }
 }
