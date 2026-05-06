@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import io
 import json
+from typing import Any
 
 import pytest
 from textual.containers import Container
 from textual.widgets import Button, Checkbox, Input, Markdown, RadioButton, RadioSet, Static
 
 from cab_tui.app import CabTuiApp
+from cab_tui import prompts as prompt_widgets
 from cab_tui.rpc import RpcBridge
 
 
@@ -51,7 +53,16 @@ async def test_confirm_prompt_renders_three_buttons() -> None:
 
 
 @pytest.mark.asyncio
-async def test_prompt_question_renders_as_markdown_with_escaped_text() -> None:
+async def test_prompt_question_escapes_markdown_special_characters(monkeypatch: Any) -> None:
+    captured: dict[str, str] = {}
+
+    class SpyMarkdown(Markdown):
+        def __init__(self, markdown: str, *args: Any, **kwargs: Any):
+            captured["markdown"] = markdown
+            super().__init__(markdown, *args, **kwargs)
+
+    monkeypatch.setattr(prompt_widgets, "Markdown", SpyMarkdown)
+
     cap = io.StringIO()
     app = CabTuiApp(rpc=_ack_bridge(cap))
     async with app.run_test():
@@ -62,8 +73,9 @@ async def test_prompt_question_renders_as_markdown_with_escaped_text() -> None:
             "options": ["yes", "no", "quit"],
         }))
         await app.workers.wait_for_complete()
-        question = app.query_one("#prompt-area Markdown", Markdown)
-        assert question._markdown == "Use default workspace at /Users/peter/\\_work\\_/foo \\[yes/no\\]?"
+        # query_one raises if the Markdown question widget wasn't mounted.
+        app.query_one("#prompt-area Markdown", Markdown)
+        assert captured["markdown"] == "Use default workspace at /Users/peter/\\_work\\_/foo \\[yes/no\\]?"
 
 
 @pytest.mark.asyncio
