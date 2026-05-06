@@ -95,7 +95,9 @@ pwsh ./ca-bootstrap.ps1 setup
 6. **Create the folder structure** — `docs/`, `ca-platform/`, `cm-product/`, `ado-legacy/`
 7. **Clone repositories** — group by group, individually selectable, respects your team membership
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
-9. **Optional extras** — Claude Code, ca-claude-plugin (Claude Code plugin), ca-copilot-plugin (GitHub Copilot custom agents + prompts), WSL2 (Windows), Docker Desktop license acceptance
+9. **Optional extras** — VS Code multi-root workspace file, ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
+
+   *(Claude Code itself and the GitHub Copilot VS Code extensions are installed earlier as part of step 3 / step 20 — they live in `manifest/tools.yaml`, not in step 80.)*
 
 Every step is **interactive and optional**. Defaults are sensible. You can quit any time. Re-running is safe and acts as a "verify my setup" check.
 
@@ -196,13 +198,16 @@ ca-bootstrap/
 │   └── answers.example.yaml   # unattended-mode template
 ├── docs/                      # extended documentation
 │   ├── commands.md            # full reference for setup/doctor/repair/undo
-│   ├── user-guide.md
-│   ├── install-matrix.md
-│   ├── manifest-schema.md
-│   ├── auth-flow.md
 │   ├── action-journal.md      # how state is tracked for undo
-│   ├── troubleshooting.md
-│   └── contributing.md
+│   ├── tui.md                 # cab-tui Textual front-end user guide
+│   ├── textual-plan.md        # TUI architecture + phase log
+│   └── rpc-protocol.md        # JSON-RPC wire format between orchestrator and cab-tui
+├── cab-tui/                   # optional Textual front-end (Python 3.10+)
+│   ├── cab_tui/               # Python package: app, RPC bridge, widgets
+│   ├── tests/                 # pytest suite (unit + integration + PTY handshake)
+│   └── pyproject.toml
+├── wiki/                      # GitHub Wiki working tree (gitignored; sync with `make wiki-update`)
+├── scripts/                   # release.sh, wiki-sync.sh, etc.
 └── tests/                     # Pester tests for lib/, steps/, commands/
 ```
 
