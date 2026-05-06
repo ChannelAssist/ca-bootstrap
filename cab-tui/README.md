@@ -12,14 +12,17 @@ See [`docs/textual-plan.md`](../docs/textual-plan.md) for the architecture and [
 
 ## Install (developer build)
 
+From the repo root:
+
 ```bash
-cd cab-tui
-python -m pip install -e '.[dev]'   # binds the install to the current interpreter
+make tui-install
 ```
 
-Requires Python 3.10+. The build-backend is `poetry-core` and `poetry.lock` is committed for reproducibility, but the orchestrator probes the active Python on PATH, so `pip install` (which targets the active interpreter) is the supported install path. `poetry install` would put deps into a Poetry-managed venv that the bridge can't see.
+This is the supported entry point: it creates `cab-tui/.venv` (the orchestrator's `Find-CABPython` looks there first, ahead of PATH), `pip install -e '.[dev]'`s into it, and clears the macOS `UF_HIDDEN` flag that Hatchling sets on its editable `.pth` file (Python 3.14's `site.py` would otherwise silently skip the file, breaking `import cab_tui`). Requires Python 3.10+.
 
-End users don't usually run this directly — `bootstrap.sh` / `bootstrap.ps1` do it automatically when the orchestrator is fetched, and `make tui-install` does it from a clone (the latter also clears the macOS `UF_HIDDEN` flag that Hatchling sets on its editable `.pth` file, which Python 3.14's site.py would otherwise skip).
+`pip install -e cab-tui/` against the system Python is **not** the supported path — Homebrew + recent Debian/Ubuntu Pythons enforce PEP 668 and refuse it; `make tui-install` works around this by always going via a project-local venv. If you want a Poetry-managed venv instead, see [`docs/tui.md`](../docs/tui.md#installing) for the `CA_BOOTSTRAP_NO_VENV=1` opt-out.
+
+End users don't usually run any of this directly — `bootstrap.sh` / `bootstrap.ps1` install Python 3.10+ if missing and run `make tui-install` automatically when the orchestrator is fetched. Soft fallback to the legacy CLI on any failure; `CA_BOOTSTRAP_NO_TUI=1` opts out entirely.
 
 ## Run
 
@@ -62,4 +65,6 @@ CI runs the suite on ubuntu / macos / windows × Python 3.10 and 3.12. The cross
 
 ## Distribution
 
-`bootstrap.sh` / `bootstrap.ps1` install Python 3.10+ if missing and `pip install -e cab-tui/` so first-time users get the TUI by default. Soft fallback to the legacy CLI on any failure; `CA_BOOTSTRAP_NO_TUI=1` opts out entirely. The user-facing distribution story lives in [`docs/tui.md`](../docs/tui.md).
+`bootstrap.sh` / `bootstrap.ps1` install Python 3.10+ if missing and run `make tui-install` (which creates `cab-tui/.venv` and `pip install`s into it, PEP 668-aware) so first-time users get the TUI by default. Soft fallback to the legacy CLI on any failure; `CA_BOOTSTRAP_NO_TUI=1` opts out entirely. The user-facing distribution story lives in [`docs/tui.md`](../docs/tui.md).
+
+If `make tui-install` succeeds but `make setup` still falls back to the legacy CLI, the orchestrator now prints a one-line hint pointing at `make tui-install`; if the install ran but the TUI still doesn't fire, run `python3 -m cab_tui --check` directly to surface the auto-detect probe error.
