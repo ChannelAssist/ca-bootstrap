@@ -300,6 +300,13 @@ function Start-CABTuiBridge {
     }
     # Handshake complete — Drain-CABTuiPending is now safe to run.
     $Script:CABTuiHandshakeComplete = $true
+    # Install the Write-Host override now that the bridge is up. Without
+    # it, every Write-Host call from the orchestrator and step modules
+    # writes to PowerShell's stdout (= the user's terminal, the same
+    # /dev/tty Textual is rendering its alt-screen on), causing visible
+    # flashes as Textual repaints over the polluted bytes. The override
+    # routes those writes as `log` events over the bridge instead.
+    Install-CABTuiHostHooks
     return $proc
 }
 
@@ -394,6 +401,122 @@ function Send-CABTuiProgress {
         # next user-driven prompt will trigger Invoke-CABTuiPrompt's
         # fallback path, which formally disables TuiMode and writes a
         # warning to the user.
+    }
+}
+
+# Send-CABTuiLog — emit a `log` event over the bridge. No-op when the
+# bridge isn't running, so callers can fire unconditionally and let the
+# CLI fallback in the host-hook check catch the no-bridge case.
+function Send-CABTuiLog {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [ValidateSet('stdout','stderr','info','warn','error')][string]$Stream = 'info'
+    )
+    if (-not $Script:CABTuiProcess -or $Script:CABTuiProcess.HasExited) { return }
+    try {
+        Send-CABTuiEvent -Event @{ type = 'log'; stream = $Stream; text = $Text }
+    } catch {
+        # Bridge died between the HasExited check and the write. Drop the
+        # log line; Invoke-CABTuiPrompt will flip TuiMode off on the next
+        # prompt and surface the bridge-dead warning to the user.
+    }
+}
+
+# Map -ForegroundColor on Write-Host calls to the protocol's `stream`
+# field so the TUI's transcript can colorize warnings/errors. Most
+# colors fall through to plain `info`.
+function _CABColorToLogStream {
+    param([System.ConsoleColor]$Color)
+    switch ($Color) {
+        'Red'         { return 'error' }
+        'DarkRed'     { return 'error' }
+        'Yellow'      { return 'warn'  }
+        'DarkYellow'  { return 'warn'  }
+        default       { return 'info'  }
+    }
+}
+
+# Re-entrance guard for the Write-Host override. Set true while inside
+# our own override so any nested Write-Host (from inside Send-CABTuiLog
+# or its callees) bypasses routing and goes directly to the original
+# cmdlet — preventing an infinite recursion that would otherwise lock
+# up the orchestrator the first time anything in the bridge path
+# happens to call Write-Host.
+$Script:_CABInWriteHostOverride = $false
+
+# Install-CABTuiHostHooks — install a global Write-Host override that
+# routes to `log` events when CABootstrapTuiMode is true. Idempotent.
+#
+# Why a global override instead of refactoring every call site:
+# 86 Write-Host / Write-CABColor / Write-CABStatus / Write-CABStep
+# call sites across steps/ + lib/ would otherwise pollute the user's
+# terminal during the TUI session — they write to PowerShell's stdout
+# (= the same /dev/tty Textual is rendering alt-screen on), causing
+# visible flashes as Textual repaints over them. The override is a
+# single choke-point that catches them all without coupling steps to
+# TUI mode and without touching 86 call sites that would need to be
+# kept in sync.
+#
+# Function lookup precedes cmdlet resolution in PowerShell's command
+# precedence, so a global function with this name shadows the cmdlet
+# for every caller. We forward to the original via the fully-qualified
+# `Microsoft.PowerShell.Utility\Write-Host` name to avoid recursion.
+function Install-CABTuiHostHooks {
+    if (Get-Variable -Name '_CABTuiHostHooksInstalled' -Scope Script -ErrorAction SilentlyContinue) {
+        return  # already installed in this session
+    }
+    $Script:_CABTuiHostHooksInstalled = $true
+
+    function global:Write-Host {
+        [CmdletBinding()]
+        param(
+            [Parameter(Position=0, ValueFromPipeline=$true, ValueFromRemainingArguments=$true)] $Object,
+            [switch]$NoNewLine,
+            [System.ConsoleColor]$ForegroundColor,
+            [System.ConsoleColor]$BackgroundColor,
+            [string]$Separator = ' '
+        )
+        process {
+            # Re-entrance guard — any Write-Host triggered by code we
+            # call from inside this override goes straight to the real
+            # cmdlet so we don't infinitely recurse on ourselves.
+            if ($Script:_CABInWriteHostOverride) {
+                Microsoft.PowerShell.Utility\Write-Host @PSBoundParameters
+                return
+            }
+            $Script:_CABInWriteHostOverride = $true
+            try {
+                $tuiActive = $Script:CABootstrapTuiMode -and `
+                             $Script:CABTuiProcess -and `
+                             -not $Script:CABTuiProcess.HasExited
+                if ($tuiActive) {
+                    $text = if ($null -eq $Object) {
+                        ''
+                    } else {
+                        ($Object | ForEach-Object { [string]$_ }) -join $Separator
+                    }
+                    $stream = if ($PSBoundParameters.ContainsKey('ForegroundColor')) {
+                        _CABColorToLogStream -Color $ForegroundColor
+                    } else { 'info' }
+                    Send-CABTuiLog -Text $text -Stream $stream
+                    return
+                }
+                # CLI mode (or TUI mode but bridge already died): forward
+                # to the real cmdlet with the user's original parameters.
+                # Build forwardArgs explicitly rather than passing
+                # $PSBoundParameters wholesale, because pipeline-bound
+                # input may not always show up in $PSBoundParameters and
+                # we want $Object to round-trip correctly.
+                $forwardArgs = @{ NoNewLine = $NoNewLine; Separator = $Separator }
+                if ($null -ne $Object) { $forwardArgs['Object'] = $Object }
+                if ($PSBoundParameters.ContainsKey('ForegroundColor')) { $forwardArgs['ForegroundColor'] = $ForegroundColor }
+                if ($PSBoundParameters.ContainsKey('BackgroundColor')) { $forwardArgs['BackgroundColor'] = $BackgroundColor }
+                Microsoft.PowerShell.Utility\Write-Host @forwardArgs
+            } finally {
+                $Script:_CABInWriteHostOverride = $false
+            }
+        }
     }
 }
 
