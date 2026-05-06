@@ -225,7 +225,10 @@ def test_main_unit_propagates_app_return_code() -> None:
     """`__main__.main()` must return whatever `app.return_code` was set
     to by `app.exit(return_code=...)`. The wired-up app pumps a real
     Textual loop which requires a TTY in subprocess form, so we test
-    the propagation logic in-process via a stub app."""
+    the propagation logic in-process via a stub app and a stub
+    /dev/tty redirector — the real one would sys.exit(2) in a
+    no-controlling-terminal test runner. The end-to-end behaviour with
+    a real PTY lives in tests/test_real_app_handshake.py."""
     from cab_tui import __main__ as cab_main
 
     class _StubApp:
@@ -235,13 +238,17 @@ def test_main_unit_propagates_app_return_code() -> None:
         def run(self) -> None:
             pass
 
-    # Monkey-patch CabTuiApp to our stub for the duration of the call.
-    orig = cab_main.CabTuiApp
+    import sys as _sys
+    orig_app = cab_main.CabTuiApp
+    orig_redirect = cab_main._redirect_textual_to_tty
     cab_main.CabTuiApp = _StubApp
+    # The stub app's run() never touches the bridge, so passing (None,
+    # None) is safe — RpcBridge handles None reader_fp/writer_fp by
+    # falling back to sys.stdin / sys.stdout.
+    cab_main._redirect_textual_to_tty = lambda: (None, None)
     try:
-        # Simulate `cab-tui --rpc`. main() ignores argv when --rpc is set
-        # via Namespace; we drive it with a temp argv.
-        import sys as _sys
+        # Simulate `cab-tui --rpc`. main() reads sys.argv, so we drive it
+        # with a temp argv and restore.
         orig_argv = _sys.argv
         _sys.argv = ["cab-tui", "--rpc"]
         try:
@@ -250,4 +257,5 @@ def test_main_unit_propagates_app_return_code() -> None:
             _sys.argv = orig_argv
         assert rc == 7, rc
     finally:
-        cab_main.CabTuiApp = orig
+        cab_main.CabTuiApp = orig_app
+        cab_main._redirect_textual_to_tty = orig_redirect
