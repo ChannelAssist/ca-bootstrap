@@ -42,9 +42,22 @@ class RpcBridge:
     def __init__(
         self,
         reader: asyncio.StreamReader | None = None,
-        writer_fp = sys.stdout,
+        writer_fp = None,
+        reader_fp = None,
     ) -> None:
         self._reader = reader
+        # reader_fp lets the caller hand us a specific input file/fd to
+        # consume — used by `cab-tui --rpc` to feed us the parent's pipe
+        # after redirecting fd 0 to /dev/tty for Textual's input driver.
+        # When None, fall back to sys.stdin (the standalone-app and unit
+        # test paths). Resolved lazily inside start() so the value used
+        # at startup reflects any sys.stdin reassignment that happened
+        # after this RpcBridge was constructed.
+        self._reader_fp = reader_fp
+        # writer_fp default is resolved lazily so a caller that
+        # reassigns sys.stdout (e.g. test harness, --rpc redirection)
+        # picks up the new value at construction time, not class-import
+        # time. None → use whatever sys.stdout points at on first send().
         self._writer = writer_fp
         self._handlers: dict[str, Callable[[RpcMessage], Awaitable[None]]] = {}
         self._on_unknown: Callable[[RpcMessage], Awaitable[None]] | None = None
@@ -60,8 +73,9 @@ class RpcBridge:
         """Serialize and write one message. Blocking write to the configured
         stream; flushed per call so the parent never reads a partial line."""
         line = json.dumps(message, ensure_ascii=False)
-        self._writer.write(line + "\n")
-        self._writer.flush()
+        writer = self._writer if self._writer is not None else sys.stdout
+        writer.write(line + "\n")
+        writer.flush()
 
     def send_ack(self, of: str) -> None:
         self.send({"type": "ack", "of": of})
@@ -84,7 +98,7 @@ class RpcBridge:
         """Consume the input stream until EOF or stop()."""
         if self._reader is None:
             try:
-                self._reader = await self._connect_stdin()
+                self._reader = await self._connect_stdin(self._reader_fp)
             except (io.UnsupportedOperation, OSError, ValueError, NotImplementedError) as exc:
                 # No usable stdin. Possible causes:
                 #   - test harness has captured it (UnsupportedOperation)
@@ -140,11 +154,15 @@ class RpcBridge:
     _READER_BUFFER_LIMIT = 1024 * 1024
 
     @staticmethod
-    async def _connect_stdin() -> asyncio.StreamReader:
+    async def _connect_stdin(fp = None) -> asyncio.StreamReader:
+        # `fp` overrides sys.stdin when set — used by `cab-tui --rpc` after
+        # it dup2's /dev/tty onto fd 0 to give Textual a real terminal.
+        # Without the override we'd reach for sys.stdin (which now wraps
+        # /dev/tty) and read keystrokes instead of RPC events.
         loop = asyncio.get_event_loop()
         reader = asyncio.StreamReader(limit=RpcBridge._READER_BUFFER_LIMIT)
         protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, sys.stdin)
+        await loop.connect_read_pipe(lambda: protocol, fp if fp is not None else sys.stdin)
         return reader
 
 
