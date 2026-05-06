@@ -165,14 +165,14 @@ function Invoke-CABStep80 {
     # ---------- 3. ca-copilot-plugin info (clone + usage explainer) ----------
     $copilotPluginPath = Join-Path $Context.WorkspacePath 'ca-platform/ca-copilot-plugin'
     if (Test-Path $copilotPluginPath) {
-        $configCopilot = Read-CABConfirm `
-            -Question 'Configure ca-copilot-plugin (show how to use the agents in your repos)?' `
+        $showCopilot = Read-CABConfirm `
+            -Question 'Show ca-copilot-plugin usage notes (how custom agents/prompts activate in your repos)?' `
             -Default $false `
             -AnswerKey 'extras.ca_copilot_plugin'
-        if (Test-CABQuit $configCopilot) {
+        if (Test-CABQuit $showCopilot) {
             return @{ status = 'quit'; details = 'User quit during extras step.' }
         }
-        if (Test-CABYes $configCopilot) {
+        if (Test-CABYes $showCopilot) {
             Write-CABStatus -Status info -Message 'ca-copilot-plugin cloned at:'
             Write-CABColor DarkGray "      $copilotPluginPath"
             Write-CABColor DarkGray ''
@@ -186,12 +186,12 @@ function Invoke-CABStep80 {
             Write-CABColor DarkGray '    Once the resulting sync PR merges in <your-repo>, opening it in VS Code'
             Write-CABColor DarkGray '    with GitHub Copilot Chat enabled exposes the agents (@<name>) and the'
             Write-CABColor DarkGray '    prompts (/<name>). See ca-copilot-plugin/README.md for the full reference.'
-            Add-CABJournalEntry -Step '80-extras' -Action 'configure_ca_copilot_plugin' -Reversible $false -Data @{
+            Add-CABJournalEntry -Step '80-extras' -Action 'show_ca_copilot_plugin_usage' -Reversible $false -Data @{
                 repo_path = $copilotPluginPath
             } | Out-Null
             $actions += 'ca-copilot-plugin'
         } else {
-            Write-CABStatus -Status skip -Message 'ca-copilot-plugin info skipped.'
+            Write-CABStatus -Status skip -Message 'ca-copilot-plugin usage notes skipped.'
         }
     } else {
         Write-CABStatus -Status info -Message 'ca-copilot-plugin not cloned (skip its repo group to enable).'

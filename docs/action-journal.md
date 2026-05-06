@@ -185,12 +185,12 @@ Listed in the order steps typically produce them.
 
 **Undone by**: plugin deactivation + remove plugin directory.
 
-### `configure_ca_copilot_plugin`
+### `show_ca_copilot_plugin_usage`
 
 ```yaml
 - id: ...
   step: 80-extras
-  action: configure_ca_copilot_plugin
+  action: show_ca_copilot_plugin_usage
   repo_path: <workspace>/ca-platform/ca-copilot-plugin
   reversible: false
   undone: false
