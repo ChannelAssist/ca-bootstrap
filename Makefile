@@ -47,7 +47,7 @@ smoke-clean: ## Remove smoke-test temp state
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
 
 .PHONY: setup
-setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
+setup: ## Run interactive setup wizard
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS); ec=$$?; \
 		if [ $$ec -eq 1 ]; then \
 			exit 0; \
@@ -59,142 +59,6 @@ setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
 # message ("make: *** [setup] Error 1") makes that look like a crash.
 # Map user-quit to exit 0 here so `make setup` returns silently on quit;
 # real errors (exit 2+ for failed installs, etc.) still propagate.
-
-.PHONY: setup-no-tui
-setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
-	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS); ec=$$?; \
-		if [ $$ec -eq 1 ]; then \
-			exit 0; \
-		else \
-			exit $$ec; \
-		fi
-
-# Python detection: shared single-line shell snippet inlined into each
-# Python-using recipe. Mirrors bootstrap.sh's detect_python so pyenv/
-# conda envs that only ship `python` (no `python3` symlink) work here
-# too. The snippet sets a shell variable `py` to the first 3.10+
-# interpreter on PATH from the candidate list, or empty if none found.
-# Recipes that follow it test `[ -z "$py" ]` and bail.
-#
-# Single-line on purpose. A multi-line `define … endef` would expand
-# into multiple recipe lines, and recipe lines are normally fed to
-# separate shell invocations — meaning `done` would land in a different
-# shell from `for`, breaking the loop. Backslash-newline continuations
-# can paper over this when used carefully, but a single-line variable
-# is unambiguous.
-#
-# Why not `PY := $(shell …)`: that would run at parse time on every
-# make invocation (including `make help`), and the nested parens in the
-# Python expression confuse make's $(shell …) paren-balancing scanner —
-# Makefile:NN unterminated-call error.
-#
-# Candidate order matches bootstrap.sh / Find-CABPython:
-#   python3 → python3.13 → python3.12 → python3.11 → python3.10 → python
-DETECT_PY = py=""; for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do if command -v "$$cand" >/dev/null 2>&1; then ver=$$("$$cand" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); if [ "$$ver" -ge 310 ] 2>/dev/null; then py="$$cand"; break; fi; fi; done
-PY_CANDIDATES_HUMAN = python3 / python3.13 / python3.12 / python3.11 / python3.10 / python
-
-# tui-install — every shell step in the recipe chains via `&&` so a
-# non-zero exit (e.g. venv creation, pip install) stops the recipe
-# instead of falling through to the success printf. The Darwin .pth
-# cleanup is idempotent — `|| true` keeps the find from breaking the
-# chain on non-Hatchling editable shims.
-.PHONY: tui-install
-tui-install: ## Install the cab-tui Python front-end into cab-tui/.venv
-	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
-	@$(DETECT_PY); \
-	if [ -z "$$py" ]; then \
-		printf "$(RED)No Python 3.10+ found on PATH (tried $(PY_CANDIDATES_HUMAN)). Install one first.$(RESET)\n"; \
-		exit 1; \
-	fi; \
-	printf "  Using interpreter: $$py\n" && \
-	venv_dir="cab-tui/.venv" && \
-	{ \
-		if [ -e "$$venv_dir/bin/python" ]; then existing_py="$$venv_dir/bin/python"; \
-		elif [ -e "$$venv_dir/Scripts/python.exe" ]; then existing_py="$$venv_dir/Scripts/python.exe"; \
-		else existing_py=""; fi; \
-		if [ -n "$$existing_py" ]; then \
-			ver=$$("$$existing_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); \
-			if [ "$$ver" -lt 310 ] 2>/dev/null; then \
-				printf "$(YELLOW)  Existing $$venv_dir/ is Python <3.10; recreating...$(RESET)\n" && \
-				rm -rf "$$venv_dir" && \
-				existing_py=""; \
-			fi; \
-		fi; \
-		if [ -z "$$existing_py" ]; then \
-			printf "  Creating virtualenv at $$venv_dir/...\n" && \
-			"$$py" -m venv "$$venv_dir"; \
-		else true; \
-		fi; \
-	} && \
-	{ \
-		if [ -e "$$venv_dir/bin/python" ]; then venv_py="$$venv_dir/bin/python"; \
-		else venv_py="$$venv_dir/Scripts/python.exe"; fi; \
-		printf "  Installing into $$venv_dir/ (PEP 668 protects system Python)\n" && \
-		"$$venv_py" -m pip install --upgrade pip --quiet 2>/dev/null; true; \
-		"$$venv_py" -m pip install -e 'cab-tui[dev]' --quiet; \
-	} && \
-	{ \
-		if [ "$$(uname -s)" = "Darwin" ]; then \
-			find cab-tui/.venv -path "*site-packages/*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-		fi; \
-	} && \
-	printf "$(GREEN)✓ cab-tui installed in cab-tui/.venv/; \`make setup\` will auto-launch the TUI$(RESET)\n"
-	@# Install path: pip-into-venv. The orchestrator's Find-CABPython
-	@# checks cab-tui/.venv first, so the venv-installed cab_tui is
-	@# picked up without the user adding anything to PATH. This avoids
-	@# PEP 668's EXTERNALLY-MANAGED block on Homebrew/system Pythons
-	@# (which would otherwise refuse `pip install` and silently leave
-	@# the orchestrator with a Python that can't import cab_tui).
-	@# poetry.lock stays as the spec-of-record for strict reproducibility
-	@# (`poetry install` into the same venv works — points at the same
-	@# pyproject.toml). Hatchling's editable .pth gets a UF_HIDDEN
-	@# clear on macOS so Python 3.14's site.py doesn't skip it (also
-	@# covers poetry-core's cab_tui.pth — same hidden-flag bug, different
-	@# filename).
-
-.PHONY: tui-test
-tui-test: ## Run the cab-tui pytest suite
-	@printf "$(BLUE)Running cab-tui pytest suite...$(RESET)\n"
-	@# Prefer the cab-tui/.venv python ONLY when it actually has pytest
-	@# installed. `bootstrap.sh` populates the same venv with a
-	@# runtime-only install (no [dev] extras), so a bootstrapped repo
-	@# would have a venv-python without pytest — we'd fail with
-	@# "No module named pytest" if we used it unconditionally. Falling
-	@# back to PATH lookup here lets users run `make tui-test` in either
-	@# situation; for the bootstrapped case they can re-run
-	@# `make tui-install` to add the [dev] extras.
-	@# Absolute paths because we `cd cab-tui` before pytest runs.
-	@repo_root="$$(pwd)"; \
-	venv_py=""; \
-	if [ -x "$$repo_root/cab-tui/.venv/bin/python" ]; then \
-		venv_py="$$repo_root/cab-tui/.venv/bin/python"; \
-	elif [ -x "$$repo_root/cab-tui/.venv/bin/python3" ]; then \
-		venv_py="$$repo_root/cab-tui/.venv/bin/python3"; \
-	elif [ -x "$$repo_root/cab-tui/.venv/Scripts/python.exe" ]; then \
-		venv_py="$$repo_root/cab-tui/.venv/Scripts/python.exe"; \
-	fi; \
-	if [ -n "$$venv_py" ]; then \
-		venv_ver=$$("$$venv_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); \
-		if [ "$$venv_ver" -lt 310 ] 2>/dev/null; then \
-			printf "$(YELLOW)cab-tui/.venv is Python <3.10; falling back to PATH.$(RESET)\n"; \
-			printf "$(YELLOW)  Run \`make tui-install\` to recreate the venv with the active interpreter.$(RESET)\n"; \
-			venv_py=""; \
-		fi; \
-	fi; \
-	if [ -n "$$venv_py" ] && "$$venv_py" -c 'import pytest' 2>/dev/null; then \
-		py="$$venv_py"; \
-	else \
-		if [ -n "$$venv_py" ]; then \
-			printf "$(YELLOW)cab-tui/.venv has no pytest (bootstrap installs runtime-only); falling back to PATH.$(RESET)\n"; \
-			printf "$(YELLOW)  Run \`make tui-install\` to add [dev] extras to the venv.$(RESET)\n"; \
-		fi; \
-		$(DETECT_PY); \
-	fi; \
-	if [ -z "$$py" ]; then \
-		printf "$(RED)No Python 3.10+ found (tried cab-tui/.venv/ then $(PY_CANDIDATES_HUMAN)).$(RESET)\n"; \
-		exit 1; \
-	fi; \
-	cd cab-tui && "$$py" -m pytest -q
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)
@@ -214,9 +78,6 @@ undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--fo
 test: ## Run Pester unit tests under tests/
 	@printf "$(BLUE)Running Pester tests...$(RESET)\n"
 	@$(PWSH) -NoLogo -Command "Invoke-Pester -Path ./tests -Output Detailed -CI"
-
-.PHONY: test-all
-test-all: test tui-test ## Run both Pester (PowerShell) and pytest (cab-tui) suites
 
 .PHONY: lint
 lint: ## Run PSScriptAnalyzer and markdownlint

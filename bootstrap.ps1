@@ -94,125 +94,6 @@ function Install-Git {
     Write-Color Green '✓ git installed.'
 }
 
-function Find-Python310Plus {
-    foreach ($cand in 'python3','python','py') {
-        if (Test-Command $cand) {
-            $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
-            if ($verLine -match '^(\d+)\.(\d+)$') {
-                $major = [int]$Matches[1]; $minor = [int]$Matches[2]
-                if ($major -ge 3 -and $minor -ge 10) { return $cand }
-            }
-        }
-    }
-    return $null
-}
-
-function Install-Python {
-    Write-Color Blue 'Installing Python 3.12...'
-    if (-not (Test-Command 'winget')) {
-        Write-Color Yellow '  winget is not available. Install Python 3.10+ manually:'
-        Write-Color Yellow '    https://www.python.org/downloads/windows/'
-        return $false
-    }
-    winget install --id Python.Python.3.12 --silent --accept-source-agreements --accept-package-agreements
-    if ($LASTEXITCODE -ne 0) {
-        Write-Color Yellow "  winget exited with code $LASTEXITCODE — continuing without Python."
-        return $false
-    }
-    Write-Color Green '✓ Python installed.'
-    return $true
-}
-
-# Optional: Python 3.10+ + cab-tui so the rich TUI is the default. Best
-# effort — silent fallback to Read-Host if any step fails. CA_BOOTSTRAP_NO_TUI
-# (any value) skips the install attempt entirely.
-function Install-PythonAndTui {
-    param([string]$Cache)
-    if ($env:CA_BOOTSTRAP_NO_TUI) { return }
-    if (-not $Cache -or -not (Test-Path $Cache)) { return }
-    $cabTuiDir = Join-Path $Cache 'cab-tui'
-    if (-not (Test-Path $cabTuiDir)) { return }   # older release without TUI
-
-    $py = Find-Python310Plus
-
-    if (-not $py) {
-        Write-Color Yellow 'Python 3.10+ not found — installing now to enable the TUI.'
-        $ans = Read-Host 'Install Python automatically via winget? [Y/n]'
-        if ([string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Yy]') {
-            if (-not (Install-Python)) {
-                Write-Color Yellow '  Python install failed/declined; continuing with the legacy CLI.'
-                return
-            }
-            $py = Find-Python310Plus
-            if (-not $py) {
-                Write-Color Yellow '  Python still not detected post-install; continuing with the legacy CLI.'
-                return
-            }
-        } else {
-            Write-Color Yellow '  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run).'
-            return
-        }
-    }
-
-    # If a previous run populated cab-tui/.venv with a 3.10+ python AND
-    # cab_tui imports correctly, reuse it. Stale venvs (e.g. created
-    # with 3.9 in a cached clone) get recreated below.
-    $venvDir = Join-Path $cabTuiDir '.venv'
-    $venvPy = Join-Path $venvDir 'Scripts\python.exe'
-    if (-not (Test-Path $venvPy)) { $venvPy = Join-Path $venvDir 'bin/python' }   # MSYS / WSL
-    if ((Test-Path $venvPy)) {
-        $venvVer = & $venvPy -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>$null
-        if (-not ($venvVer -as [int]) -or [int]$venvVer -lt 310) {
-            Write-Color Yellow "  Existing $venvDir/ is Python <3.10; recreating..."
-            Remove-Item -Recurse -Force $venvDir -ErrorAction SilentlyContinue
-        } else {
-            & $venvPy -m cab_tui --check 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-                Write-Color Green "✓ cab-tui already installed in $venvDir/."
-                return
-            }
-        }
-    }
-
-    Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
-    # Install into a virtualenv at cab-tui/.venv. We do NOT pip-install
-    # against the discovered system Python — PEP 668-protected distros
-    # would refuse it (Homebrew on macOS sets EXTERNALLY-MANAGED) and
-    # the install would silently fail. The orchestrator's Find-CABPython
-    # prefers cab-tui/.venv anyway.
-    if (-not (Test-Path $venvPy)) {
-        & $py -m venv $venvDir 2>$null | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Color Yellow "  Failed to create virtualenv at $venvDir/."
-            Write-Color Yellow "  Continuing with the legacy Read-Host CLI."
-            return
-        }
-        $venvPy = Join-Path $venvDir 'Scripts\python.exe'
-        if (-not (Test-Path $venvPy)) { $venvPy = Join-Path $venvDir 'bin/python' }
-    }
-
-    & $venvPy -m pip install --quiet --upgrade pip 2>$null | Out-Null
-    & $venvPy -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        # macOS Python 3.14 + editable backends (hatchling, poetry-core)
-        # mark their .pth shim with UF_HIDDEN; site.py skips hidden .pth
-        # files. Clear the flag so cab_tui resolves on import. Same fix
-        # bootstrap.sh and `make tui-install` apply; harmless on Linux/
-        # Windows where chflags doesn't exist or has no effect.
-        if ($IsMacOS) {
-            try {
-                Get-ChildItem -Path $venvDir -Recurse -Filter '*.pth' -ErrorAction SilentlyContinue |
-                    Where-Object { $_.FullName -like '*site-packages*' } |
-                    ForEach-Object { & chflags nohidden $_.FullName 2>$null }
-            } catch { }
-        }
-        Write-Color Green "✓ cab-tui installed in $venvDir/; setup will auto-launch the TUI."
-    } else {
-        Write-Color Yellow '  cab-tui install failed; continuing with the legacy Read-Host CLI.'
-        Write-Color Yellow '  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)'
-    }
-}
-
 Write-Color Blue 'ca-bootstrap — preparing your environment'
 Write-Host ''
 
@@ -268,9 +149,6 @@ if (Test-Path (Join-Path $CacheDir '.git')) {
     git clone --quiet --depth 1 --branch $RepoRef $RepoUrl $CacheDir
 }
 Write-Color Green '✓ ca-bootstrap ready.'
-
-# Best-effort cab-tui install so the rich TUI is the default for new users.
-Install-PythonAndTui -Cache $CacheDir
 Write-Host ''
 
 $caBootstrapPs1 = Join-Path $CacheDir 'ca-bootstrap.ps1'

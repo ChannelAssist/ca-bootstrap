@@ -42,9 +42,7 @@ color_blue()   { printf '\033[0;34m%s\033[0m\n' "$*"; }
 # because the script body itself was just consumed from it). Reading from
 # /dev/tty is the standard escape hatch — it's the controlling terminal
 # even when stdin is a pipe. If /dev/tty isn't available either (CI,
-# headless), we fall through to the documented default of "Y" so the
-# bootstrap behavior matches the docs/tui.md promise of "first-time
-# users get the TUI by default".
+# headless), we fall through to the documented default of "Y".
 prompt_yn() {
     local prompt="$1" default="${2:-Y}"
     local ans
@@ -127,137 +125,6 @@ install_git() {
     color_green "✓ git installed."
 }
 
-# Detect a Python 3.10+ on PATH; echo the binary name (or empty).
-detect_python() {
-    # `python` (no version suffix) covers pyenv, conda, and homebrew
-    # configurations where the only usable interpreter on PATH isn't
-    # a versioned `python3` symlink. We still version-check the result,
-    # so a system `python` that's actually 2.x is correctly rejected.
-    for cand in python3 python3.13 python3.12 python3.11 python3.10 python; do
-        if command -v "$cand" >/dev/null 2>&1; then
-            local ver major minor
-            ver=$("$cand" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "0.0")
-            major="${ver%.*}"; minor="${ver#*.}"
-            if [ "$major" -ge 3 ] && [ "$minor" -ge 10 ]; then echo "$cand"; return 0; fi
-        fi
-    done
-    echo ""
-}
-
-# Install Python 3.10+ via the platform's package manager. Returns 0 on
-# success, non-zero if the install couldn't be attempted (no package
-# manager, user declined, etc.). Caller treats failure as a soft fallback
-# to the CLI.
-install_python() {
-    local os
-    os=$(detect_os)
-    color_blue "Installing Python 3.12 ($os)..."
-    case "$os" in
-        macos)
-            if command -v brew >/dev/null 2>&1; then
-                brew install python@3.12 || return 1
-            else
-                color_yellow "  Homebrew not found. Skipping Python install (cab-tui will be unavailable)."
-                color_yellow "  Install Homebrew (https://brew.sh) and re-run to enable the TUI."
-                return 1
-            fi
-            ;;
-        linux-debian)
-            sudo apt-get update -qq || return 1
-            sudo apt-get install -y python3 python3-pip python3-venv || return 1
-            ;;
-        linux-rhel)
-            sudo dnf install -y python3 python3-pip || return 1
-            ;;
-        *)
-            color_yellow "  Unsupported OS for automatic Python install. Install Python 3.10+ manually."
-            return 1
-            ;;
-    esac
-    color_green "✓ Python installed."
-}
-
-# Optional: install Python 3.10+ and the cab-tui front-end. The wizard
-# auto-detects this and uses the rich TUI when present; absence is fine
-# (silent fallback to the legacy Read-Host CLI). Only attempted when
-# CA_BOOTSTRAP_NO_TUI is unset.
-install_python_and_tui() {
-    if [ -n "${CA_BOOTSTRAP_NO_TUI:-}" ]; then return 0; fi
-    if [ ! -d "$1" ]; then return 0; fi   # cache may not be cloned yet
-    local cab_tui_dir="$1/cab-tui"
-    if [ ! -d "$cab_tui_dir" ]; then return 0; fi   # older release without TUI
-
-    local py
-    py=$(detect_python)
-
-    if [ -z "$py" ]; then
-        color_yellow "Python 3.10+ not found — installing now to enable the TUI."
-        if ! prompt_yn "Install Python automatically? [Y/n]" Y; then
-            color_yellow "  Skipping cab-tui install (set CA_BOOTSTRAP_NO_TUI=1 to silence this on re-run)."
-            return 0
-        fi
-        if ! install_python; then
-            color_yellow "  Python install failed/declined; continuing with the legacy CLI."
-            return 0
-        fi
-        py=$(detect_python)
-        if [ -z "$py" ]; then
-            color_yellow "  Python still not detected post-install; continuing with the legacy CLI."
-            return 0
-        fi
-    fi
-
-    # If a previous run already populated cab-tui/.venv with a 3.10+
-    # python AND cab_tui imports correctly, reuse it. Stale venvs
-    # (e.g. created with 3.9 in a cached clone) get recreated below.
-    local venv_dir="$cab_tui_dir/.venv"
-    local venv_py="$venv_dir/bin/python"
-    if [ -x "$venv_py" ]; then
-        local venv_ver
-        venv_ver=$("$venv_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0)
-        if [ "$venv_ver" -lt 310 ] 2>/dev/null; then
-            color_yellow "  Existing $venv_dir/ is Python <3.10; recreating..."
-            rm -rf "$venv_dir"
-        elif "$venv_py" -m cab_tui --check >/dev/null 2>&1; then
-            color_green "✓ cab-tui already installed in $venv_dir/."
-            return 0
-        fi
-    fi
-
-    color_blue "Installing cab-tui (optional rich TUI front-end)..."
-    # Install into a virtualenv at cab-tui/.venv. We do NOT pip-install
-    # into the system Python: PEP 668-protected distros (Homebrew
-    # Python on macOS, Debian/Ubuntu's python3) refuse `pip install`
-    # against the system interpreter and would silently fail. The
-    # orchestrator's Find-CABPython prefers the venv anyway.
-    if [ ! -e "$venv_py" ]; then
-        if ! "$py" -m venv "$venv_dir" 2>/dev/null; then
-            color_yellow "  Failed to create virtualenv at $venv_dir/."
-            color_yellow "  (Make sure $py has the venv module: \`$py -m ensurepip\` or your distro's python3-venv package.)"
-            color_yellow "  Continuing with the legacy Read-Host CLI."
-            return 0
-        fi
-    fi
-
-    "$venv_py" -m pip install --quiet --upgrade pip 2>/dev/null || true
-    if "$venv_py" -m pip install --quiet -e "$cab_tui_dir" 2>/dev/null; then
-        # macOS Python 3.14 + Hatchling: clear UF_HIDDEN on the editable
-        # .pth so site.py picks it up. See docs/tui.md.
-        if [ "$(detect_os)" = "macos" ]; then
-            # Both hatchling and poetry-core editable backends mark
-            # their .pth shims with macOS UF_HIDDEN; Python 3.14's
-            # site.py skips hidden .pth files. Clear the flag on every
-            # .pth in the venv's site-packages — harmless for non-
-            # hidden ones.
-            find "$venv_dir" -path "*site-packages/*.pth" -exec chflags nohidden {} \; 2>/dev/null || true
-        fi
-        color_green "✓ cab-tui installed in $venv_dir/; setup will auto-launch the TUI."
-    else
-        color_yellow "  cab-tui install failed; continuing with the legacy Read-Host CLI."
-        color_yellow "  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)"
-    fi
-}
-
 main() {
     color_blue "ca-bootstrap — preparing your environment"
     echo
@@ -301,10 +168,6 @@ main() {
         git clone --quiet --depth 1 --branch "$REPO_REF" "$REPO_URL" "$CACHE_DIR"
     fi
     color_green "✓ ca-bootstrap ready."
-
-    # Optionally install Python + cab-tui so the rich TUI is the default.
-    # Best-effort: any failure here is a soft fallback to the CLI.
-    install_python_and_tui "$CACHE_DIR"
     echo
 
     exec pwsh -NoLogo -File "$CACHE_DIR/ca-bootstrap.ps1" setup "$@"

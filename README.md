@@ -29,20 +29,15 @@ That's it. The bootstrap script ensures PowerShell 7+ and git are installed (pro
 If you've cloned this repo (e.g. for development), the daily-driver invocation is the make targets:
 
 ```bash
-make setup                          # the wizard (auto-launches TUI if cab-tui is installed)
-make setup-no-tui                   # force the legacy Read-Host CLI
-make tui-install                    # one-time: pip install the optional Textual TUI front-end
+make setup                          # the interactive wizard
 make doctor                         # diagnose (drift = ok, not a make failure)
 make repair ARGS='--all'            # fix everything
 make repair ARGS='--target dotnet-10'  # fix one thing
 make undo ARGS='--force'            # reverse
 make smoke                          # quick end-to-end test
 make test                           # Pester
-make test-all                       # Pester + cab-tui pytest
 make release VERSION=X.Y.Z          # cut a new release
 ```
-
-> **Optional TUI** — when [cab-tui](docs/tui.md) (Textual front-end) is installed, `make setup` switches to a rich terminal UI with live progress bars, tab/enter-driven prompts, and a step Tree pane. Pass `-NoTui` (or run `make setup-no-tui`) to keep the legacy Read-Host flow.
 
 Or directly invoke any of the three equivalent entry points:
 
@@ -198,14 +193,7 @@ ca-bootstrap/
 │   └── answers.example.yaml   # unattended-mode template
 ├── docs/                      # extended documentation
 │   ├── commands.md            # full reference for setup/doctor/repair/undo
-│   ├── action-journal.md      # how state is tracked for undo
-│   ├── tui.md                 # cab-tui Textual front-end user guide
-│   ├── textual-plan.md        # TUI architecture + phase log
-│   └── rpc-protocol.md        # JSON-RPC wire format between orchestrator and cab-tui
-├── cab-tui/                   # optional Textual front-end (Python 3.10+)
-│   ├── cab_tui/               # Python package: app, RPC bridge, widgets
-│   ├── tests/                 # pytest suite (unit + integration + PTY handshake)
-│   └── pyproject.toml
+│   └── action-journal.md      # how state is tracked for undo
 ├── wiki/                      # GitHub Wiki working tree (gitignored; sync with `make wiki-update`)
 ├── scripts/                   # release.sh, wiki-sync.sh, etc.
 └── tests/                     # Pester tests for lib/, steps/, commands/
