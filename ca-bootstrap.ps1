@@ -139,13 +139,21 @@ if (-not $Unattended -and $Command -eq 'setup') {
     } elseif ($tuiExplicitlyOn) {
         if (-not (Test-CABTuiAvailable)) {
             Write-CABColor Red 'ERROR: -Tui requested but cab-tui is not available.'
-            Write-Host  '       Install with `pip install -e cab-tui` or rerun without -Tui.'
+            Write-Host  '       Install with `make tui-install` or rerun without -Tui.'
             exit 1
         }
         $shouldUseTui = $true
     } else {
-        # Auto-detect. Quick probe; ~50ms when Python is on PATH.
+        # Auto-detect. Quick probe; ~50ms when Python is on PATH. When the
+        # probe says no, surface a one-line hint pointing at `make tui-install`
+        # — auto-detect is otherwise silent, so a user with no `cab-tui/.venv/`
+        # has no signal that a TUI exists. Suppressed when CA_BOOTSTRAP_NO_TUI
+        # is set (handled above as $tuiExplicitlyOff) so opt-out users don't
+        # see it on every run.
         $shouldUseTui = (Test-CABTuiAvailable)
+        if (-not $shouldUseTui) {
+            Write-CABColor DarkGray '  (cab-tui not available — using legacy CLI prompt; run `make tui-install` to enable.)'
+        }
     }
 
     if ($shouldUseTui) {

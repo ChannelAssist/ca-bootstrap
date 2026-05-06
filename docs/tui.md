@@ -51,6 +51,8 @@ ca-bootstrap.ps1 setup -Tui      # require TUI; error if cab-tui isn't installed
 ca-bootstrap.ps1 setup -NoTui    # force the legacy Read-Host CLI even when cab-tui is available
 ```
 
+When auto-detect can't find a usable cab-tui (no `cab-tui/.venv/`, no PATH-resolvable Python with `cab_tui` importable), the orchestrator prints a one-line hint pointing at `make tui-install` and proceeds with the legacy CLI. Set `CA_BOOTSTRAP_NO_TUI=1` (or pass `-NoTui`) to opt out and silence the hint.
+
 From a clone:
 
 ```bash
