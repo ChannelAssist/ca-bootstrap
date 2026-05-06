@@ -18,7 +18,11 @@ Current answer order (host with all tools installed AND already gh-authed):
 | 6 | 60-repos / cm-product | `n` | skip in smoke test |
 | 7 | 70-git-identity | `n` | skip — don't touch the real ~/.gitconfig |
 | 8 | 80-extras / VS Code workspace file | `y` | write ChannelAssist.code-workspace |
-| 9 | 80-extras / ca-claude-plugin link | `n` | skip in smoke (and absent because ca-platform group skipped) |
-| 10 | 80-extras / ca-copilot-plugin info | `n` | skip in smoke (same reason — ca-platform group skipped) |
 
-Steps 20 (prereqs install) and 30 (gh auth) are silent on a fully-provisioned host. WSL is auto-skipped on non-Windows hosts.
+Step 80 has three other prompts that are gated and **don't fire** in the smoke scenario, so no `smoke-answers.txt` line is consumed for them:
+
+- `ca-claude-plugin` link — gated on `ca-platform/ca-claude-plugin` being cloned; smoke skips the ca-platform group (row 5) so the repo is absent.
+- `ca-copilot-plugin` usage notes — gated on `ca-platform/ca-copilot-plugin`; same reason.
+- WSL2 + Ubuntu install — Windows-only branch; CI runs on Linux/macOS.
+
+Steps 20 (prereqs install) and 30 (gh auth) are silent on a fully-provisioned host.
