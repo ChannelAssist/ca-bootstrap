@@ -97,7 +97,7 @@ pwsh ./ca-bootstrap.ps1 setup
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
 9. **Optional extras** — VS Code multi-root workspace file, ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
 
-   *(Claude Code itself and the GitHub Copilot VS Code extensions are installed earlier as part of step 3 / step 20 — they live in `manifest/tools.yaml`, not in step 80.)*
+   *(Claude Code itself and the GitHub Copilot VS Code extensions are installed earlier as part of step 3, "Install missing tools" — they live in `manifest/tools.yaml`, not in this Optional extras step.)*
 
 Every step is **interactive and optional**. Defaults are sensible. You can quit any time. Re-running is safe and acts as a "verify my setup" check.
 
