@@ -18,7 +18,7 @@ From the repo root:
 make tui-install
 ```
 
-This is the supported entry point: it creates `cab-tui/.venv` (the orchestrator's `Find-CABPython` looks there first, ahead of PATH), `pip install -e '.[dev]'`s into it, and clears the macOS `UF_HIDDEN` flag that Hatchling sets on its editable `.pth` file (Python 3.14's `site.py` would otherwise silently skip the file, breaking `import cab_tui`). Requires Python 3.10+.
+This is the supported entry point: it creates `cab-tui/.venv` (the orchestrator's `Find-CABPython` looks there first, ahead of PATH), runs `pip install -e 'cab-tui[dev]'` into it from the repo root, and on macOS clears the `UF_HIDDEN` flag from every `*.pth` file in the venv's `site-packages/`. Some editable backends — Hatchling and poetry-core both — write their `.pth` shim with `UF_HIDDEN` set, and Python 3.14's `site.py` silently skips hidden `.pth` files, which would break `import cab_tui` from any working directory other than `cab-tui/`. The Makefile clears the flag on **all** `.pth`s rather than naming one backend, so a future switch of build-backend doesn't reintroduce the bug. Requires Python 3.10+.
 
 `pip install -e cab-tui/` against the system Python is **not** the supported path — Homebrew + recent Debian/Ubuntu Pythons enforce PEP 668 and refuse it; `make tui-install` works around this by always going via a project-local venv. If you want a Poetry-managed venv instead, see [`docs/tui.md`](../docs/tui.md#installing) for the `CA_BOOTSTRAP_NO_VENV=1` opt-out.
 
