@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import io
 import json
+from typing import Any
 
 import pytest
 from textual.containers import Container
-from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, Markdown, RadioButton, RadioSet, Static
 
 from cab_tui.app import CabTuiApp
+from cab_tui import prompts as prompt_widgets
 from cab_tui.rpc import RpcBridge
 
 
@@ -48,6 +50,32 @@ async def test_confirm_prompt_renders_three_buttons() -> None:
         buttons = list(app.query("#prompt-area Button"))
         assert len(buttons) == 3
         assert {b.id for b in buttons} == {"prompt-confirm-yes", "prompt-confirm-no", "prompt-confirm-quit"}
+
+
+@pytest.mark.asyncio
+async def test_prompt_question_escapes_markdown_special_characters(monkeypatch: Any) -> None:
+    captured: dict[str, str] = {}
+
+    class SpyMarkdown(Markdown):
+        def __init__(self, markdown: str, *args: Any, **kwargs: Any):
+            captured["markdown"] = markdown
+            super().__init__(markdown, *args, **kwargs)
+
+    monkeypatch.setattr(prompt_widgets, "Markdown", SpyMarkdown)
+
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=_ack_bridge(cap))
+    async with app.run_test():
+        await app._handle_rpc_prompt(_msg({
+            "type": "prompt", "id": "p1", "kind": "confirm",
+            "question": "Use default workspace at /Users/peter/_work_/foo [yes/no]?",
+            "default": "yes",
+            "options": ["yes", "no", "quit"],
+        }))
+        await app.workers.wait_for_complete()
+        # query_one raises if the Markdown question widget wasn't mounted.
+        app.query_one("#prompt-area Markdown", Markdown)
+        assert captured["markdown"] == "Use default workspace at /Users/peter/\\_work\\_/foo \\[yes/no\\]?"
 
 
 @pytest.mark.asyncio
@@ -282,3 +310,44 @@ def _msg(d: dict) -> object:
             self.raw = raw
             self.type = raw.get("type", "")
     return _M(d)
+
+
+# ---------- markdown escape helper ----------
+
+class TestMarkdownEscape:
+    """The prompt-question Markdown widget needs raw text, not the
+    interpolated path/repo/email strings that come from the parent
+    interpreted as Markdown. Unit-test the escape helper to lock the
+    contract: every Markdown-special char gets backslash-escaped, all
+    other chars pass through untouched."""
+
+    def test_plain_alphanum_unchanged(self):
+        # `?` is not a Markdown special char; nothing to escape here.
+        from cab_tui.prompts import _md_escape_for_prompt
+        assert _md_escape_for_prompt("Use this default?") == "Use this default?"
+
+    def test_path_with_underscores_escaped(self):
+        # Without the escape, "_work_" would render in italic.
+        from cab_tui.prompts import _md_escape_for_prompt
+        s = _md_escape_for_prompt("/Users/peter/_work_/foo")
+        assert s == "/Users/peter/\\_work\\_/foo"
+
+    def test_brackets_escaped(self):
+        # Without the escape, `[label](target)` would render as a link.
+        from cab_tui.prompts import _md_escape_for_prompt
+        s = _md_escape_for_prompt("Clone [yes/no/quit]?")
+        assert s == "Clone \\[yes/no/quit\\]?"
+
+    def test_empty_string(self):
+        from cab_tui.prompts import _md_escape_for_prompt
+        assert _md_escape_for_prompt("") == ""
+
+    def test_workspace_prompt_path_round_trip(self):
+        # The exact shape that surfaced the v1.4.1 bug — a long path
+        # with one trailing `?`. Path segments contain only letters,
+        # digits, and slashes — none Markdown-special — so the result
+        # should be byte-identical to the input. Locks in the
+        # "don't over-escape ASCII" invariant.
+        from cab_tui.prompts import _md_escape_for_prompt
+        q = "Use default workspace at /Users/petergiannopoulos/Documents/Projects/Work/ChannelAssist/ChannelAssistDev?"
+        assert _md_escape_for_prompt(q) == q
