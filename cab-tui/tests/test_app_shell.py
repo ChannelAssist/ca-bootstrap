@@ -7,6 +7,8 @@ once the RPC layer is in place.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from cab_tui.app import CabTuiApp, SETUP_STEPS
@@ -264,7 +266,6 @@ def test_main_unit_propagates_app_return_code() -> None:
 @pytest.mark.asyncio
 async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
     """step.start should reset Active step body, and log events append to it."""
-    import asyncio
     from textual.widgets import MarkdownViewer
 
     app = CabTuiApp()

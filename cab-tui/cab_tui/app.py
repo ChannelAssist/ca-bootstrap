@@ -332,12 +332,14 @@ class CabTuiApp(App):
     def _schedule_step_body_refresh(self) -> None:
         """Coalesce bursty log events into a single markdown refresh."""
         if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
-            return
+            self._step_body_refresh_task.cancel()
 
         async def _debounced_refresh() -> None:
             try:
                 await asyncio.sleep(0.1)
                 await self._refresh_step_body()
+            except asyncio.CancelledError:
+                return
             finally:
                 self._step_body_refresh_task = None
 
