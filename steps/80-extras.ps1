@@ -49,7 +49,7 @@ function Test-CABStep80 {
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set.' }
     }
-    @{ status = 'pending'; details = 'Three optional extras available.' }
+    @{ status = 'pending'; details = 'Four optional extras available.' }
 }
 
 function Invoke-CABStep80 {
