@@ -148,6 +148,8 @@ class CabTuiApp(App):
         # first paint matches what the user expects before any RPC
         # event has arrived.
         self._step_body_text: str = _welcome_markdown()
+        # Debounce MarkdownViewer updates for high-volume log streams.
+        self._step_body_refresh_task: asyncio.Task[None] | None = None
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -325,7 +327,21 @@ class CabTuiApp(App):
         # would only be visible by tabbing to the Transcript pane.
         if self._active_step_id is not None:
             self._step_body_text += (text or "") + "\n"
-            await self._refresh_step_body()
+            self._schedule_step_body_refresh()
+
+    def _schedule_step_body_refresh(self) -> None:
+        """Coalesce bursty log events into a single markdown refresh."""
+        if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
+            return
+
+        async def _debounced_refresh() -> None:
+            try:
+                await asyncio.sleep(0.1)
+                await self._refresh_step_body()
+            finally:
+                self._step_body_refresh_task = None
+
+        self._step_body_refresh_task = asyncio.create_task(_debounced_refresh())
 
     async def _refresh_step_body(self) -> None:
         """Push the current self._step_body_text into the #step-body Markdown.

@@ -259,3 +259,40 @@ def test_main_unit_propagates_app_return_code() -> None:
     finally:
         cab_main.CabTuiApp = orig_app
         cab_main._redirect_textual_to_tty = orig_redirect
+
+
+@pytest.mark.asyncio
+async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
+    """step.start should reset Active step body, and log events append to it."""
+    import asyncio
+    from textual.widgets import MarkdownViewer
+
+    app = CabTuiApp()
+    async with app.run_test():
+        viewer = app.query_one("#step-body", MarkdownViewer)
+        updates: list[str] = []
+        original_update = viewer.document.update
+
+        async def _capture_update(markdown: str) -> None:
+            updates.append(markdown)
+            await original_update(markdown)
+
+        viewer.document.update = _capture_update  # type: ignore[assignment]
+
+        class _M:
+            def __init__(self, raw: dict):
+                self.raw = raw
+                self.type = raw.get("type", "")
+
+        await app._handle_rpc_step(_M({
+            "type": "step", "phase": "start", "step": "60-repos",
+        }))
+        await app._handle_rpc_log(_M({
+            "type": "log", "stream": "info", "text": "Cloning ChannelAssist/Keystone...",
+        }))
+        await asyncio.sleep(0.2)
+
+        assert updates, "Expected #step-body markdown update calls"
+        assert updates[0].startswith("## Clone repositories"), updates[0]
+        assert updates[-1].startswith("## Clone repositories"), updates[-1]
+        assert "Cloning ChannelAssist/Keystone..." in updates[-1], updates[-1]
