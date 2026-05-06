@@ -75,10 +75,16 @@ function Invoke-CABStep40 {
         return @{ status = 'fail'; details = $_.Exception.Message }
     }
 
-    Write-Host "  Default location: $default"
-    Write-Host ''
-
-    $useDefault = Read-CABConfirm -Question 'Use this default?' -Default $true -AnswerKey 'workspace.use_default'
+    # Include the resolved path in the prompt question itself so the TUI
+    # (which renders only the prompt event, not surrounding Write-Host
+    # output) gives the user enough context to decide. The legacy CLI
+    # gets the same self-contained question on its prompt line — slightly
+    # longer than the previous "Use this default?" but no longer requires
+    # a separate "Default location: ..." line above it.
+    $useDefault = Read-CABConfirm `
+        -Question "Use default workspace at $default?" `
+        -Default $true `
+        -AnswerKey 'workspace.use_default'
     if (Test-CABQuit $useDefault) {
         return @{ status = 'quit'; details = 'User quit at workspace step.' }
     }
