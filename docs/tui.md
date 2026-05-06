@@ -51,6 +51,8 @@ ca-bootstrap.ps1 setup -Tui      # require TUI; error if cab-tui isn't installed
 ca-bootstrap.ps1 setup -NoTui    # force the legacy Read-Host CLI even when cab-tui is available
 ```
 
+When auto-detect can't find a usable cab-tui (no `cab-tui/.venv/`, no PATH-resolvable Python with `cab_tui` importable), the orchestrator prints a one-line hint pointing at `make tui-install` and proceeds with the legacy CLI. Set `CA_BOOTSTRAP_NO_TUI=1` (or pass `-NoTui`) to opt out and silence the hint.
+
 From a clone:
 
 ```bash
@@ -123,6 +125,8 @@ The PowerShell wizard owns all state. cab-tui is a renderer subscribed to a JSON
 - Child → parent: `ack`, `answer`, `quit`
 
 Wire protocol: line-delimited JSON, UTF-8, no length prefixes. Full message catalog: [`docs/rpc-protocol.md`](rpc-protocol.md).
+
+stdio fd ownership (POSIX, `--rpc` mode): Textual's input driver and the RPC bridge both want fd 0/1, and they collide — Textual would parse the parent's welcome JSON character-by-character, firing the `q` quit binding on words like "Prerequisites". `cab-tui --rpc` resolves this by `dup2`'ing `/dev/tty` onto fds 0/1 so Textual sees the user's controlling terminal, and hands the saved parent-pipe fds to the RPC bridge. Standalone mode (no `--rpc`) leaves stdio alone. Windows is a no-op: there's no `/dev/tty`, and the bridge already disables its consumer cleanly when `connect_read_pipe` fails on `ProactorEventLoop`.
 
 Architecture and widget mapping per phase: [`docs/textual-plan.md`](textual-plan.md).
 
