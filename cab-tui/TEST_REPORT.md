@@ -1,6 +1,6 @@
-# cab-tui phase 1+2 test report
+# cab-tui phase 1+2 test report — historical snapshot
 
-> **Status: phase 2 verified.** This report captures the test layers, what's covered, what was caught while building, and what's deferred to later phases. Generated 2026-05-04 alongside `feature/textual-tui` ahead of phase 3.
+> **Status: historical (phase 2 snapshot, 2026-05-04).** Captured alongside `feature/textual-tui` ahead of phase 3, when phases 1+2 were the only shipped layers. The TUI has since shipped in full at v1.4.0 (all 12 phases), and the test suite has grown accordingly — for the current passing-test count and matrix coverage see CI on `main` (cab-tui pytest × Linux/macOS/Windows × Python 3.10/3.12, plus the cross-runtime Pester bridge tests). This file is preserved as a pre-ship record; it is **not** updated as new phases land.
 
 ## Test layers
 
