@@ -25,23 +25,31 @@ tracked elsewhere.
 
 from __future__ import annotations
 
-import fcntl
-import json
-import os
-import pty
-import subprocess
 import sys
-import termios
-import threading
 
 import pytest
 
+# Skip the whole module on Windows BEFORE importing POSIX-only stdlib
+# modules below — `import fcntl` / `import pty` / `import termios` raise
+# ModuleNotFoundError on Windows, which would surface as a pytest
+# collection error rather than a clean skip. allow_module_level=True is
+# the pytest-sanctioned way to skip at import time. The Windows path in
+# cab_tui/__main__.py is a no-op anyway (rpc.py disables the consumer
+# cleanly when connect_read_pipe fails on ProactorEventLoop).
+if sys.platform == "win32":  # pragma: no cover - platform branch
+    pytest.skip(
+        "PTY ceremony (setsid / TIOCSCTTY) is POSIX-only; the /dev/tty "
+        "redirect itself is also a no-op on Windows.",
+        allow_module_level=True,
+    )
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="PTY ceremony (setsid / TIOCSCTTY) is POSIX-only; the /dev/tty "
-           "redirect itself is also a no-op on Windows.",
-)
+import fcntl  # noqa: E402  (deliberately below the platform skip)
+import json  # noqa: E402
+import os  # noqa: E402
+import pty  # noqa: E402
+import subprocess  # noqa: E402
+import termios  # noqa: E402
+import threading  # noqa: E402
 
 
 _SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
