@@ -282,3 +282,44 @@ def _msg(d: dict) -> object:
             self.raw = raw
             self.type = raw.get("type", "")
     return _M(d)
+
+
+# ---------- markdown escape helper ----------
+
+class TestMarkdownEscape:
+    """The prompt-question Markdown widget needs raw text, not the
+    interpolated path/repo/email strings that come from the parent
+    interpreted as Markdown. Unit-test the escape helper to lock the
+    contract: every Markdown-special char gets backslash-escaped, all
+    other chars pass through untouched."""
+
+    def test_plain_alphanum_unchanged(self):
+        # `?` is not a Markdown special char; nothing to escape here.
+        from cab_tui.prompts import _md_escape_for_prompt
+        assert _md_escape_for_prompt("Use this default?") == "Use this default?"
+
+    def test_path_with_underscores_escaped(self):
+        # Without the escape, "_work_" would render in italic.
+        from cab_tui.prompts import _md_escape_for_prompt
+        s = _md_escape_for_prompt("/Users/peter/_work_/foo")
+        assert s == "/Users/peter/\\_work\\_/foo"
+
+    def test_brackets_escaped(self):
+        # Without the escape, `[label](target)` would render as a link.
+        from cab_tui.prompts import _md_escape_for_prompt
+        s = _md_escape_for_prompt("Clone [yes/no/quit]?")
+        assert s == "Clone \\[yes/no/quit\\]?"
+
+    def test_empty_string(self):
+        from cab_tui.prompts import _md_escape_for_prompt
+        assert _md_escape_for_prompt("") == ""
+
+    def test_workspace_prompt_path_round_trip(self):
+        # The exact shape that surfaced the v1.4.1 bug — a long path
+        # with one trailing `?`. Path segments contain only letters,
+        # digits, and slashes — none Markdown-special — so the result
+        # should be byte-identical to the input. Locks in the
+        # "don't over-escape ASCII" invariant.
+        from cab_tui.prompts import _md_escape_for_prompt
+        q = "Use default workspace at /Users/petergiannopoulos/Documents/Projects/Work/ChannelAssist/ChannelAssistDev?"
+        assert _md_escape_for_prompt(q) == q

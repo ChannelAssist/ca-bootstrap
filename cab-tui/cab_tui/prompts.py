@@ -14,7 +14,28 @@ from __future__ import annotations
 from typing import Any
 
 from textual.containers import Container, Horizontal
-from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, Markdown, RadioButton, RadioSet, Static
+
+
+# Characters that CommonMark / Textual's Markdown widget treat as
+# inline-formatting triggers. Escaping these keeps a question like
+# "Use default workspace at /Users/peter/_work_/foo?" from rendering
+# the segment between underscores in italic, paths containing
+# brackets from being parsed as link syntax, etc.
+_MD_ESCAPE_CHARS = "\\`*_{}[]()#+-.!|>"
+
+
+def _md_escape_for_prompt(text: str) -> str:
+    """Backslash-escape every Markdown-special char in `text` so it
+    renders as literal text in the prompt question widget. Cheap and
+    correct: every special char gets a leading backslash, plain ASCII
+    passes through untouched."""
+    out = []
+    for ch in text:
+        if ch in _MD_ESCAPE_CHARS:
+            out.append("\\")
+        out.append(ch)
+    return "".join(out)
 
 
 # ---------- public mount helpers ----------
@@ -35,15 +56,27 @@ async def render_prompt(target: Container, prompt: dict[str, Any]) -> None:
     kind = prompt.get("kind", "confirm")
     question = prompt.get("question", "")
 
-    # Question text goes first regardless of kind. We use Label rather
-    # than Static here so long questions (e.g. step 40's "Use default
-    # workspace at /Users/.../ChannelAssistDev?") wrap onto multiple
-    # lines instead of clipping at the widget's right edge. Label also
-    # disables markup interpretation by default — important because
-    # questions interpolate paths and repo names that may legitimately
-    # contain `[brackets]` or `?` markers we don't want re-rendered as
-    # Textual markup.
-    await target.mount(Label(question, classes="prompt-question", markup=False))
+    # Question text goes first regardless of kind. We use Markdown
+    # rather than Static or Label because both of those rendered the
+    # question on a single line in v1.4.1 manual smoke (user reported
+    # "Use default workspace at" with the path clipped off):
+    #   - Static was rendering single-line in this layout, even with
+    #     `width: 100%; height: auto` CSS — the wrapping that should
+    #     happen with Rich text didn't take effect inside the
+    #     prompt-area Container in real Textual versions.
+    #   - Label fixes nothing because it defaults to height: 1 which
+    #     overrides our height: auto rule via Textual's CSS specificity.
+    # Markdown lays text out as a block-level paragraph that wraps at
+    # the widget's width with no fixed height — reliable.
+    #
+    # We escape Markdown-special chars in the question so paths like
+    # "/Users/peter/_work_/foo" don't render the segment between
+    # underscores in italic, brackets aren't parsed as link syntax,
+    # etc. The escape is conservative — every special char gets a
+    # backslash, never the wrong ones.
+    await target.mount(
+        Markdown(_md_escape_for_prompt(question), classes="prompt-question")
+    )
 
     if kind == "confirm":
         await _mount_confirm(target, prompt)
