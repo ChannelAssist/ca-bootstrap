@@ -12,7 +12,7 @@ import json
 
 import pytest
 from textual.containers import Container
-from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, Markdown, RadioButton, RadioSet, Static
 
 from cab_tui.app import CabTuiApp
 from cab_tui.rpc import RpcBridge
@@ -48,6 +48,22 @@ async def test_confirm_prompt_renders_three_buttons() -> None:
         buttons = list(app.query("#prompt-area Button"))
         assert len(buttons) == 3
         assert {b.id for b in buttons} == {"prompt-confirm-yes", "prompt-confirm-no", "prompt-confirm-quit"}
+
+
+@pytest.mark.asyncio
+async def test_prompt_question_renders_as_markdown_with_escaped_text() -> None:
+    cap = io.StringIO()
+    app = CabTuiApp(rpc=_ack_bridge(cap))
+    async with app.run_test():
+        await app._handle_rpc_prompt(_msg({
+            "type": "prompt", "id": "p1", "kind": "confirm",
+            "question": "Use default workspace at /Users/peter/_work_/foo [yes/no]?",
+            "default": "yes",
+            "options": ["yes", "no", "quit"],
+        }))
+        await app.workers.wait_for_complete()
+        question = app.query_one("#prompt-area Markdown", Markdown)
+        assert question._markdown == "Use default workspace at /Users/peter/\\_work\\_/foo \\[yes/no\\]?"
 
 
 @pytest.mark.asyncio
