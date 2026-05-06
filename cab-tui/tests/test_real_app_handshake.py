@@ -201,6 +201,15 @@ def test_welcome_with_q_chars_is_acked_not_quit() -> None:
             os.close(master_fd)
         except Exception:
             pass
+        # Closing master_fd makes the next os.read() in _drain_pty
+        # return 0 / OSError, which is the drain loop's exit condition.
+        # Joining here ensures any pending bytes are flushed into
+        # pty_sink BEFORE the assertions below — without the join the
+        # `pty_total > 0` assertion races the drain thread on slow CI
+        # runners and can fire while pty_sink is still empty. 2s is a
+        # generous upper bound; in practice the read returns within
+        # microseconds of the close.
+        drain.join(timeout=2.0)
 
     # Diagnostic: capture what the child wrote to stderr in case of failure.
     # Bounded: a bare proc.stderr.read() would block indefinitely if _kill

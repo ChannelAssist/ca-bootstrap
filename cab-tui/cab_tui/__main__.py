@@ -58,9 +58,14 @@ def _redirect_textual_to_tty() -> tuple[IO[bytes] | None, TextIO | None]:
         return None, None
 
     # Save the parent's pipe ends as fresh fds; if anything below fails
-    # we close them in the OSError branch to avoid fd leaks.
+    # we close them in the OSError branch to avoid fd leaks. saved_stderr_fd
+    # is for re-binding sys.stderr after the fd 2 redirect so Python-side
+    # tracebacks and `print(..., file=sys.stderr)` from the child still
+    # reach the parent's transcript (~/.ca-bootstrap/last-run.log) — see
+    # the rebind below for the full reasoning.
     rpc_in_fd = os.dup(0)
     rpc_out_fd = os.dup(1)
+    saved_stderr_fd = os.dup(2)
     try:
         tty_fd = os.open("/dev/tty", os.O_RDWR)
     except OSError as exc:
@@ -71,6 +76,7 @@ def _redirect_textual_to_tty() -> tuple[IO[bytes] | None, TextIO | None]:
         # so writing to stderr reaches the parent's transcript.
         os.close(rpc_in_fd)
         os.close(rpc_out_fd)
+        os.close(saved_stderr_fd)
         print(
             f"cab-tui --rpc: cannot open /dev/tty ({exc}); "
             "TUI requires a controlling terminal",
@@ -92,6 +98,41 @@ def _redirect_textual_to_tty() -> tuple[IO[bytes] | None, TextIO | None]:
     os.dup2(tty_fd, 0)
     os.dup2(tty_fd, 2)
     os.close(tty_fd)
+
+    # Re-bind sys.stderr to write to the saved parent-pipe fd so child
+    # diagnostics still reach ~/.ca-bootstrap/last-run.log:
+    #
+    #   - sys.__stderr__ was captured at interpreter startup and wraps
+    #     a FileIO bound to fd 2. After dup2(tty_fd, 2) above, that
+    #     FileIO writes to /dev/tty — which is exactly what Textual
+    #     wants for its rendering channel.
+    #   - But sys.stderr (the canonical name Python's traceback machinery
+    #     and most user code write to) is the SAME object by default, so
+    #     it was about to write tracebacks to /dev/tty too — invisibly
+    #     overlaid on Textual's screen, and lost to the transcript.
+    #
+    # Solution: leave sys.__stderr__ alone (Textual relies on it) and
+    # rebind sys.stderr to a fresh wrapper around the saved pipe fd.
+    # Now traceback.print_exc(), `print("oops", file=sys.stderr)`, and
+    # similar diagnostics flow back to the orchestrator's stderr pipe
+    # → last-run.log, while Textual's rendering keeps owning fd 2.
+    #
+    # `errors="backslashreplace"` (NOT "strict"!) so the error-reporting
+    # channel can't itself raise. A traceback containing a surrogate-
+    # escape from `os.fsdecode` of an undecodable filename, or an env
+    # var with non-UTF-8 bytes, would trip a strict encoder and silence
+    # the very diagnostic we're trying to surface. backslashreplace
+    # encodes those bytes as visible `\xNN` escapes — readable, and
+    # impossible to fail-encode. (rpc_out_fp above stays "strict" —
+    # the JSON-RPC wire format pins UTF-8 and a bad encoding there
+    # SHOULD fail loudly rather than send garbage to the parent.)
+    sys.stderr = os.fdopen(
+        saved_stderr_fd,
+        "w",
+        buffering=1,
+        encoding="utf-8",
+        errors="backslashreplace",
+    )
 
     # Hand the saved fds back as Python files for the RPC bridge.
     # Binary read for the bridge's asyncio StreamReader (it expects an
