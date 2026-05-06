@@ -362,8 +362,10 @@ Step 6/8 — Clone repositories
       • ChannelAssist/Keystone               (master)
       • ChannelAssist/.github                (main)
       • ChannelAssist/.github-private        (main, members-only)
-    ca-platform/           3 repos    [Y/n/select]
+    ca-platform/           5 repos    [Y/n/select]
+      • ChannelAssist/ca-ai-agents           (master)
       • ChannelAssist/ca-claude-plugin       (main)
+      • ChannelAssist/ca-copilot-plugin      (main)
       • ChannelAssist/ca-data-dictionnary-generator (master)
       • ChannelAssist/ca-privacy-gate        (main)
     cm-product/            10 repos   [Y/n/select]
@@ -403,6 +405,9 @@ Step 8/8 — Optional extras
     ✓ Installed.
   • Install ca-claude-plugin (Claude Code plugin)? [y/N]: Y
     ✓ Installed and activated.
+  • Configure ca-copilot-plugin (show how to use Copilot agents/prompts)? [y/N]: Y
+    ✓ ca-copilot-plugin cloned. Agents activate in consumer repos via the
+      cm-platform-infra make agents-sync flow.
   • Set up WSL2 + Ubuntu 22.04 for Linux-side builds? [y/N]: N
   • Create a VS Code multi-root workspace file? [Y/n]: Y
     ✓ Wrote ChannelAssistDev\ChannelAssist.code-workspace
@@ -639,6 +644,7 @@ groups:
     repos:
       - { repo: ChannelAssist/ca-ai-agents, into: ca-platform/ca-ai-agents, branch: master }
       - { repo: ChannelAssist/ca-claude-plugin, into: ca-platform/ca-claude-plugin, branch: main }
+      - { repo: ChannelAssist/ca-copilot-plugin, into: ca-platform/ca-copilot-plugin, branch: main }
       - { repo: ChannelAssist/ca-data-dictionnary-generator, into: ca-platform/ca-data-dictionnary-generator, branch: master }
       - { repo: ChannelAssist/ca-privacy-gate, into: ca-platform/ca-privacy-gate, branch: main }
 

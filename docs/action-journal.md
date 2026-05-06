@@ -185,6 +185,19 @@ Listed in the order steps typically produce them.
 
 **Undone by**: plugin deactivation + remove plugin directory.
 
+### `configure_ca_copilot_plugin`
+
+```yaml
+- id: ...
+  step: 80-extras
+  action: configure_ca_copilot_plugin
+  repo_path: <workspace>/ca-platform/ca-copilot-plugin
+  reversible: false
+  undone: false
+```
+
+**Undone by**: not undoable. The action is informational only — the agents and prompts in `ca-copilot-plugin/agents/` and `.github/prompts/` resolve when synced into a consumer repo's `.github/agents/` and `.github/prompts/` (handled out-of-band by `cm-platform-infra` `make agents-sync`). There is no per-developer install state to reverse.
+
 ### `install_wsl`
 
 ```yaml
