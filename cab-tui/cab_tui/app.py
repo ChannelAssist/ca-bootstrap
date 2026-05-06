@@ -150,6 +150,7 @@ class CabTuiApp(App):
         self._step_body_text: str = _welcome_markdown()
         # Debounce MarkdownViewer updates for high-volume log streams.
         self._step_body_refresh_task: asyncio.Task[None] | None = None
+        self._step_body_last_log_at: float = 0.0
 
     def compose(self) -> ComposeResult:
         # Standard chrome — Header + Footer get keyboard hint rendering for free.
@@ -328,22 +329,25 @@ class CabTuiApp(App):
         # would only be visible by tabbing to the Transcript pane.
         if self._active_step_id is not None:
             self._step_body_text += (text or "") + "\n"
-            await self._schedule_step_body_refresh()
+            self._schedule_step_body_refresh()
 
-    async def _schedule_step_body_refresh(self) -> None:
+    def _schedule_step_body_refresh(self) -> None:
         """Coalesce bursty log events into a single markdown refresh."""
+        loop = asyncio.get_running_loop()
+        self._step_body_last_log_at = loop.time()
         if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
-            self._step_body_refresh_task.cancel()
-            try:
-                await self._step_body_refresh_task
-            except asyncio.CancelledError:
-                pass
+            return
 
         refresh_task: asyncio.Task[None]
-
         async def _debounced_refresh() -> None:
             try:
-                await asyncio.sleep(self._STEP_BODY_REFRESH_DEBOUNCE_SECONDS)
+                while True:
+                    elapsed = loop.time() - self._step_body_last_log_at
+                    remaining = self._STEP_BODY_REFRESH_DEBOUNCE_SECONDS - elapsed
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                        continue
+                    break
                 await self._refresh_step_body()
             except asyncio.CancelledError:
                 return
