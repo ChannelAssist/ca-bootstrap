@@ -232,6 +232,7 @@ class CabTuiApp(App):
     # protocol-incompatible changes (renamed event types, restructured
     # prompt shape, etc.). docs/rpc-protocol.md tracks the matrix.
     _SUPPORTED_SCHEMA_VERSION = 1
+    _STEP_BODY_REFRESH_DEBOUNCE_SECONDS = 0.1
 
     async def _handle_rpc_welcome(self, msg: RpcMessage) -> None:
         # Per docs/rpc-protocol.md: child must close on schema_version
@@ -327,18 +328,22 @@ class CabTuiApp(App):
         # would only be visible by tabbing to the Transcript pane.
         if self._active_step_id is not None:
             self._step_body_text += (text or "") + "\n"
-            self._schedule_step_body_refresh()
+            await self._schedule_step_body_refresh()
 
-    def _schedule_step_body_refresh(self) -> None:
+    async def _schedule_step_body_refresh(self) -> None:
         """Coalesce bursty log events into a single markdown refresh."""
         if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
             self._step_body_refresh_task.cancel()
+            try:
+                await self._step_body_refresh_task
+            except asyncio.CancelledError:
+                pass
 
         refresh_task: asyncio.Task[None]
 
         async def _debounced_refresh() -> None:
             try:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(self._STEP_BODY_REFRESH_DEBOUNCE_SECONDS)
                 await self._refresh_step_body()
             except asyncio.CancelledError:
                 return

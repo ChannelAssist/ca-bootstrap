@@ -288,7 +288,7 @@ async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
         await app._handle_rpc_log(_M({
             "type": "log", "stream": "info", "text": "Cloning ChannelAssist/Keystone...",
         }))
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(app._STEP_BODY_REFRESH_DEBOUNCE_SECONDS + 0.1)
 
         updates = [call.args[0] for call in spy_update.await_args_list]
         assert updates, "Expected #step-body markdown update calls"
