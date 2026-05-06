@@ -338,7 +338,6 @@ class CabTuiApp(App):
         if self._step_body_refresh_task is not None and not self._step_body_refresh_task.done():
             return
 
-        refresh_task: asyncio.Task[None]
         async def _debounced_refresh() -> None:
             try:
                 while True:
@@ -352,11 +351,10 @@ class CabTuiApp(App):
             except asyncio.CancelledError:
                 return
             finally:
-                if self._step_body_refresh_task is refresh_task:
+                if self._step_body_refresh_task is asyncio.current_task():
                     self._step_body_refresh_task = None
 
-        refresh_task = asyncio.create_task(_debounced_refresh())
-        self._step_body_refresh_task = refresh_task
+        self._step_body_refresh_task = asyncio.create_task(_debounced_refresh())
 
     async def _refresh_step_body(self) -> None:
         """Push the current self._step_body_text into the #step-body Markdown.

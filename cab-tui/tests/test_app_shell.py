@@ -277,15 +277,15 @@ async def test_step_body_resets_on_step_start_and_appends_log_lines() -> None:
         spy_update = AsyncMock(side_effect=original_update)
         viewer.document.update = spy_update  # type: ignore[assignment]
 
-        class _M:
+        class FakeRpcMessage:
             def __init__(self, raw: dict):
                 self.raw = raw
                 self.type = raw.get("type", "")
 
-        await app._handle_rpc_step(_M({
+        await app._handle_rpc_step(FakeRpcMessage({
             "type": "step", "phase": "start", "step": "60-repos",
         }))
-        await app._handle_rpc_log(_M({
+        await app._handle_rpc_log(FakeRpcMessage({
             "type": "log", "stream": "info", "text": "Cloning ChannelAssist/Keystone...",
         }))
         await asyncio.sleep(app._STEP_BODY_REFRESH_DEBOUNCE_SECONDS + 0.1)
