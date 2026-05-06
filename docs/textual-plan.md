@@ -1,6 +1,6 @@
-# Plan: Textual TUI for the setup wizard
+# Textual TUI for the setup wizard — architecture & phase log
 
-> **Status: design proposal, not yet approved.** Follow-up to discussion on 2026-05-04. The four-command CLI (`setup`/`doctor`/`repair`/`undo`) is at v1.2.x and stable; this plan covers replacing the **interactive `setup` wizard's** prompt-and-Read-Host flow with a [Textual](https://github.com/textualize/textual)-based TUI, keeping everything else (doctor JSON, unattended mode, the journal, the four commands) as-is.
+> **Status: shipped in v1.4.0.** All twelve phases of the original plan landed and CI runs the cab-tui pytest suite + the Pester bridge tests on Windows / macOS / Linux. Originally drafted as a design proposal on 2026-05-04 (when the four-command CLI was at v1.2.x); kept in-tree as the architecture record for the now-shipped TUI, with the user-facing guide at [`tui.md`](tui.md) and the wire protocol at [`rpc-protocol.md`](rpc-protocol.md).
 
 ## TL;DR
 
