@@ -85,10 +85,20 @@ class RpcBridge:
         if self._reader is None:
             try:
                 self._reader = await self._connect_stdin()
-            except (io.UnsupportedOperation, OSError, ValueError) as exc:
-                # No usable stdin (test harness has captured it, or stdin
-                # isn't a pipe). The consumer is a no-op in that case;
-                # outbound `send()` still works for direct-call tests.
+            except (io.UnsupportedOperation, OSError, ValueError, NotImplementedError) as exc:
+                # No usable stdin. Possible causes:
+                #   - test harness has captured it (UnsupportedOperation)
+                #   - stdin isn't a pipe / fd unsuitable (OSError, ValueError)
+                #   - Windows: the default ProactorEventLoop does not
+                #     implement connect_read_pipe for non-socket fds —
+                #     raises NotImplementedError. Without this catch,
+                #     the bridge would crash on Windows; with it, the
+                #     consumer is just disabled (matches the other
+                #     no-stdin paths) and outbound `send()` still works.
+                # NB: a usable Windows TUI bridge needs a thread-based
+                # reader (separate fix); this catch only prevents the
+                # crash — the orchestrator's auto-detect probe still
+                # uses --check which doesn't need the consumer.
                 print(f"cab-tui: stdin unavailable ({exc!r}); RPC consumer disabled", file=sys.stderr)
                 return
         while not self._stop.is_set():

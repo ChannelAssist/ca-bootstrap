@@ -7,6 +7,16 @@ outbound responses arrive on its stdout.
 Distinguished from test_rpc.py which uses in-memory readers/writers.
 This catches subprocess-spawning bugs, line-buffering issues, and
 encoding mismatches that the unit tests can't.
+
+Windows is skipped at module level: `loop.connect_read_pipe(sys.stdin)`
+raises NotImplementedError on the default ProactorEventLoop (Windows
+asyncio supports pipes only for sockets). The bridge degrades
+gracefully — `start()` catches the exception and disables the consumer
+— but these tests rely on the consumer actually running, so they
+deadlock on the parent's stdin write before the child exits. The unit
+tests in test_rpc.py exercise the parser logic via in-memory readers
+and DO run on Windows. A real Windows TUI bridge needs a thread-based
+reader; tracked separately.
 """
 
 from __future__ import annotations
@@ -20,6 +30,13 @@ import textwrap
 import time
 
 import pytest
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows asyncio's default ProactorEventLoop doesn't support "
+           "connect_read_pipe on non-socket fds; integration tests deadlock. "
+           "Unit tests in test_rpc.py cover the parser logic via in-memory readers.",
+)
 
 
 _SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

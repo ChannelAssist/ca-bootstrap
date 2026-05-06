@@ -46,14 +46,17 @@ function _CABTuiPythonPath {
     return @{ Set = $cabPath; Original = $null }
 }
 
-# Find-CABPython — return the first usable Python 3.10+ on PATH, or
-# $null. On Unix-like systems, candidate order matches bootstrap.sh's
-# detect_python and the Makefile's DETECT_PY; on Windows we prepend
-# `python.exe` and `py` as platform-specific additions. pyenv/conda
-# environments may only ship a version-suffixed `python3.12` (no
-# `python3` symlink), so we probe those names too — otherwise the
-# orchestrator would silently fall back to CLI on a setup the
-# installer happily accepts.
+# Get-CABPythonCandidates — platform-aware list of interpreter names
+# Find-CABPython probes (after the venv-first lookup). On Unix-like
+# systems, the order matches bootstrap.sh's detect_python and the
+# Makefile's DETECT_PY; on Windows we prepend `python.exe` and `py` as
+# platform-specific additions. pyenv/conda envs may only ship a
+# version-suffixed `python3.12` with no `python3` symlink, so we probe
+# those names too — otherwise the orchestrator would silently fall
+# back to CLI on a setup the installer happily accepts. Shared between
+# Find-CABPython (which iterates) and Start-CABTuiBridge (which builds
+# the "tried X" error message), so there's no risk of the message
+# drifting away from what's probed.
 function Get-CABPythonCandidates {
     if ($IsWindows) {
         @('python.exe', 'py', 'python3', 'python3.13', 'python3.12', 'python3.11', 'python3.10', 'python')
@@ -62,18 +65,103 @@ function Get-CABPythonCandidates {
     }
 }
 
+# Find-CABPython — return the first usable Python 3.10+, or $null.
+#
+# Lookup order:
+#   1. cab-tui/.venv/bin/python3 (or .venv\Scripts\python.exe on Windows).
+#      This is where `make tui-install` and the bootstrap entrypoints
+#      put cab-tui's deps. Preferring it first means the orchestrator
+#      finds a venv-installed cab_tui without the user having to add
+#      anything to PATH — important on Homebrew/system Pythons that
+#      block `pip install` via PEP 668's EXTERNALLY-MANAGED marker.
+#   2. PATH-resolved candidates from Get-CABPythonCandidates.
+#
+# Each candidate is version-checked (>=3.10) before being returned, so
+# a system `python` symlinked to 2.x is skipped. Returns the absolute
+# path for the venv case (so callers don't have to add it to PATH) or
+# the bare command name for PATH lookups (callers spawn through PATH
+# the usual way).
 function Find-CABPython {
-    foreach ($cand in (Get-CABPythonCandidates)) {
-        if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
-        try {
-            $verLine = & $cand -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
-        } catch { continue }
-        if ($verLine -match '^(\d+)\.(\d+)$') {
-            $major = [int]$Matches[1]; $minor = [int]$Matches[2]
-            if ($major -ge 3 -and $minor -ge 10) { return $cand }
+    # CA_BOOTSTRAP_NO_VENV=1 suppresses the venv-first lookup. Used by
+    # the cross-platform Pester test that wants a deterministic
+    # "no usable cab_tui anywhere" state via a PATH shim, and available
+    # to advanced users who manage their own Python installs (e.g. the
+    # documented Poetry workflow that prepends Poetry's venv to PATH).
+    if (-not $env:CA_BOOTSTRAP_NO_VENV) {
+        $cabPath = Get-CABTuiPackagePath
+        # Try every shape the installers produce: .venv/bin/python3
+        # (Linux/macOS default), .venv/bin/python (also created by
+        # `python -m venv` and used by bootstrap.sh), and the Windows
+        # variants. First one that exists, is 3.10+, AND has cab_tui
+        # importable wins. The cab_tui check is critical: a venv where
+        # the install half-failed (Python is fine but textual/cab_tui
+        # didn't land) would otherwise be returned, and the orchestrator
+        # would later hit a confusing handshake failure when the bridge
+        # tries to `python -m cab_tui --rpc` against it.
+        $venvCandidates = if ($IsWindows) {
+            @('.venv/Scripts/python.exe', '.venv/Scripts/python3.exe', '.venv/bin/python', '.venv/bin/python3')
+        } else {
+            @('.venv/bin/python3', '.venv/bin/python', '.venv/Scripts/python.exe')
+        }
+        foreach ($rel in $venvCandidates) {
+            $venvPython = Join-Path $cabPath $rel
+            if (-not (Test-Path $venvPython)) { continue }
+            if (-not (Test-CABPythonVersion $venvPython)) { continue }
+            # Probe `python -m cab_tui --check` — same probe
+            # Test-CABTuiAvailable uses, deliberately. Just `import
+            # cab_tui` would succeed even when runtime deps are missing
+            # (cab_tui/__init__.py has no dependency imports), so a
+            # half-installed venv could be selected here only to fail
+            # at handshake time. --check loads cab_tui.__main__ which
+            # transitively imports `from textual import on`, so a
+            # missing textual fails the gate cleanly.
+            #
+            # Sets the same PYTHONPATH shim Test-CABTuiAvailable uses
+            # (cab-tui/ prepended). On macOS Python 3.14, hatchling /
+            # poetry-core editable installs land a `.pth` file marked
+            # UF_HIDDEN; site.py skips it. The venv is functionally
+            # correct via PYTHONPATH; a probe without it would falsely
+            # reject it here.
+            $pp = _CABTuiPythonPath
+            $original = $pp.Original
+            $env:PYTHONPATH = $pp.Set
+            try {
+                & $venvPython -m cab_tui --check 2>$null | Out-Null
+                if ($LASTEXITCODE -eq 0) { return $venvPython }
+            } catch { }
+            finally {
+                if ($null -eq $original) { Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue }
+                else                     { $env:PYTHONPATH = $original }
+            }
         }
     }
+
+    foreach ($cand in (Get-CABPythonCandidates)) {
+        if (-not (Get-Command $cand -ErrorAction SilentlyContinue)) { continue }
+        if (Test-CABPythonVersion $cand) { return $cand }
+    }
     return $null
+}
+
+# Test-CABPythonVersion — true iff the named binary is Python 3.10+.
+# Extracted from the previous inline copy so the venv path and the PATH
+# fallback share the same check (and so a future bump of the minimum
+# version lives in one place).
+function Test-CABPythonVersion {
+    param([string]$PythonBinary)
+    try {
+        $verLine = & $PythonBinary -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>$null
+    } catch { return $false }
+    if ($verLine -match '^(\d+)\.(\d+)$') {
+        $major = [int]$Matches[1]; $minor = [int]$Matches[2]
+        # Accept any 3.10+ AND any future 4.x / 5.x. The naive
+        # `major >= 3 -and minor >= 10` would reject Python 4.0
+        # (major=4, minor=0) — minor=0 fails the ge-10 check despite
+        # being a newer release than 3.10. Match the Makefile/bootstrap
+        # encoding (major*100+minor, compared to 310).
+        return (($major * 100 + $minor) -ge 310)
+    }
+    return $false
 }
 
 function Test-CABTuiAvailable {
@@ -122,7 +210,12 @@ function Start-CABTuiBridge {
         $PythonBinary = Find-CABPython
         if (-not $PythonBinary) {
             $tried = (Get-CABPythonCandidates) -join ' / '
-            throw "cab-tui: no usable Python 3.10+ found on PATH (tried $tried)."
+            $venvHint = if ($env:CA_BOOTSTRAP_NO_VENV) {
+                ' (CA_BOOTSTRAP_NO_VENV is set, so the cab-tui/.venv check was skipped)'
+            } else {
+                ' (also checked cab-tui/.venv/ — either missing, its python is <3.10, or `python -m cab_tui --check` failed there)'
+            }
+            throw "cab-tui: no usable Python 3.10+ found. Tried PATH candidates: $tried.$venvHint"
         }
     }
 

@@ -154,25 +154,59 @@ function Install-PythonAndTui {
         }
     }
 
-    # Already importable? Nothing to do.
-    & $py -m cab_tui --check 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Color Green '✓ cab-tui already installed.'
-        return
+    # If a previous run populated cab-tui/.venv with a 3.10+ python AND
+    # cab_tui imports correctly, reuse it. Stale venvs (e.g. created
+    # with 3.9 in a cached clone) get recreated below.
+    $venvDir = Join-Path $cabTuiDir '.venv'
+    $venvPy = Join-Path $venvDir 'Scripts\python.exe'
+    if (-not (Test-Path $venvPy)) { $venvPy = Join-Path $venvDir 'bin/python' }   # MSYS / WSL
+    if ((Test-Path $venvPy)) {
+        $venvVer = & $venvPy -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>$null
+        if (-not ($venvVer -as [int]) -or [int]$venvVer -lt 310) {
+            Write-Color Yellow "  Existing $venvDir/ is Python <3.10; recreating..."
+            Remove-Item -Recurse -Force $venvDir -ErrorAction SilentlyContinue
+        } else {
+            & $venvPy -m cab_tui --check 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Color Green "✓ cab-tui already installed in $venvDir/."
+                return
+            }
+        }
     }
 
     Write-Color Blue 'Installing cab-tui (optional rich TUI front-end)...'
-    # Install via pip into the same Python the orchestrator probes.
-    # `poetry install` would create a Poetry-managed venv invisible
-    # to Find-CABPython, leaving the TUI unreachable despite a
-    # "successful" install. poetry.lock stays committed as the
-    # spec-of-record for strict reproducibility.
-    $installOk = $false
-    & $py -m pip install --quiet --upgrade pip 2>$null | Out-Null
-    & $py -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
-    if ($LASTEXITCODE -eq 0) { $installOk = $true }
-    if ($installOk) {
-        Write-Color Green '✓ cab-tui installed; setup will auto-launch the TUI.'
+    # Install into a virtualenv at cab-tui/.venv. We do NOT pip-install
+    # against the discovered system Python — PEP 668-protected distros
+    # would refuse it (Homebrew on macOS sets EXTERNALLY-MANAGED) and
+    # the install would silently fail. The orchestrator's Find-CABPython
+    # prefers cab-tui/.venv anyway.
+    if (-not (Test-Path $venvPy)) {
+        & $py -m venv $venvDir 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Color Yellow "  Failed to create virtualenv at $venvDir/."
+            Write-Color Yellow "  Continuing with the legacy Read-Host CLI."
+            return
+        }
+        $venvPy = Join-Path $venvDir 'Scripts\python.exe'
+        if (-not (Test-Path $venvPy)) { $venvPy = Join-Path $venvDir 'bin/python' }
+    }
+
+    & $venvPy -m pip install --quiet --upgrade pip 2>$null | Out-Null
+    & $venvPy -m pip install --quiet -e $cabTuiDir 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        # macOS Python 3.14 + editable backends (hatchling, poetry-core)
+        # mark their .pth shim with UF_HIDDEN; site.py skips hidden .pth
+        # files. Clear the flag so cab_tui resolves on import. Same fix
+        # bootstrap.sh and `make tui-install` apply; harmless on Linux/
+        # Windows where chflags doesn't exist or has no effect.
+        if ($IsMacOS) {
+            try {
+                Get-ChildItem -Path $venvDir -Recurse -Filter '*.pth' -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -like '*site-packages*' } |
+                    ForEach-Object { & chflags nohidden $_.FullName 2>$null }
+            } catch { }
+        }
+        Write-Color Green "✓ cab-tui installed in $venvDir/; setup will auto-launch the TUI."
     } else {
         Write-Color Yellow '  cab-tui install failed; continuing with the legacy Read-Host CLI.'
         Write-Color Yellow '  (Set CA_BOOTSTRAP_NO_TUI=1 to silence this message.)'

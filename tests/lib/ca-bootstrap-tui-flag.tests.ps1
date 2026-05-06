@@ -64,20 +64,33 @@ exit 99
         # PATH (otherwise `& pwsh` would fail to resolve on a stripped PATH).
         $pwshPath = (Get-Process -Id $PID).Path
         $origPath = $env:PATH
+        # Save (don't clobber) the user's existing CA_BOOTSTRAP_NO_VENV.
+        # The env var is part of the documented Poetry workflow, so a
+        # developer running the suite from a shell that already exports
+        # it must not have it silently deleted by the test cleanup.
+        $prevNoVenv = $env:CA_BOOTSTRAP_NO_VENV
         try {
             $env:CA_BOOTSTRAP_STATE = $tempState
             # Restrict PATH to ONLY the shim dir so Find-CABPython cannot
-            # fall back to any real Python on the runner. With this restriction
-            # the shim is the only Python visible; -m cab_tui --check exits 99
-            # and Test-CABTuiAvailable returns $false deterministically
-            # regardless of what is installed system-wide.
+            # fall back to any real Python on the runner.
             $env:PATH = $shimDir
+            # CA_BOOTSTRAP_NO_VENV suppresses the venv-first lookup that
+            # Find-CABPython does — otherwise the dev workflow's
+            # cab-tui/.venv/bin/python3 would be found before the shim
+            # and the test would exercise a different (handshake-failure)
+            # path than the no-cab_tui-anywhere path it claims to test.
+            $env:CA_BOOTSTRAP_NO_VENV = '1'
             $output = & $pwshPath -NoLogo -NoProfile -File $script:orch setup -Tui 2>&1
             $LASTEXITCODE | Should -Not -Be 0
             ($output -join "`n") | Should -Match '(?i)cab-tui is not available'
         } finally {
             $env:PATH = $origPath
             Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
+            if ($null -eq $prevNoVenv) {
+                Remove-Item Env:CA_BOOTSTRAP_NO_VENV -ErrorAction SilentlyContinue
+            } else {
+                $env:CA_BOOTSTRAP_NO_VENV = $prevNoVenv
+            }
             if (Test-Path $tempState) { Remove-Item -Recurse -Force $tempState -ErrorAction SilentlyContinue }
         }
     }

@@ -57,6 +57,172 @@ Describe 'Find-CABPython' {
             Set-ItResult -Skipped -Because 'no Python 3.10+ on PATH; nothing to assert'
         }
     }
+
+    It 'prefers cab-tui/.venv over PATH when the venv has a usable python' -Skip:$IsWindows {
+        # Self-contained: forges a fake .venv with a python3 stub that
+        # passes the version probe (3.12) AND `cab_tui --check` (exit 0).
+        # Override Get-CABTuiPackagePath so Find-CABPython probes our
+        # fake. Skipped on Windows because the stub is #!/bin/sh —
+        # CI's Windows-side cab-tui-rpc-pester job runs the same code
+        # path through the real venv install instead.
+        $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-prefer-venv-$(Get-Random)") -Force
+        $venvBin = New-Item -ItemType Directory -Path (Join-Path $tmp.FullName '.venv/bin') -Force
+        $stubPath = Join-Path $venvBin.FullName 'python3'
+        $stub = @'
+#!/bin/sh
+case "$1" in
+  -c) echo "3.12"; exit 0 ;;
+  -m) [ "$2" = "cab_tui" ] && [ "$3" = "--check" ] && exit 0 ;;
+esac
+exit 0
+'@
+        Set-Content -Path $stubPath -Value $stub
+        & chmod +x $stubPath
+        # Save + clear CA_BOOTSTRAP_NO_VENV so the test runs in a known
+        # state regardless of the dev's environment.
+        $prevNoVenv = $env:CA_BOOTSTRAP_NO_VENV
+        Remove-Item Env:CA_BOOTSTRAP_NO_VENV -ErrorAction SilentlyContinue
+        $orig = (Get-Item Function:Get-CABTuiPackagePath).ScriptBlock
+        try {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value { $tmp.FullName }.GetNewClosure()
+            $py = Find-CABPython
+            $py | Should -Be $stubPath -Because 'Find-CABPython should prefer the .venv stub over any PATH-resolved python'
+        } finally {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value $orig
+            if ($null -ne $prevNoVenv) { $env:CA_BOOTSTRAP_NO_VENV = $prevNoVenv }
+            Remove-Item -Recurse -Force $tmp.FullName -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'CA_BOOTSTRAP_NO_VENV=1 falls through to PATH lookup' -Skip:$IsWindows {
+        # Self-contained: same forged .venv as the previous test. With
+        # CA_BOOTSTRAP_NO_VENV=1 the venv-first branch is skipped, so
+        # Find-CABPython falls through to PATH and returns whatever
+        # real python3 the runner has. Asserts the result is NOT our
+        # stub and NOT $null. Skipped on Windows for the same harness
+        # reason as the .venv-prefer test above.
+        $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-no-venv-$(Get-Random)") -Force
+        $venvBin = New-Item -ItemType Directory -Path (Join-Path $tmp.FullName '.venv/bin') -Force
+        $stubPath = Join-Path $venvBin.FullName 'python3'
+        $stub = @'
+#!/bin/sh
+case "$1" in
+  -c) echo "3.12"; exit 0 ;;
+  -m) [ "$2" = "cab_tui" ] && [ "$3" = "--check" ] && exit 0 ;;
+esac
+exit 0
+'@
+        Set-Content -Path $stubPath -Value $stub
+        & chmod +x $stubPath
+        $prevNoVenv = $env:CA_BOOTSTRAP_NO_VENV
+        $env:CA_BOOTSTRAP_NO_VENV = '1'
+        $orig = (Get-Item Function:Get-CABTuiPackagePath).ScriptBlock
+        try {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value { $tmp.FullName }.GetNewClosure()
+            $py = Find-CABPython
+            # Two-part assertion: (a) Find-CABPython MUST find some
+            # python (otherwise the negative match is vacuously true),
+            # (b) it MUST NOT be the venv-stub.
+            $py | Should -Not -BeNullOrEmpty -Because 'a real PATH-resolved Python should be the fallback when the venv is bypassed'
+            $py | Should -Not -Be $stubPath
+        } finally {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value $orig
+            if ($null -eq $prevNoVenv) {
+                Remove-Item Env:CA_BOOTSTRAP_NO_VENV -ErrorAction SilentlyContinue
+            } else {
+                $env:CA_BOOTSTRAP_NO_VENV = $prevNoVenv
+            }
+            Remove-Item -Recurse -Force $tmp.FullName -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects a stale venv whose interpreter is <3.10' -Skip:$IsWindows {
+        # Forge a fake venv layout: write a python3 shell stub that
+        # claims version 3.9 (via -c 'import sys; print(...)') and
+        # refuses cab_tui import (exit 1). Find-CABPython should NOT
+        # return this path — the version gate filters it. We override
+        # Get-CABTuiPackagePath via a temp dir so the fake venv lives
+        # under a path Find-CABPython will probe.
+        #
+        # -Skip:$IsWindows because the stub is a #!/bin/sh script with
+        # `chmod +x` — neither works on Windows runners. The behavior
+        # under test is platform-agnostic; only the harness is Unix.
+        $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-stale-venv-$(Get-Random)") -Force
+        $venvDir = Join-Path $tmp.FullName '.venv'
+        $venvBin = Join-Path $venvDir 'bin'
+        New-Item -ItemType Directory -Path $venvBin -Force | Out-Null
+        # Write a 3.9-claiming stub.
+        $stubPath = Join-Path $venvBin 'python3'
+        $stub = @'
+#!/bin/sh
+case "$1" in
+  -c) echo "3.9"; exit 0 ;;
+  *) exit 1 ;;
+esac
+'@
+        Set-Content -Path $stubPath -Value $stub
+        & chmod +x $stubPath
+        # Override the package-path resolver for the duration of the test.
+        $orig = (Get-Item Function:Get-CABTuiPackagePath).ScriptBlock
+        try {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value { $tmp.FullName }.GetNewClosure()
+            $py = Find-CABPython
+            # Fake venv should have been REJECTED. Find-CABPython then
+            # falls through to PATH lookup (which finds the real python3
+            # on the runner). Two-part assertion to avoid a false-positive
+            # when no PATH python exists: (a) a real fallback was found,
+            # (b) the result is NOT the stub we forged.
+            $py | Should -Not -BeNullOrEmpty -Because 'a real PATH-resolved Python should be the fallback when the venv is rejected'
+            $py | Should -Not -Be $stubPath
+        } finally {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value $orig
+            Remove-Item -Recurse -Force $tmp.FullName -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'rejects a venv where Python is 3.10+ but `python -m cab_tui --check` fails' -Skip:$IsWindows {
+        # Same forgery, but this time the Python version probe returns
+        # 3.12 — the gate that should reject is the `python -m cab_tui
+        # --check` probe (introduced in iter-4 to catch half-installed
+        # venvs, strengthened in iter-7 from a bare `import cab_tui` to
+        # the full `--check` so missing textual is also caught).
+        # -Skip:$IsWindows for the same harness reason as the previous
+        # test (#!/bin/sh + chmod aren't portable to Windows runners).
+        $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-broken-venv-$(Get-Random)") -Force
+        $venvDir = Join-Path $tmp.FullName '.venv'
+        $venvBin = Join-Path $venvDir 'bin'
+        New-Item -ItemType Directory -Path $venvBin -Force | Out-Null
+        $stubPath = Join-Path $venvBin 'python3'
+        $stub = @'
+#!/bin/sh
+case "$1" in
+  -c)
+    case "$2" in
+      *version_info*) echo "3.12"; exit 0 ;;
+      *import*cab_tui*) exit 1 ;;
+      *) exit 0 ;;
+    esac
+    ;;
+  *) exit 1 ;;
+esac
+'@
+        Set-Content -Path $stubPath -Value $stub
+        & chmod +x $stubPath
+        $orig = (Get-Item Function:Get-CABTuiPackagePath).ScriptBlock
+        try {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value { $tmp.FullName }.GetNewClosure()
+            $py = Find-CABPython
+            # Same null guard as the stale-venv test above. A regression
+            # that rejects broken venvs but fails to fall through to PATH
+            # would leave $py == $null; without this guard the negative
+            # assertion would vacuously pass.
+            $py | Should -Not -BeNullOrEmpty -Because 'a real PATH-resolved Python should be the fallback when the venv is rejected'
+            $py | Should -Not -Be $stubPath
+        } finally {
+            Set-Item -Path Function:Get-CABTuiPackagePath -Value $orig
+            Remove-Item -Recurse -Force $tmp.FullName -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Describe 'Drain-CABTuiPending pre-handshake gating' {

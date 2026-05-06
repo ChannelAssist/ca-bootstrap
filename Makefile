@@ -79,13 +79,12 @@ DETECT_PY = py=""; for cand in python3 python3.13 python3.12 python3.11 python3.
 PY_CANDIDATES_HUMAN = python3 / python3.13 / python3.12 / python3.11 / python3.10 / python
 
 # tui-install — every shell step in the recipe chains via `&&` so a
-# non-zero exit (e.g. pip refused by PEP 668's EXTERNALLY-MANAGED on
-# Homebrew/system Pythons) stops the recipe instead of falling through
-# to the success printf. The Darwin .pth cleanup is idempotent —
-# `|| true` keeps the find from breaking the chain on non-Hatchling
-# installs.
+# non-zero exit (e.g. venv creation, pip install) stops the recipe
+# instead of falling through to the success printf. The Darwin .pth
+# cleanup is idempotent — `|| true` keeps the find from breaking the
+# chain on non-Hatchling editable shims.
 .PHONY: tui-install
-tui-install: ## Install the cab-tui Python front-end (pip install -e .)
+tui-install: ## Install the cab-tui Python front-end into cab-tui/.venv
 	@printf "$(BLUE)Installing cab-tui...$(RESET)\n"
 	@$(DETECT_PY); \
 	if [ -z "$$py" ]; then \
@@ -93,36 +92,94 @@ tui-install: ## Install the cab-tui Python front-end (pip install -e .)
 		exit 1; \
 	fi; \
 	printf "  Using interpreter: $$py\n" && \
-	cd cab-tui && $$py -m pip install -e . --quiet && \
+	venv_dir="cab-tui/.venv" && \
 	{ \
-		if [ "$$(uname -s)" = "Darwin" ]; then \
-			find . -path "*site-packages/_editable_impl_*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
-			site_pkgs=$$($$py -c "import site; print(site.getsitepackages()[0])" 2>/dev/null); \
-			if [ -n "$$site_pkgs" ] && [ -d "$$site_pkgs" ]; then \
-				find "$$site_pkgs" -name "_editable_impl_cab_tui.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+		if [ -e "$$venv_dir/bin/python" ]; then existing_py="$$venv_dir/bin/python"; \
+		elif [ -e "$$venv_dir/Scripts/python.exe" ]; then existing_py="$$venv_dir/Scripts/python.exe"; \
+		else existing_py=""; fi; \
+		if [ -n "$$existing_py" ]; then \
+			ver=$$("$$existing_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); \
+			if [ "$$ver" -lt 310 ] 2>/dev/null; then \
+				printf "$(YELLOW)  Existing $$venv_dir/ is Python <3.10; recreating...$(RESET)\n" && \
+				rm -rf "$$venv_dir" && \
+				existing_py=""; \
 			fi; \
 		fi; \
+		if [ -z "$$existing_py" ]; then \
+			printf "  Creating virtualenv at $$venv_dir/...\n" && \
+			"$$py" -m venv "$$venv_dir"; \
+		else true; \
+		fi; \
 	} && \
-	printf "$(GREEN)✓ cab-tui installed; \`make setup\` will now auto-launch the TUI$(RESET)\n"
-	@# Install path note: pip into the same Python the orchestrator
-	@# probes via Find-CABPython. `poetry install` would create a
-	@# Poetry-managed virtualenv invisible to the orchestrator —
-	@# successful install, unreachable TUI. poetry.lock stays in the
-	@# repo as the spec-of-record for users who want strict
-	@# reproducibility (they can `poetry install` into their own venv
-	@# and put it on PATH; the orchestrator picks up that Python).
-	@# Hatchling .pth UF_HIDDEN cleanup is conditional on the .pth
-	@# being present (no-op for non-Hatchling editable installs).
+	{ \
+		if [ -e "$$venv_dir/bin/python" ]; then venv_py="$$venv_dir/bin/python"; \
+		else venv_py="$$venv_dir/Scripts/python.exe"; fi; \
+		printf "  Installing into $$venv_dir/ (PEP 668 protects system Python)\n" && \
+		"$$venv_py" -m pip install --upgrade pip --quiet 2>/dev/null; true; \
+		"$$venv_py" -m pip install -e 'cab-tui[dev]' --quiet; \
+	} && \
+	{ \
+		if [ "$$(uname -s)" = "Darwin" ]; then \
+			find cab-tui/.venv -path "*site-packages/*.pth" -exec chflags nohidden {} \; 2>/dev/null || true; \
+		fi; \
+	} && \
+	printf "$(GREEN)✓ cab-tui installed in cab-tui/.venv/; \`make setup\` will auto-launch the TUI$(RESET)\n"
+	@# Install path: pip-into-venv. The orchestrator's Find-CABPython
+	@# checks cab-tui/.venv first, so the venv-installed cab_tui is
+	@# picked up without the user adding anything to PATH. This avoids
+	@# PEP 668's EXTERNALLY-MANAGED block on Homebrew/system Pythons
+	@# (which would otherwise refuse `pip install` and silently leave
+	@# the orchestrator with a Python that can't import cab_tui).
+	@# poetry.lock stays as the spec-of-record for strict reproducibility
+	@# (`poetry install` into the same venv works — points at the same
+	@# pyproject.toml). Hatchling's editable .pth gets a UF_HIDDEN
+	@# clear on macOS so Python 3.14's site.py doesn't skip it (also
+	@# covers poetry-core's cab_tui.pth — same hidden-flag bug, different
+	@# filename).
 
 .PHONY: tui-test
 tui-test: ## Run the cab-tui pytest suite
 	@printf "$(BLUE)Running cab-tui pytest suite...$(RESET)\n"
-	@$(DETECT_PY); \
+	@# Prefer the cab-tui/.venv python ONLY when it actually has pytest
+	@# installed. `bootstrap.sh` populates the same venv with a
+	@# runtime-only install (no [dev] extras), so a bootstrapped repo
+	@# would have a venv-python without pytest — we'd fail with
+	@# "No module named pytest" if we used it unconditionally. Falling
+	@# back to PATH lookup here lets users run `make tui-test` in either
+	@# situation; for the bootstrapped case they can re-run
+	@# `make tui-install` to add the [dev] extras.
+	@# Absolute paths because we `cd cab-tui` before pytest runs.
+	@repo_root="$$(pwd)"; \
+	venv_py=""; \
+	if [ -x "$$repo_root/cab-tui/.venv/bin/python" ]; then \
+		venv_py="$$repo_root/cab-tui/.venv/bin/python"; \
+	elif [ -x "$$repo_root/cab-tui/.venv/bin/python3" ]; then \
+		venv_py="$$repo_root/cab-tui/.venv/bin/python3"; \
+	elif [ -x "$$repo_root/cab-tui/.venv/Scripts/python.exe" ]; then \
+		venv_py="$$repo_root/cab-tui/.venv/Scripts/python.exe"; \
+	fi; \
+	if [ -n "$$venv_py" ]; then \
+		venv_ver=$$("$$venv_py" -c 'import sys; v=sys.version_info; print(v[0]*100+v[1])' 2>/dev/null || echo 0); \
+		if [ "$$venv_ver" -lt 310 ] 2>/dev/null; then \
+			printf "$(YELLOW)cab-tui/.venv is Python <3.10; falling back to PATH.$(RESET)\n"; \
+			printf "$(YELLOW)  Run \`make tui-install\` to recreate the venv with the active interpreter.$(RESET)\n"; \
+			venv_py=""; \
+		fi; \
+	fi; \
+	if [ -n "$$venv_py" ] && "$$venv_py" -c 'import pytest' 2>/dev/null; then \
+		py="$$venv_py"; \
+	else \
+		if [ -n "$$venv_py" ]; then \
+			printf "$(YELLOW)cab-tui/.venv has no pytest (bootstrap installs runtime-only); falling back to PATH.$(RESET)\n"; \
+			printf "$(YELLOW)  Run \`make tui-install\` to add [dev] extras to the venv.$(RESET)\n"; \
+		fi; \
+		$(DETECT_PY); \
+	fi; \
 	if [ -z "$$py" ]; then \
-		printf "$(RED)No Python 3.10+ found on PATH (tried $(PY_CANDIDATES_HUMAN)).$(RESET)\n"; \
+		printf "$(RED)No Python 3.10+ found (tried cab-tui/.venv/ then $(PY_CANDIDATES_HUMAN)).$(RESET)\n"; \
 		exit 1; \
 	fi; \
-	cd cab-tui && $$py -m pytest -q
+	cd cab-tui && "$$py" -m pytest -q
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)
