@@ -48,11 +48,26 @@ smoke-clean: ## Remove smoke-test temp state
 
 .PHONY: setup
 setup: ## Run setup wizard (auto-detects cab-tui; pass ARGS=-NoTui to force CLI)
-	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS)
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS); ec=$$?; \
+		if [ $$ec -eq 1 ]; then \
+			exit 0; \
+		else \
+			exit $$ec; \
+		fi
+# ↑ Exit-code mapping: ca-bootstrap.ps1 returns 1 when the user voluntarily
+# quits (documented in docs/commands.md), but make's default failure
+# message ("make: *** [setup] Error 1") makes that look like a crash.
+# Map user-quit to exit 0 here so `make setup` returns silently on quit;
+# real errors (exit 2+ for failed installs, etc.) still propagate.
 
 .PHONY: setup-no-tui
 setup-no-tui: ## Run setup wizard with the legacy Read-Host CLI (forces -NoTui)
-	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS)
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup -NoTui $(ARGS); ec=$$?; \
+		if [ $$ec -eq 1 ]; then \
+			exit 0; \
+		else \
+			exit $$ec; \
+		fi
 
 # Python detection: shared single-line shell snippet inlined into each
 # Python-using recipe. Mirrors bootstrap.sh's detect_python so pyenv/

@@ -100,7 +100,7 @@ function Invoke-CABStep60 {
             Write-Host ''
             Write-CABColor White "  Group: $($g.name) — $($g.description)"
 
-            $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in this group?" `
+            $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in $($g.name)?" `
                 -Options @(
                     @{ Key = 'Y'; Label = 'Yes' },
                     @{ Key = 'n'; Label = 'No (skip group)' },
