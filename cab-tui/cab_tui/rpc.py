@@ -17,7 +17,7 @@ import io
 import json
 import sys
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional
+from typing import IO, Any, Awaitable, Callable, Optional, TextIO
 
 
 @dataclass
@@ -155,12 +155,16 @@ class RpcBridge:
     _READER_BUFFER_LIMIT = 1024 * 1024
 
     @staticmethod
-    async def _connect_stdin(fp = None) -> asyncio.StreamReader:
+    async def _connect_stdin(fp: IO[bytes] | None = None) -> asyncio.StreamReader:
         # `fp` overrides sys.stdin when set — used by `cab-tui --rpc` after
         # it dup2's /dev/tty onto fd 0 to give Textual a real terminal.
         # Without the override we'd reach for sys.stdin (which now wraps
         # /dev/tty) and read keystrokes instead of RPC events.
-        loop = asyncio.get_event_loop()
+        # `get_running_loop()` rather than `get_event_loop()` because we
+        # are inside a coroutine (start() awaits us) — `get_event_loop()`
+        # is deprecated for this case in Python 3.10+ since it can create
+        # a fresh loop if none is running, masking ordering bugs.
+        loop = asyncio.get_running_loop()
         reader = asyncio.StreamReader(limit=RpcBridge._READER_BUFFER_LIMIT)
         protocol = asyncio.StreamReaderProtocol(reader)
         await loop.connect_read_pipe(lambda: protocol, fp if fp is not None else sys.stdin)
