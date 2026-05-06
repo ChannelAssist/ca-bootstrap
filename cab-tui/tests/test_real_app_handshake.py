@@ -201,6 +201,15 @@ def test_welcome_with_q_chars_is_acked_not_quit() -> None:
             os.close(master_fd)
         except Exception:
             pass
+        # Closing master_fd makes the next os.read() in _drain_pty
+        # return 0 / OSError, which is the drain loop's exit condition.
+        # Joining here ensures any pending bytes are flushed into
+        # pty_sink BEFORE the assertions below — without the join the
+        # `pty_total > 0` assertion races the drain thread on slow CI
+        # runners and can fire while pty_sink is still empty. 2s is a
+        # generous upper bound; in practice the read returns within
+        # microseconds of the close.
+        drain.join(timeout=2.0)
 
     # Diagnostic: capture what the child wrote to stderr in case of failure.
     # Bounded: a bare proc.stderr.read() would block indefinitely if _kill
@@ -230,4 +239,26 @@ def test_welcome_with_q_chars_is_acked_not_quit() -> None:
     assert b"\x1b[" not in line, (
         f"first stdout line contains ANSI escapes — Textual is writing to "
         f"the RPC pipe instead of /dev/tty. line={line!r}"
+    )
+
+    # Stronger guard: Textual MUST have actually rendered to /dev/tty
+    # (the PTY master), AND must NOT have polluted stderr with rendering
+    # bytes. Pre-fix, _redirect_textual_to_tty pointed fd 1 at /dev/tty
+    # but Textual's LinuxDriver writes to sys.__stderr__ (= fd 2), so
+    # rendering went to the parent's stderr pipe (invisible to the user)
+    # and /dev/tty got nothing. Handshake still succeeded, so the
+    # ack-only assertion above wouldn't have caught it.
+    pty_total = sum(len(c) for c in pty_sink)
+    assert pty_total > 0, (
+        f"Textual wrote 0 bytes to /dev/tty — rendering is going somewhere "
+        f"else. Check _redirect_textual_to_tty: textual/drivers/linux_driver.py "
+        f"uses sys.__stderr__ for output (fd 2), not sys.__stdout__ (fd 1). "
+        f"stderr={stderr_data!r}"
+    )
+    assert b"\x1b[" not in stderr_data, (
+        f"Textual rendering bytes leaked onto child stderr ({len(stderr_data)} "
+        f"bytes). The parent captures stderr to its journal — those escape "
+        f"sequences will silently fill the transcript instead of drawing the "
+        f"TUI. Check fd 2 redirect in _redirect_textual_to_tty. "
+        f"stderr preview={stderr_data[:200]!r}"
     )
