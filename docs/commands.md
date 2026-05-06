@@ -17,15 +17,20 @@ If `<command>` is omitted, `setup` runs.
 
 | Target | Equivalent direct invocation |
 |---|---|
-| `make setup` | `pwsh ./ca-bootstrap.ps1 setup` |
+| `make setup` | `pwsh ./ca-bootstrap.ps1 setup` (auto-launches the cab-tui front-end if it's installed) |
+| `make setup-no-tui` | `pwsh ./ca-bootstrap.ps1 setup -NoTui` (force the legacy Read-Host CLI) |
 | `make doctor` | `pwsh ./ca-bootstrap.ps1 doctor` (exits 0 even when drift is found, since drift is a valid output) |
 | `make repair ARGS='--all'` | `pwsh ./ca-bootstrap.ps1 repair -All` |
 | `make repair ARGS='--target dotnet-10'` | `pwsh ./ca-bootstrap.ps1 repair -Target dotnet-10` |
 | `make undo ARGS='--force'` | `pwsh ./ca-bootstrap.ps1 undo -Force` |
-| `make smoke` | end-to-end smoke test against a /tmp workspace |
-| `make test` | full Pester suite |
-| `make release VERSION=X.Y.Z` | full release: bump version, smoke + tests, commit, tag, push, GH release |
-| `make release-dry-run VERSION=X.Y.Z` | same, no writes |
+| `make tui-install` | Install the optional cab-tui Textual front-end into `cab-tui/.venv` (PEP 668-aware; clears macOS UF_HIDDEN on the editable `.pth`). |
+| `make tui-test` | Run the cab-tui pytest suite. |
+| `make test` | Full Pester suite (PowerShell side). |
+| `make test-all` | Pester + cab-tui pytest together. |
+| `make smoke` | End-to-end smoke test against a /tmp workspace. |
+| `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
+| `make release VERSION=X.Y.Z` | Full release: bump version, smoke + tests, commit, tag, push, GH release. |
+| `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
 
 ---
 
@@ -259,6 +264,8 @@ These flags work on every command:
 
 | Flag | Effect |
 |---|---|
+| `-Tui` | Require the cab-tui Textual front-end; error out if it isn't installed. (Setup-only; ignored on doctor/repair/undo.) |
+| `-NoTui` | Force the legacy Read-Host CLI even when cab-tui is available. (Setup-only.) |
 | `-Verbose` | Stream every shell command to the console |
 | `-LogPath <path>` | Override transcript location |
 | `-ConfigFile <path>` | Provide answers.yaml for unattended mode |
@@ -268,6 +275,13 @@ These flags work on every command:
 | `-ForceUnlock` | Remove `~/.ca-bootstrap/session.lock` before acquiring; for breaking out of stale locks left by a crashed run |
 | `--help` / `-h` | Show command help |
 | `--version` | Print ca-bootstrap version and exit |
+
+`setup` also honours two environment variables that act like long-lived flag opt-outs:
+
+| Env var | Effect |
+|---|---|
+| `CA_BOOTSTRAP_NO_TUI=1` | Same as passing `-NoTui` — useful in CI / login profiles. |
+| `CA_BOOTSTRAP_NO_VENV=1` | Skip the `cab-tui/.venv` preference in `Find-CABPython`; useful when you want a Poetry-managed venv to win. See [`tui.md`](tui.md#installing). |
 
 ## Concurrency
 
@@ -294,5 +308,7 @@ Exit code: **5** when locked.
 ## See also
 
 - [`action-journal.md`](action-journal.md) — how state is tracked across runs
-- [`troubleshooting.md`](troubleshooting.md) — common failures and their fixes
+- [`tui.md`](tui.md) — cab-tui (Textual front-end) user guide and installation
+- [`rpc-protocol.md`](rpc-protocol.md) — JSON-RPC wire format between orchestrator and cab-tui
+- [`textual-plan.md`](textual-plan.md) — TUI architecture and phase log
 - [`../DESIGN.md`](../DESIGN.md) — full design specification
