@@ -54,10 +54,11 @@ class RpcBridge:
         # at startup reflects any sys.stdin reassignment that happened
         # after this RpcBridge was constructed.
         self._reader_fp = reader_fp
-        # writer_fp default is resolved lazily so a caller that
-        # reassigns sys.stdout (e.g. test harness, --rpc redirection)
-        # picks up the new value at construction time, not class-import
-        # time. None → use whatever sys.stdout points at on first send().
+        # When writer_fp is None, send() resolves sys.stdout on every
+        # call (see line below in send()). That lets a test harness or
+        # --rpc redirection that reassigns sys.stdout AFTER this bridge
+        # was constructed still be honored, without needing to rebuild
+        # the bridge. Pass an explicit writer_fp to pin the destination.
         self._writer = writer_fp
         self._handlers: dict[str, Callable[[RpcMessage], Awaitable[None]]] = {}
         self._on_unknown: Callable[[RpcMessage], Awaitable[None]] | None = None
