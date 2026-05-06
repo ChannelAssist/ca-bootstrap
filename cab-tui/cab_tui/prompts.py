@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from textual.containers import Container, Horizontal
-from textual.widgets import Button, Checkbox, Input, RadioButton, RadioSet, Static
+from textual.widgets import Button, Checkbox, Input, Label, RadioButton, RadioSet, Static
 
 
 # ---------- public mount helpers ----------
@@ -35,10 +35,15 @@ async def render_prompt(target: Container, prompt: dict[str, Any]) -> None:
     kind = prompt.get("kind", "confirm")
     question = prompt.get("question", "")
 
-    # Question text goes first regardless of kind. Static is the stock
-    # text widget; we don't need MarkdownViewer here because the question
-    # is a single line.
-    await target.mount(Static(question, classes="prompt-question"))
+    # Question text goes first regardless of kind. We use Label rather
+    # than Static here so long questions (e.g. step 40's "Use default
+    # workspace at /Users/.../ChannelAssistDev?") wrap onto multiple
+    # lines instead of clipping at the widget's right edge. Label also
+    # disables markup interpretation by default — important because
+    # questions interpolate paths and repo names that may legitimately
+    # contain `[brackets]` or `?` markers we don't want re-rendered as
+    # Textual markup.
+    await target.mount(Label(question, classes="prompt-question", markup=False))
 
     if kind == "confirm":
         await _mount_confirm(target, prompt)
