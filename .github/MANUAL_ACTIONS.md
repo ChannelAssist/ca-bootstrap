@@ -10,7 +10,7 @@ This document tracks actions that require manual intervention by a maintainer wi
 
 ### Context
 
-The `ca-bootstrap.ps1 manifest-drift` command surfaced `ChannelAssist/demo-repository` as a repository that exists in the ChannelAssist GitHub organization but is not listed in `manifest/repos.yaml`.
+The `make manifest-drift` command surfaced `ChannelAssist/demo-repository` as a repository that exists in the ChannelAssist GitHub organization but is not listed in `manifest/repos.yaml`.
 
 According to the repository metadata:
 - **Description:** "A code repository designed to show the best GitHub has to offer."
