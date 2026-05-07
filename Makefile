@@ -74,6 +74,11 @@ repair: ## Run repair. Pass ARGS, e.g. `make repair ARGS='--all'` or `make repai
 undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--force'`
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo $(ARGS)
 
+.PHONY: manifest-drift
+manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAssist org (exit 8 = drift found)
+	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-drift $(ARGS); rc=$$?; \
+	 if [ $$rc -eq 0 ] || [ $$rc -eq 8 ]; then exit 0; else exit $$rc; fi
+
 .PHONY: test
 test: ## Run Pester unit tests under tests/
 	@printf "$(BLUE)Running Pester tests...$(RESET)\n"
