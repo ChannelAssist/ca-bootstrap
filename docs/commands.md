@@ -292,6 +292,67 @@ Exit code: **5** when locked.
 
 ---
 
+## `manifest-drift`
+
+Maintenance command: detect drift between `manifest/repos.yaml` and the live ChannelAssist GitHub org. Read-only — does not mutate the manifest.
+
+### Synopsis
+
+```
+./ca-bootstrap.ps1 manifest-drift [-Json]
+make manifest-drift
+```
+
+### What it does
+
+1. Reads `manifest/repos.yaml`.
+2. Lists the org's repos via `gh repo list ChannelAssist --limit 1000 --json nameWithOwner,isArchived,isPrivate,defaultBranchRef`.
+3. Diffs the two and emits a report in three sections:
+   - **Missing**: on GitHub but not in the manifest. Output includes a PR-ready YAML snippet, with the `into` path / branch / suggested group filled in. Group suggestion is heuristic: `ca-*` → `ca-platform`, `cm-*` / `channel-manager` → `cm-product`, `.github*` / `Keystone` → `docs`, anything else → `unsorted` (maintainer fixes manually).
+   - **Stale**: in the manifest but no longer on GitHub (deleted, renamed, made private). These should be removed from the manifest.
+   - **Archived**: present in both but archived on GitHub. Optional removal — archived repos clone read-only, which is usually not what we want for a dev workspace.
+
+### Flags
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `-Json` | off | Emit a structured JSON report on stdout instead of the human-readable text. Useful for CI gates / pre-commit hooks. |
+| `-Org <name>` | `ChannelAssist` | Override the org name (rarely needed). |
+
+### Exit codes
+
+| Code | Meaning |
+|-----:|---------|
+| 0 | No drift — manifest is in sync with the org. |
+| 8 | Drift detected. The make target translates this back to 0 so it doesn't break a `make` chain; the raw `ca-bootstrap.ps1` invocation preserves it. |
+| Other | gh CLI is not installed / not authenticated, or the manifest is missing. |
+
+### Output (text mode, sample)
+
+```
+===============================
+  ca-bootstrap manifest-drift
+===============================
+  Org: ChannelAssist
+  Manifest: /Users/.../manifest/repos.yaml
+  Querying gh for org repos... 28 found.
+
+  Manifest: 17 repos across 3 groups
+  Org:      28 repos
+
+  ⚠ 11 repo(s) on GitHub but NOT in the manifest:
+
+    Suggested group: ca-platform
+      • ChannelAssist/ca-bootstrap — default branch: dev
+
+    Paste under group "ca-platform" in manifest/repos.yaml:
+      - { repo: ChannelAssist/ca-bootstrap, into: ca-platform/ca-bootstrap, branch: dev }
+```
+
+The maintainer reviews the snippet, edits `manifest/repos.yaml` accordingly, and opens a PR. The tool deliberately doesn't mutate the manifest itself — group assignment for "unsorted" repos is a judgment call that benefits from human review.
+
+---
+
 ## See also
 
 - [`action-journal.md`](action-journal.md) — how state is tracked across runs

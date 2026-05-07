@@ -26,7 +26,7 @@ install, and reversal logic for each step.
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('setup','doctor','repair','undo','help','--help','-h','version','--version')]
+    [ValidateSet('setup','doctor','repair','undo','manifest-drift','help','--help','-h','version','--version')]
     [string]$Command = 'setup',
 
     [switch]$Unattended,
@@ -223,6 +223,13 @@ try {
         'undo'   {
             . (Join-Path $Script:CABootstrapRoot 'commands/undo.ps1')
             $exitCode = Invoke-CABCommandUndo   -Context $context -Target $Target -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force
+        }
+        'manifest-drift' {
+            . (Join-Path $Script:CABootstrapRoot 'commands/manifest-drift.ps1')
+            $r = Invoke-CABCommandManifestDrift -Context $context -Json:$Json
+            # In sync → 0; drift detected → 8 (distinct from 2/9 used by
+            # doctor/repair so CI / pre-commit hooks can branch on it).
+            $exitCode = if ($r.ok) { 0 } else { 8 }
         }
     }
 }
