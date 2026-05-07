@@ -24,9 +24,15 @@ function Run-CABDoctorChecks {
 
     # ----- Workspace -----
     $workspace = $null
+    # Most-recent non-undone entry wins. Get-CABJournalEntries walks
+    # sessions oldest-first and returns them in that order, so [0] is the
+    # OLDEST surviving record — which after a default-path change reads
+    # back the previous default and reports a stale "missing" workspace
+    # even when setup just finished writing to the new one. Take [-1] so
+    # doctor reflects the workspace the most recent setup chose.
     $workspaceEntries = @(Get-CABJournalEntries -Action 'create_folder' -Step '40-workspace')
     if ($workspaceEntries.Count -gt 0) {
-        $workspace = [string]$workspaceEntries[0].path
+        $workspace = [string]$workspaceEntries[-1].path
     } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {
         $workspace = $env:CA_BOOTSTRAP_WORKSPACE
     } else {
