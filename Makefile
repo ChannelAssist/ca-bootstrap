@@ -79,6 +79,10 @@ manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAs
 	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-drift $(ARGS); rc=$$?; \
 	 if [ $$rc -eq 0 ] || [ $$rc -eq 8 ]; then exit 0; else exit $$rc; fi
 
+.PHONY: manifest-edit
+manifest-edit: ## Interactively curate manifest/repos.yaml against the live org (add/remove repos)
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-edit $(ARGS)
+
 .PHONY: test
 test: ## Run Pester unit tests under tests/
 	@printf "$(BLUE)Running Pester tests...$(RESET)\n"

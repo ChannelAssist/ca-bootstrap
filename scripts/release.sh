@@ -30,12 +30,13 @@
 #   - The main-protection ruleset can't be located by name
 #
 # Env knobs (all optional unless noted):
-#   VERSION          required — semver, e.g. 1.5.0 (or v1.5.0)
-#   NOTES_FILE       path to release notes file (else auto-generated)
-#   SKIP_SMOKE=1     skip `make smoke`
-#   SKIP_TESTS=1     skip Pester
-#   DRY_RUN=1        validate + print but don't push/tag/release
-#   CONFIRM=1        skip the "type yes to proceed" gate before mutating
+#   VERSION              required — semver, e.g. 1.5.0 (or v1.5.0)
+#   NOTES_FILE           path to release notes file (else auto-generated)
+#   SKIP_SMOKE=1         skip `make smoke`
+#   SKIP_TESTS=1         skip Pester
+#   SKIP_MANIFEST_EDIT=1 skip the interactive manifest-edit step (CI / hands-off)
+#   DRY_RUN=1            validate + print but don't push/tag/release
+#   CONFIRM=1            skip the "type yes to proceed" gate before mutating
 
 set -euo pipefail
 
@@ -43,6 +44,7 @@ VERSION="${VERSION:-}"
 NOTES_FILE="${NOTES_FILE:-}"
 SKIP_SMOKE="${SKIP_SMOKE:-}"
 SKIP_TESTS="${SKIP_TESTS:-}"
+SKIP_MANIFEST_EDIT="${SKIP_MANIFEST_EDIT:-}"
 DRY_RUN="${DRY_RUN:-}"
 CONFIRM="${CONFIRM:-}"
 
@@ -140,6 +142,35 @@ if [ -z "$REPO_SLUG" ] || ! [[ "$REPO_SLUG" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$
 fi
 [ -n "$REPO_SLUG" ] || err 'Could not derive repo slug from `git remote get-url origin` or `gh repo view`.'
 ok "VERSION=$VERSION TAG=$TAG REPO=$REPO_SLUG (semver, clean tree, tag is new)"
+
+# ---------------------------------------------------------------------------
+# 0.5. Interactive manifest review (skippable for CI / hands-off releases)
+# ---------------------------------------------------------------------------
+# Surfaces every repo in the org against manifest/repos.yaml so the
+# maintainer can curate add/remove entries before tagging. If anything
+# changes the working tree, abort: the changes need to land on dev
+# via a PR before the release tag goes on main. Without this gate,
+# someone could ship a release that lags the manifest by a maintenance
+# cycle.
+
+if [ -n "$SKIP_MANIFEST_EDIT" ]; then
+    warn 'SKIP_MANIFEST_EDIT=1 set, skipping interactive manifest review'
+elif [ -n "$DRY_RUN" ]; then
+    info 'DRY_RUN: manifest-edit would run here (skipping the actual interactive review)'
+else
+    info 'reviewing manifest against the live org...'
+    pwsh -NoLogo -File ./ca-bootstrap.ps1 manifest-edit \
+        || err 'manifest-edit failed — see output above.'
+    if ! git diff --quiet HEAD -- manifest/repos.yaml; then
+        warn ''
+        warn 'manifest/repos.yaml was modified by manifest-edit.'
+        warn 'Commit + push to dev via a PR, merge it, then re-run `make release VERSION='"$VERSION"'`.'
+        warn ''
+        warn 'This gate ensures the release commit on main reflects the curated manifest.'
+        err 'aborting: manifest changes need a PR cycle before tagging.'
+    fi
+    ok 'manifest review complete (no changes, safe to continue)'
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Fetch + verify version constant on dev matches VERSION

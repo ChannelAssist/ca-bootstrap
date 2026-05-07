@@ -273,7 +273,7 @@ function Save-CABJournal {
 function Start-CABSession {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo','manifest-drift')] [string]$Command,
+        [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo','manifest-drift','manifest-edit')] [string]$Command,
         [Parameter(Mandatory)] [string]$Version,
         [string]$WorkspacePath,
         [int]$LockTimeoutMs = 0
