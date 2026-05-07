@@ -43,7 +43,14 @@ function Test-CABStep70 {
         # this; step 70 should redo the file when it sees the gap.
         $workspaceGitconfig = Join-Path $Context.WorkspacePath '.gitconfig'
         if (-not (Test-Path $workspaceGitconfig)) {
-            return @{ status = 'pending'; details = "includeIf present but $workspaceGitconfig missing — will recreate." }
+            return @{
+                status = 'pending'
+                details = "includeIf present but $workspaceGitconfig missing — will recreate."
+                # Structured flag — callers should key off this rather
+                # than regex-matching `details`. The string is for
+                # humans; the flag is the contract.
+                needs_workspace_gitconfig_recreate = $true
+            }
         }
         return @{ status = 'ok'; details = 'includeIf for this workspace is already configured.' }
     }
@@ -72,9 +79,13 @@ function Invoke-CABStep70 {
     # in the journal — restore the file silently rather than re-prompting
     # the user to retype data we already have.
     $workspaceGitconfig = Join-Path $Context.WorkspacePath '.gitconfig'
-    $existingIncludeIf = $detection.details -match 'will recreate'
-    if ($existingIncludeIf) {
+    if ($detection.needs_workspace_gitconfig_recreate) {
+        # Filter the journal lookup to the CURRENT workspace. The journal
+        # is global across all setups the user has run, so a previous
+        # setup at a different path would otherwise be picked up and
+        # restored into the wrong workspace's .gitconfig.
         $prior = Get-CABJournalEntries -Action 'configure_git_identity' |
+            Where-Object { [string]$_.workspace -eq [string]$Context.WorkspacePath } |
             Sort-Object -Property id -Descending |
             Select-Object -First 1
         $priorName  = if ($prior) { [string]$prior.new_workspace_name }  else { '' }
