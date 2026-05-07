@@ -28,6 +28,7 @@ If `<command>` is omitted, `setup` runs.
 | `make release VERSION=X.Y.Z` | Promote `dev` → `main` (ff), tag GPG-signed, push, create GH release. Requires the version constant on `dev` to already equal X.Y.Z — bump it via a PR to `dev` first. |
 | `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
 | `make manifest-drift` | Show drift between `manifest/repos.yaml` and the live ChannelAssist org (read-only). |
+| `make manifest-edit` | Interactive editor: list every org repo with `[x]`/`[ ]`, add/remove via prompts. |
 
 ---
 
@@ -353,6 +354,77 @@ make manifest-drift
 ```
 
 The maintainer reviews the snippet, edits `manifest/repos.yaml` accordingly, and opens a PR. The tool deliberately doesn't mutate the manifest itself — group assignment for "unsorted" repos is a judgment call that benefits from human review.
+
+---
+
+## `manifest-edit`
+
+Interactive maintenance command: list every repo in the ChannelAssist org against `manifest/repos.yaml`, add/remove single-line entries via prompts. Writes back the manifest with the maintainer's confirmation; aborts the file write if "quit without saving" is chosen.
+
+### Synopsis
+
+```
+./ca-bootstrap.ps1 manifest-edit
+make manifest-edit
+```
+
+### Workflow
+
+```
+ca-bootstrap manifest-edit
+=========================
+  Org:      ChannelAssist
+  Manifest: ./manifest/repos.yaml
+  Querying gh for org repos... 28 found.
+
+  ⚠ Auto-queued 2 archived-on-GitHub manifest entry(ies) for removal:
+      • ChannelAssist/cm-ledger-service (archived; per policy, archived repos don't belong in the manifest)
+      • ChannelAssist/team-pulse        (archived; per policy, archived repos don't belong in the manifest)
+
+  Repos in 28-style listing:
+    [x]  ChannelAssist/.github                       docs/org-profile-public (main)
+    [x]  ChannelAssist/.github-private               docs/org-profile-private (main)
+    [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  ca-training/Generative-AI-for-beginners-dotnet (main, opt-in)
+    [ ]  ChannelAssist/cm-new-thing  (private)       → suggested group: cm-product
+    [-]  ChannelAssist/cm-ledger-service             cm-product/cm-ledger-service (main) [auto-queued for removal]
+    ...
+
+  Pending: +0 add, -2 remove
+
+  Action?  [a]  Add a missing repo
+           [r]  Remove an existing entry
+           [s]  Save and exit (default)
+           [q]  Quit without saving
+  >
+```
+
+### Add path
+
+Prompts for `group` (suggested heuristically: `ca-*` → ca-platform, `cm-*` → cm-product, `.github*` / `Keystone` → docs, else `unsorted`), `into` path (defaulting to `<group>/<name>`), `branch` (defaulting to the repo's actual default), and `opt_in` (default `n`).
+
+### Remove path
+
+Lists every manifest entry by index. Multi-line YAML entries (e.g. the `channel-manager` block with `large` / `warn` / `opt_in` fields) are flagged with **"manual edit needed"** — v1 only mutates single-line compact-flow entries to keep the formatting predictable.
+
+### Archived policy
+
+Archived-on-GitHub repos are treated specially:
+
+* **Already in manifest + archived** → auto-queued for removal at startup (maintainer can un-queue via "quit without saving").
+* **Not in manifest + archived** → silently invisible to the editor. They're not add-candidates; if you ever want to revive one, unarchive on GitHub first.
+
+### Release integration
+
+`scripts/release.sh` invokes `manifest-edit` as step 0.5 (after dependency validation, before version verification). If the editor writes any changes to `manifest/repos.yaml`, release.sh aborts with a message: "Commit + push to dev via a PR, merge it, then re-run `make release`." This ensures the release commit on `main` reflects the curated manifest.
+
+Skip via `SKIP_MANIFEST_EDIT=1` for hands-off / CI releases (e.g. hotfix tags that don't need a manifest review).
+
+### Exit codes
+
+| Code | Meaning |
+|-----:|---------|
+| 0 | User saved (with or without changes) or quit without saving |
+| 1 | Operational failure (gh missing/unauthenticated, manifest absent) |
 
 ---
 
