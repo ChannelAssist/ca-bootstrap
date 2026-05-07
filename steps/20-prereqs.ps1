@@ -94,7 +94,7 @@ function Invoke-CABStep20 {
             } else { '' }
             $default = -not ($tool.heavy -or $tool.requires_reboot)
             $ans = Read-CABConfirm `
-                -Question "$progressPrefix Install $($tool.name)$heavyHint$rebootHint?" `
+                -Question "$progressPrefix Install $($tool.name)$($heavyHint)$($rebootHint)?" `
                 -Default $default `
                 -AnswerKey "prereqs.install.$($tool.id)"
             if (Test-CABQuit $ans) {

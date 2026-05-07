@@ -308,7 +308,14 @@ function Install-CABTool {
                 }
             }
             'command' {
-                Invoke-Expression $entry.cmd 2>&1 | Out-Host
+                # Avoid Invoke-Expression (PSAvoidUsingInvokeExpression).
+                # Manifest install commands are space-delimited
+                # invocations like "winget install Foo.Bar --silent";
+                # split into command + args and call & directly.
+                $cmdParts = $entry.cmd -split '\s+'
+                $exe = $cmdParts[0]
+                $exeArgs = if ($cmdParts.Count -gt 1) { $cmdParts[1..($cmdParts.Count - 1)] } else { @() }
+                & $exe @exeArgs 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE
             }
             default {
@@ -320,7 +327,7 @@ function Install-CABTool {
     }
 
     Write-Host ''
-    if ($cmdResult -ne 0 -and $cmdResult -ne $null) {
+    if ($cmdResult -ne 0 -and $null -ne $cmdResult) {
         return @{ ok = $false; details = "$type install exited $cmdResult" }
     }
 
