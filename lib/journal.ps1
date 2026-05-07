@@ -273,14 +273,14 @@ function Save-CABJournal {
 function Start-CABSession {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo')] [string]$Command,
+        [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo','repos-drift')] [string]$Command,
         [Parameter(Mandatory)] [string]$Version,
         [string]$WorkspacePath,
         [int]$LockTimeoutMs = 0
     )
-    # Refuse to run if another session is in progress. doctor is read-only
-    # so we let it through without a lock.
-    if ($Command -ne 'doctor') {
+    # Refuse to run if another session is in progress. doctor and repos-drift
+    # are read-only so we let them through without a lock.
+    if ($Command -notin @('doctor', 'repos-drift')) {
         Lock-CABSession -TimeoutMs $LockTimeoutMs
     }
     Read-CABJournal | Out-Null

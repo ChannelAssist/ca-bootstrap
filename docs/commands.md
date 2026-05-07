@@ -20,6 +20,7 @@ If `<command>` is omitted, `setup` runs.
 | `make setup` | `pwsh ./ca-bootstrap.ps1 setup` (auto-launches the cab-tui front-end if it's installed) |
 | `make setup-no-tui` | `pwsh ./ca-bootstrap.ps1 setup -NoTui` (force the legacy Read-Host CLI) |
 | `make doctor` | `pwsh ./ca-bootstrap.ps1 doctor` (exits 0 even when drift is found, since drift is a valid output) |
+| `make repos-drift` | `pwsh ./ca-bootstrap.ps1 repos-drift` (detect drift between manifest/repos.yaml and GitHub org; exits 0 even when drift is found) |
 | `make repair ARGS='--all'` | `pwsh ./ca-bootstrap.ps1 repair -All` |
 | `make repair ARGS='--target dotnet-10'` | `pwsh ./ca-bootstrap.ps1 repair -Target dotnet-10` |
 | `make undo ARGS='--force'` | `pwsh ./ca-bootstrap.ps1 undo -Force` |
@@ -255,6 +256,132 @@ ca-bootstrap **refuses to delete**:
 | 7 | Mid-operation failure; partial state — see journal for what was reversed |
 | 8 | Refused to proceed (safety rule triggered, missing `--force`) |
 | 99 | Unexpected error |
+
+---
+
+## `repos-drift`
+
+Detect drift between `manifest/repos.yaml` and the actual repositories in the ChannelAssist GitHub organization.
+
+### Synopsis
+
+```
+./ca-bootstrap.ps1 repos-drift [--json]
+make repos-drift
+```
+
+### Description
+
+Compares the repos listed in `manifest/repos.yaml` against the live set of non-archived repos in the ChannelAssist GitHub org via `gh repo list`. Reports two categories of drift:
+
+1. **In manifest but not in org** — repos listed in the manifest that don't exist on GitHub (may have been deleted, renamed, archived, or transferred).
+2. **In org but not in manifest** — repos that exist on GitHub but aren't tracked in the manifest (new repos that should potentially be added).
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `--json` | Output structured JSON for CI/scripting (includes timestamps and counts). |
+
+### Output formats
+
+#### Default (human)
+
+```
+Repository Drift Report
+
+⚠ Drift detected
+  Manifest: 17 repos
+  GitHub org: 18 repos
+
+In manifest but not in GitHub org (1):
+  • ChannelAssist/cm-claim-checker
+
+These repos may have been:
+  - Deleted
+  - Renamed (check GitHub org for similar names)
+  - Archived (use --include-archived to see archived repos)
+  - Transferred to another org
+
+Action: Remove these entries from manifest/repos.yaml
+
+In GitHub org but not in manifest (2):
+  • ChannelAssist/new-service
+  • ChannelAssist/experimental-tool
+
+These are repos that exist but are not tracked in the manifest.
+Action: Add entries to manifest/repos.yaml if they should be cloned by setup.
+
+Template for adding to manifest/repos.yaml:
+
+  - { repo: ChannelAssist/new-service, into: <group>/new-service, branch: main }
+  - { repo: ChannelAssist/experimental-tool, into: <group>/experimental-tool, branch: main }
+```
+
+#### `--json`
+
+```json
+{
+  "schema_version": 1,
+  "timestamp": "2026-05-07T14:30:00Z",
+  "drift_detected": true,
+  "manifest_repo_count": 17,
+  "org_repo_count": 18,
+  "in_manifest_not_in_org": [
+    "ChannelAssist/cm-claim-checker"
+  ],
+  "in_org_not_in_manifest": [
+    "ChannelAssist/new-service",
+    "ChannelAssist/experimental-tool"
+  ]
+}
+```
+
+### Exit codes
+
+| Exit | Meaning |
+|---|---|
+| 0 | No drift detected — manifest is in sync with org |
+| 2 | Drift detected — manual action required |
+| 99 | Unexpected error (gh not authenticated, network failure, etc.) |
+
+### Prerequisites
+
+- `gh` CLI must be installed and authenticated (`gh auth status` succeeds).
+- User must have read access to the ChannelAssist organization.
+
+### CI usage
+
+```yaml
+# .github/workflows/manifest-drift-check.yml
+- run: make repos-drift
+  continue-on-error: true
+- if: failure()
+  run: |
+    echo "::warning::manifest/repos.yaml is out of sync with the GitHub org"
+    ./ca-bootstrap.ps1 repos-drift --json > drift-report.json
+    cat drift-report.json
+```
+
+### Manual workflow
+
+1. Run `make repos-drift` to detect drift.
+2. For repos **in manifest but not in org**:
+   - Verify the repo was deleted/renamed/archived on GitHub
+   - Remove the entry from `manifest/repos.yaml`
+3. For repos **in org but not in manifest**:
+   - Decide if the repo should be cloned during setup
+   - If yes, add an entry to the appropriate group in `manifest/repos.yaml`
+   - Choose the correct `into` path (namespace by product/platform)
+   - Set the correct branch (check the repo's default branch)
+4. Commit and PR the manifest changes.
+
+### Notes
+
+- Only non-archived repos are considered by default. Archived repos in the org are ignored.
+- The comparison is case-insensitive (GitHub repo slugs are case-preserving but case-insensitive).
+- This command is read-only and never modifies `manifest/repos.yaml` — it only reports drift.
+- Exit code 2 (drift detected) is treated as success by the Makefile target to avoid breaking CI on legitimate drift findings.
 
 ---
 

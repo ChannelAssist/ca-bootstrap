@@ -26,7 +26,7 @@ install, and reversal logic for each step.
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('setup','doctor','repair','undo','help','--help','-h','version','--version')]
+    [ValidateSet('setup','doctor','repair','undo','repos-drift','help','--help','-h','version','--version')]
     [string]$Command = 'setup',
 
     [switch]$Unattended,
@@ -73,7 +73,7 @@ if ($NoColor -or $env:NO_COLOR) { $env:CA_BOOTSTRAP_NO_COLOR = '1' }
 if ($LogPath) { $env:CA_BOOTSTRAP_STATE = (Split-Path -Parent (Resolve-Path $LogPath -ErrorAction SilentlyContinue) ?? $LogPath) }
 
 # Dot-source libraries into the orchestrator's scope.
-$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1','tui-rpc.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
+$libs = @('ui.ps1','prompts.ps1','journal.ps1','yaml.ps1','git-ops.ps1','platform.ps1','tools.ps1','answers.ps1','tui-rpc.ps1','repos-drift.ps1') | ForEach-Object { Join-Path $Script:CABootstrapRoot "lib/$_" }
 foreach ($lib in $libs) {
     if (-not (Test-Path $lib)) { Write-Error "Required library missing: $lib"; exit 99 }
     . $lib
@@ -302,6 +302,10 @@ try {
         'undo'   {
             . (Join-Path $Script:CABootstrapRoot 'commands/undo.ps1')
             $exitCode = Invoke-CABCommandUndo   -Context $context -Target $Target -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force
+        }
+        'repos-drift' {
+            . (Join-Path $Script:CABootstrapRoot 'commands/repos-drift.ps1')
+            $exitCode = Invoke-CABCommandReposDrift -Context $context -Json:$Json
         }
     }
 }

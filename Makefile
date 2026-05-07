@@ -210,6 +210,11 @@ repair: ## Run repair. Pass ARGS, e.g. `make repair ARGS='--all'` or `make repai
 undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--force'`
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo $(ARGS)
 
+.PHONY: repos-drift
+repos-drift: ## Check for drift between manifest/repos.yaml and GitHub org (exit 2 = drift found, not a make failure)
+	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 repos-drift $(ARGS); rc=$$?; \
+	 if [ $$rc -eq 0 ] || [ $$rc -eq 2 ]; then exit 0; else exit $$rc; fi
+
 .PHONY: test
 test: ## Run Pester unit tests under tests/
 	@printf "$(BLUE)Running Pester tests...$(RESET)\n"
