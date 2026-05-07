@@ -149,14 +149,24 @@ clean: smoke-clean ## Remove caches and ephemeral state
 # ---------------------------------------------------------------------------
 
 .PHONY: release
-release: ## Cut a release: bump version constant, smoke + tests, commit, tag, push, GitHub release
+release: ## Cut a release. Requires the version constant on dev to already match VERSION (bump via PR first); for one-shot bump+release see `make release-full`
 	@chmod +x scripts/release.sh
-	@VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) SKIP_SMOKE=$(SKIP_SMOKE) SKIP_TESTS=$(SKIP_TESTS) FORCE_BRANCH=$(FORCE_BRANCH) DRY_RUN=$(DRY_RUN) ./scripts/release.sh
+	@VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) SKIP_SMOKE=$(SKIP_SMOKE) SKIP_TESTS=$(SKIP_TESTS) SKIP_MANIFEST_EDIT=$(SKIP_MANIFEST_EDIT) DRY_RUN=$(DRY_RUN) CONFIRM=$(CONFIRM) ./scripts/release.sh
 
 .PHONY: release-dry-run
 release-dry-run: ## Same as release but without writing/pushing anything (VERSION required)
 	@chmod +x scripts/release.sh
 	@DRY_RUN=1 VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) ./scripts/release.sh
+
+.PHONY: release-full
+release-full: ## Bump dev's version + admin-merge bump PR + release in one shot. Skips review on the bump itself; use `make release` if you want the bump PR reviewed
+	@chmod +x scripts/release-full.sh
+	@VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) SKIP_SMOKE=$(SKIP_SMOKE) SKIP_TESTS=$(SKIP_TESTS) SKIP_MANIFEST_EDIT=$(SKIP_MANIFEST_EDIT) DRY_RUN=$(DRY_RUN) CONFIRM=$(CONFIRM) ./scripts/release-full.sh
+
+.PHONY: release-full-dry-run
+release-full-dry-run: ## Dry-run release-full: validate the chain end-to-end without mutating
+	@chmod +x scripts/release-full.sh
+	@DRY_RUN=1 VERSION=$(VERSION) NOTES_FILE=$(NOTES_FILE) ./scripts/release-full.sh
 
 .PHONY: tag
 tag: ## Plain tag-and-push (no version bump, no release notes — prefer `make release`)
