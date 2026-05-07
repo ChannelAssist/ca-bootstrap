@@ -10,8 +10,11 @@ version: 1
 root_name: ChannelAssistDev
 
 folders:
-  - path: docs
-    description: Documentation repos (Keystone, public + internal org profiles)
+  - path: ca-tools
+    description: ChannelAssist tooling repos (ca-bootstrap and friends)
+
+  - path: ca-docs
+    description: ChannelAssist documentation + org profiles (Keystone, .github)
 
   - path: ca-platform
     description: ChannelAssist platform-wide services (ca-* prefix)

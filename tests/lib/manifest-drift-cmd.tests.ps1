@@ -50,7 +50,7 @@ groups:
   - name: docs
     description: Documentation repos
     repos:
-      - { repo: ChannelAssist/Keystone, into: docs/keystone, branch: master }
+      - { repo: ChannelAssist/Keystone, into: ca-docs/keystone, branch: dev }
   - name: ca-platform
     description: ChannelAssist platform-wide services
     repos:
@@ -119,7 +119,7 @@ function Read-CABManifest {
             [pscustomobject]@{
                 name = 'docs'
                 repos = @(
-                    [pscustomobject]@{ repo = 'ChannelAssist/Keystone'; into = 'docs/keystone'; branch = 'master' }
+                    [pscustomobject]@{ repo = 'ChannelAssist/Keystone'; into = 'ca-docs/keystone'; branch = 'dev' }
                 )
             },
             [pscustomobject]@{

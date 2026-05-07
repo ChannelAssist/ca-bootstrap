@@ -8,6 +8,7 @@ git_identity:
   configure: false
 clone:
   groups:
+    tools: skip
     docs: skip
     ca-platform: skip
     cm-product: skip
