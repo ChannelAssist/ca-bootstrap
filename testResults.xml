@@ -1,0 +1,458 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="122" errors="0" failures="9" not-run="0" inconclusive="0" ignored="0" skipped="3" invalid="0" date="2026-05-07" time="14:59:54">
+  <environment os-version="6.17.0-1010-azure" nunit-version="2.5.8.0" cwd="/home/runner/work/ca-bootstrap/ca-bootstrap" user="runner" machine-name="runnervmeorf1" platform="Linux" user-domain="" clr-version="8.0.25" />
+  <culture-info current-culture="" current-uiculture="" />
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="47.9937" asserts="0" description="Pester">
+    <results>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1" executed="True" result="Failure" success="False" time="5.5047" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Wizard end-to-end (Layer 3)" executed="True" result="Failure" success="False" time="5.2431" asserts="0" description="Wizard end-to-end (Layer 3)">
+            <results>
+              <test-case description="setup -Unattended completes with exit 0 and creates expected on-disk state" name="Wizard end-to-end (Layer 3).setup -Unattended completes with exit 0 and creates expected on-disk state" time="1.849" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected 0, because wizard exited 0; output was:
+  Installing powershell-yaml module (one-time, current user)...
+ERROR loading answers file: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found., but got 1.</message>
+                  <stack-trace>at $LASTEXITCODE | Should -Be 0 -Because "wizard exited 0; output was:`n$output", /home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1:40
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1:40</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="setup -Unattended is idempotent across multiple runs" name="Wizard end-to-end (Layer 3).setup -Unattended is idempotent across multiple runs" time="3.367" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected 0, but got 1.</message>
+                  <stack-trace>at $first  | Should -Be 0, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1:68
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/wizard/setup-end-to-end.tests.ps1:68</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/answers.tests.ps1" executed="True" result="Success" success="True" time="0.0888" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/answers.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Convert-CABAnswersToFlat" executed="True" result="Success" success="True" time="0.0684" asserts="0" description="Convert-CABAnswersToFlat">
+            <results>
+              <test-case description="always sets welcome.continue to true" name="Convert-CABAnswersToFlat.always sets welcome.continue to true" time="0.0181" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps prerequisites.install_missing into prereqs.install_choice" name="Convert-CABAnswersToFlat.maps prerequisites.install_missing into prereqs.install_choice" time="0.0088" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="expands prerequisites.selections into per-tool keys" name="Convert-CABAnswersToFlat.expands prerequisites.selections into per-tool keys" time="0.0068" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps clone.groups all/none into Y/n" name="Convert-CABAnswersToFlat.maps clone.groups all/none into Y/n" time="0.0089" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sets per-repo overrides from clone.exclude" name="Convert-CABAnswersToFlat.sets per-repo overrides from clone.exclude" time="0.0043" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="plumbs git_identity name/email through env vars" name="Convert-CABAnswersToFlat.plumbs git_identity name/email through env vars" time="0.0175" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/bootstrap-tui-install.tests.ps1" executed="True" result="Success" success="True" time="0.8527" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/bootstrap-tui-install.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="bootstrap.ps1 — Python/cab-tui install path" executed="True" result="Success" success="True" time="0.8361" asserts="0" description="bootstrap.ps1 — Python/cab-tui install path">
+            <results>
+              <test-case description="parses without syntax errors" name="bootstrap.ps1 — Python/cab-tui install path.parses without syntax errors" time="0.0412" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="declares the new helper functions added in v1.4.0" name="bootstrap.ps1 — Python/cab-tui install path.declares the new helper functions added in v1.4.0" time="0.0161" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Install-PythonAndTui has the expected guards (env var + cache dir)" name="bootstrap.ps1 — Python/cab-tui install path.Install-PythonAndTui has the expected guards (env var + cache dir)" time="0.0065" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="bootstrap.sh detect_python tries `python` in addition to `python3*` symlinks" name="bootstrap.ps1 — Python/cab-tui install path.bootstrap.sh detect_python tries `python` in addition to `python3*` symlinks" time="0.0071" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="bootstrap.sh recreates a stale (&lt;3.10) cab-tui/.venv before installing" name="bootstrap.ps1 — Python/cab-tui install path.bootstrap.sh recreates a stale (&lt;3.10) cab-tui/.venv before installing" time="0.013" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="bootstrap.ps1 recreates a stale (&lt;3.10) cab-tui/.venv before installing" name="bootstrap.ps1 — Python/cab-tui install path.bootstrap.ps1 recreates a stale (&lt;3.10) cab-tui/.venv before installing" time="0.0176" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="bootstrap.ps1 clears UF_HIDDEN on macOS after pip install" name="bootstrap.ps1 — Python/cab-tui install path.bootstrap.ps1 clears UF_HIDDEN on macOS after pip install" time="0.0062" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="mode-2 short-circuit forwards to the sibling ca-bootstrap.ps1 (skipping the install path)" name="bootstrap.ps1 — Python/cab-tui install path.mode-2 short-circuit forwards to the sibling ca-bootstrap.ps1 (skipping the install path)" time="0.7245" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/ca-bootstrap-tui-flag.tests.ps1" executed="True" result="Success" success="True" time="1.1183" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/ca-bootstrap-tui-flag.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="ca-bootstrap.ps1 -Tui / -NoTui flag binding" executed="True" result="Success" success="True" time="1.1075" asserts="0" description="ca-bootstrap.ps1 -Tui / -NoTui flag binding">
+            <results>
+              <test-case description="rejects setup -Tui when python / cab_tui is not importable" name="ca-bootstrap.ps1 -Tui / -NoTui flag binding.rejects setup -Tui when python / cab_tui is not importable" time="0.3928" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="accepts -NoTui and proceeds with the legacy CLI flow" name="ca-bootstrap.ps1 -Tui / -NoTui flag binding.accepts -NoTui and proceeds with the legacy CLI flow" time="0.3637" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects unknown switch combinations cleanly" name="ca-bootstrap.ps1 -Tui / -NoTui flag binding.rejects unknown switch combinations cleanly" time="0.3331" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/encoding-and-paths.tests.ps1" executed="True" result="Success" success="True" time="0.5425" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/encoding-and-paths.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Workspace path with spaces and non-ASCII chars" executed="True" result="Success" success="True" time="0.0138" asserts="0" description="Workspace path with spaces and non-ASCII chars">
+            <results>
+              <test-case description="ConvertTo-CABAbsolutePath accepts a path with spaces" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABAbsolutePath accepts a path with spaces" time="0.0072" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="ConvertTo-CABAbsolutePath accepts a path with non-ASCII characters" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABAbsolutePath accepts a path with non-ASCII characters" time="0.0017" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="ConvertTo-CABGitdirPattern handles spaces in paths" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABGitdirPattern handles spaces in paths" time="0.0035" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 70 — UTF-8 encoding (regression v1.2.0)" executed="True" result="Success" success="True" time="0.3653" asserts="0" description="Step 70 — UTF-8 encoding (regression v1.2.0)">
+            <results>
+              <test-case description="workspace .gitconfig is valid UTF-8 with non-ASCII name" name="Step 70 — UTF-8 encoding (regression v1.2.0).workspace .gitconfig is valid UTF-8 with non-ASCII name" time="0.2132" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="global .gitconfig still parses with non-ASCII path content" name="Step 70 — UTF-8 encoding (regression v1.2.0).global .gitconfig still parses with non-ASCII path content" time="0.1369" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 70 — re-run idempotency under UTF-8 (encoding round-trip)" executed="True" result="Success" success="True" time="0.5011" asserts="0" description="Step 70 — re-run idempotency under UTF-8 (encoding round-trip)">
+            <results>
+              <test-case description="re-running step 70 does not duplicate the includeIf block" name="Step 70 — re-run idempotency under UTF-8 (encoding round-trip).re-running step 70 does not duplicate the includeIf block" time="0.1345" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/journal.tests.ps1" executed="True" result="Failure" success="False" time="2.2926" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/journal.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Journal round-trip" executed="True" result="Failure" success="False" time="2.2756" asserts="0" description="Journal round-trip">
+            <results>
+              <test-case description="writes a parseable journal on first save" name="Journal round-trip.writes a parseable journal on first save" time="1.2883" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/journal.tests.ps1:34</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="accumulates sessions across saves" name="Journal round-trip.accumulates sessions across saves" time="0.7544" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/journal.tests.ps1:47</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="filters Get-CABJournalEntries by Action and Step" name="Journal round-trip.filters Get-CABJournalEntries by Action and Step" time="0.1172" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Mark-CABEntryUndone updates the entry and excludes it from default queries" name="Journal round-trip.Mark-CABEntryUndone updates the entry and excludes it from default queries" time="0.1117" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/lockfile.tests.ps1" executed="True" result="Success" success="True" time="1.0038" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/lockfile.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Lock-CABSession / Unlock-CABSession" executed="True" result="Success" success="True" time="0.9915" asserts="0" description="Lock-CABSession / Unlock-CABSession">
+            <results>
+              <test-case description="acquires the lock when no other session holds it" name="Lock-CABSession / Unlock-CABSession.acquires the lock when no other session holds it" time="0.0062" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects a second concurrent acquire (via subprocess)" name="Lock-CABSession / Unlock-CABSession.rejects a second concurrent acquire (via subprocess)" time="0.9772" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="releases the lock so a subsequent run can acquire" name="Lock-CABSession / Unlock-CABSession.releases the lock so a subsequent run can acquire" time="0.0068" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/manifest-drift.tests.ps1" executed="True" result="Failure" success="False" time="0.6656" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/manifest-drift.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="manifest/tools.yaml regex sanity" executed="True" result="Failure" success="False" time="0.6571" asserts="0" description="manifest/tools.yaml regex sanity">
+            <results>
+              <test-case description="all installed tools detect cleanly (no fail/error from regex drift)" name="manifest/tools.yaml regex sanity.all installed tools detect cleanly (no fail/error from regex drift)" time="0.6553" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Read-CABManifest, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:28
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/manifest-drift.tests.ps1:22</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/path-norm.tests.ps1" executed="True" result="Success" success="True" time="0.4606" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/path-norm.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="ConvertTo-CABGitdirPattern" executed="True" result="Success" success="True" time="0.0058" asserts="0" description="ConvertTo-CABGitdirPattern">
+            <results>
+              <test-case description="always produces forward slashes" name="ConvertTo-CABGitdirPattern.always produces forward slashes" time="0.0024" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="always ends with a single trailing slash" name="ConvertTo-CABGitdirPattern.always ends with a single trailing slash" time="0.002" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="ConvertTo-CABAbsolutePath" executed="True" result="Success" success="True" time="0.0331" asserts="0" description="ConvertTo-CABAbsolutePath">
+            <results>
+              <test-case description="rejects relative input" name="ConvertTo-CABAbsolutePath.rejects relative input" time="0.0137" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects empty input" name="ConvertTo-CABAbsolutePath.rejects empty input" time="0.0105" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="expands ~ to the home directory" name="ConvertTo-CABAbsolutePath.expands ~ to the home directory" time="0.0018" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 70 — git identity content (regression v1.0.2)" executed="True" result="Success" success="True" time="0.4325" asserts="0" description="Step 70 — git identity content (regression v1.0.2)">
+            <results>
+              <test-case description="global .gitconfig contains no backslash in path = or [includeIf] lines" name="Step 70 — git identity content (regression v1.0.2).global .gitconfig contains no backslash in path = or [includeIf] lines" time="0.1322" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="workspace .gitconfig contains the expected user block with no backslash" name="Step 70 — git identity content (regression v1.0.2).workspace .gitconfig contains the expected user block with no backslash" time="0.1276" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="global .gitconfig is parseable by git after step 70 runs" name="Step 70 — git identity content (regression v1.0.2).global .gitconfig is parseable by git after step 70 runs" time="0.1384" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/prompts-tui.tests.ps1" executed="True" result="Success" success="True" time="2.3574" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/prompts-tui.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Read-CABConfirm in TuiMode (real subprocess)" executed="True" result="Success" success="True" time="0.8504" asserts="0" description="Read-CABConfirm in TuiMode (real subprocess)">
+            <results>
+              <test-case description="sends a confirm prompt and returns the child-supplied answer" name="Read-CABConfirm in TuiMode (real subprocess).sends a confirm prompt and returns the child-supplied answer" time="0.3393" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sends a confirm prompt with the right shape (verified by stub echoing the prompt back)" name="Read-CABConfirm in TuiMode (real subprocess).sends a confirm prompt with the right shape (verified by stub echoing the prompt back)" time="0.3115" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="falls back to the default if the child closes stdin without answering" name="Read-CABConfirm in TuiMode (real subprocess).falls back to the default if the child closes stdin without answering" time="0.1957" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="unattended mode takes priority — no event sent at all" name="Read-CABConfirm in TuiMode (real subprocess).unattended mode takes priority — no event sent at all" time="0.0022" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Invoke-CABTuiPrompt fallback contract" executed="True" result="Success" success="True" time="1.3347" asserts="0" description="Invoke-CABTuiPrompt fallback contract">
+            <results>
+              <test-case description="returns ok=$false and disables TuiMode when Send throws (dead bridge)" name="Invoke-CABTuiPrompt fallback contract.returns ok=$false and disables TuiMode when Send throws (dead bridge)" time="0.0065" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns ok=$false and disables TuiMode when child closes mid-Receive" name="Invoke-CABTuiPrompt fallback contract.returns ok=$false and disables TuiMode when child closes mid-Receive" time="0.1796" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns ok=$true with the answer when the bridge replies normally" name="Invoke-CABTuiPrompt fallback contract.returns ok=$true with the answer when the bridge replies normally" time="0.2969" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Read-CABRecovery in TuiMode (real subprocess)" executed="True" result="Success" success="True" time="2.0585" asserts="0" description="Read-CABRecovery in TuiMode (real subprocess)">
+            <results>
+              <test-case description="sends a recovery prompt with details and returns retry/skip/quit" name="Read-CABRecovery in TuiMode (real subprocess).sends a recovery prompt with details and returns retry/skip/quit" time="0.2479" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sends prompt of kind=recovery with the expected fields" name="Read-CABRecovery in TuiMode (real subprocess).sends prompt of kind=recovery with the expected fields" time="0.2801" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns quit if the bridge closes without answering (fail-safe)" name="Read-CABRecovery in TuiMode (real subprocess).returns quit if the bridge closes without answering (fail-safe)" time="0.1923" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns quit when not in TuiMode (CLI fallback)" name="Read-CABRecovery in TuiMode (real subprocess).returns quit when not in TuiMode (CLI fallback)" time="0.002" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Read-CABChoice in TuiMode (real subprocess)" executed="True" result="Success" success="True" time="2.3332" asserts="0" description="Read-CABChoice in TuiMode (real subprocess)">
+            <results>
+              <test-case description="sends choice options as {value, label} pairs and returns the child answer" name="Read-CABChoice in TuiMode (real subprocess).sends choice options as {value, label} pairs and returns the child answer" time="0.2734" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/redaction.tests.ps1" executed="True" result="Success" success="True" time="0.1485" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/redaction.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Test-CABContainsSensitive" executed="True" result="Success" success="True" time="0.0174" asserts="0" description="Test-CABContainsSensitive">
+            <results>
+              <test-case description="detects gh CLI tokens" name="Test-CABContainsSensitive.detects gh CLI tokens" time="0.002" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects fine-grained PAT" name="Test-CABContainsSensitive.detects fine-grained PAT" time="0.0011" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects JWT" name="Test-CABContainsSensitive.detects JWT" time="0.0012" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects PEM private keys" name="Test-CABContainsSensitive.detects PEM private keys" time="0.0098" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false for ordinary strings" name="Test-CABContainsSensitive.returns false for ordinary strings" time="0.0016" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Hide-CABSensitive" executed="True" result="Success" success="True" time="0.026" asserts="0" description="Hide-CABSensitive">
+            <results>
+              <test-case description="replaces gh tokens with " name="Hide-CABSensitive.replaces gh tokens with " time="0.006" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="leaves non-sensitive text alone" name="Hide-CABSensitive.leaves non-sensitive text alone" time="0.0015" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Add-CABJournalEntry redacts sensitive Data fields" executed="True" result="Success" success="True" time="0.1366" asserts="0" description="Add-CABJournalEntry redacts sensitive Data fields">
+            <results>
+              <test-case description="redacts a token-shaped string in entry data" name="Add-CABJournalEntry redacts sensitive Data fields.redacts a token-shaped string in entry data" time="0.1095" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/repos-drift.tests.ps1" executed="True" result="Ignored" success="True" time="0.2155" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/repos-drift.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Compare-CABRepoManifest" executed="True" result="Ignored" success="True" time="0.0112" asserts="0" description="Compare-CABRepoManifest">
+            <results>
+              <test-case description="requires manifest path" name="Compare-CABRepoManifest.requires manifest path" time="0.005" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles manifest read successfully" name="Compare-CABRepoManifest.handles manifest read successfully" time="0.003" asserts="0" success="False" result="Ignored" executed="False" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Get-CABOrgRepos" executed="True" result="Success" success="True" time="0.1829" asserts="0" description="Get-CABOrgRepos">
+            <results>
+              <test-case description="returns empty array when gh is not available" name="Get-CABOrgRepos.returns empty array when gh is not available" time="0.1373" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns empty array when gh auth fails" name="Get-CABOrgRepos.returns empty array when gh auth fails" time="0.0327" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Format-CABReposDriftReport" executed="True" result="Success" success="True" time="0.2021" asserts="0" description="Format-CABReposDriftReport">
+            <results>
+              <test-case description="handles no drift case" name="Format-CABReposDriftReport.handles no drift case" time="0.0105" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles drift detected case" name="Format-CABReposDriftReport.handles drift detected case" time="0.0045" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles error case" name="Format-CABReposDriftReport.handles error case" time="0.0016" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-recovery.tests.ps1" executed="True" result="Failure" success="False" time="3.0212" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-recovery.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="setup orchestrator retry loop (TuiMode)" executed="True" result="Failure" success="False" time="3.0069" asserts="0" description="setup orchestrator retry loop (TuiMode)">
+            <results>
+              <test-case description="retries a failing step when the user picks 'retry'" name="setup orchestrator retry loop (TuiMode).retries a failing step when the user picks 'retry'" time="0.8873" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at Invoke-CABCommandSetup, /home/runner/work/ca-bootstrap/ca-bootstrap/commands/setup.ps1:206
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-recovery.tests.ps1:139</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="emits step.start before each retry attempt and a skip step.end after a 'skip' recovery" name="setup orchestrator retry loop (TuiMode).emits step.start before each retry attempt and a skip step.end after a 'skip' recovery" time="1.1019" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at Invoke-CABCommandSetup, /home/runner/work/ca-bootstrap/ca-bootstrap/commands/setup.ps1:206
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-recovery.tests.ps1:196</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="skips a failing step when the user picks 'skip' and continues to the next" name="setup orchestrator retry loop (TuiMode).skips a failing step when the user picks 'skip' and continues to the next" time="1.0161" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at Invoke-CABCommandSetup, /home/runner/work/ca-bootstrap/ca-bootstrap/commands/setup.ps1:206
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-recovery.tests.ps1:271</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-tui-events.tests.ps1" executed="True" result="Failure" success="False" time="0.8027" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-tui-events.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="setup loop emits step events when TuiMode is set" executed="True" result="Failure" success="False" time="0.7899" asserts="0" description="setup loop emits step events when TuiMode is set">
+            <results>
+              <test-case description="emits step.start before each step and step.end after" name="setup loop emits step events when TuiMode is set.emits step.start before each step and step.end after" time="0.7886" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: No repository with the name 'PSGallery' was found.</message>
+                  <stack-trace>at Initialize-CABYaml, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/yaml.ps1:20
+at Save-CABJournal, /home/runner/work/ca-bootstrap/ca-bootstrap/lib/journal.ps1:263
+at Invoke-CABCommandSetup, /home/runner/work/ca-bootstrap/ca-bootstrap/commands/setup.ps1:168
+at &lt;ScriptBlock&gt;, /home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/setup-tui-events.tests.ps1:89</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/tools.tests.ps1" executed="True" result="Success" success="True" time="0.0458" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/tools.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Compare-CABVersion" executed="True" result="Success" success="True" time="0.0158" asserts="0" description="Compare-CABVersion">
+            <results>
+              <test-case description="compares strict semver correctly" name="Compare-CABVersion.compares strict semver correctly" time="0.0099" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="normalizes a 1-segment version against a 3-segment requirement" name="Compare-CABVersion.normalizes a 1-segment version against a 3-segment requirement" time="0.0029" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="strips a v prefix and pre-release suffix" name="Compare-CABVersion.strips a v prefix and pre-release suffix" time="0.0016" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Test-CABTool" executed="True" result="Success" success="True" time="0.033" asserts="0" description="Test-CABTool">
+            <results>
+              <test-suite type="TestFixture" name="Test-CABTool.platform restriction" executed="True" result="Success" success="True" time="0.0117" asserts="0" description="Test-CABTool.platform restriction">
+                <results>
+                  <test-case description="returns na for windows-only tools on non-windows hosts" name="Test-CABTool.platform restriction.returns na for windows-only tools on non-windows hosts" time="0.0106" asserts="0" success="True" result="Success" executed="True" />
+                </results>
+              </test-suite>
+              <test-suite type="TestFixture" name="Test-CABTool.meta-tools without check.cmd" executed="True" result="Success" success="True" time="0.0163" asserts="0" description="Test-CABTool.meta-tools without check.cmd">
+                <results>
+                  <test-case description="returns ok when the tool has a requires field" name="Test-CABTool.meta-tools without check.cmd.returns ok when the tool has a requires field" time="0.0022" asserts="0" success="True" result="Success" executed="True" />
+                  <test-case description="returns error when there is no check and no requires" name="Test-CABTool.meta-tools without check.cmd.returns error when there is no check and no requires" time="0.0014" asserts="0" success="True" result="Success" executed="True" />
+                </results>
+              </test-suite>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/tui-rpc.tests.ps1" executed="True" result="Ignored" success="True" time="26.3573" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/tui-rpc.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Find-CABPython" executed="True" result="Success" success="True" time="0.207" asserts="0" description="Find-CABPython">
+            <results>
+              <test-case description="returns a usable Python 3.10+ binary if one is installed" name="Find-CABPython.returns a usable Python 3.10+ binary if one is installed" time="0.0534" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="prefers cab-tui/.venv over PATH when the venv has a usable python" name="Find-CABPython.prefers cab-tui/.venv over PATH when the venv has a usable python" time="0.026" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="CA_BOOTSTRAP_NO_VENV=1 falls through to PATH lookup" name="Find-CABPython.CA_BOOTSTRAP_NO_VENV=1 falls through to PATH lookup" time="0.0403" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects a stale venv whose interpreter is &lt;3.10" name="Find-CABPython.rejects a stale venv whose interpreter is &lt;3.10" time="0.0411" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects a venv where Python is 3.10+ but `python -m cab_tui --check` fails" name="Find-CABPython.rejects a venv where Python is 3.10+ but `python -m cab_tui --check` fails" time="0.045" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Drain-CABTuiPending pre-handshake gating" executed="True" result="Success" success="True" time="4.4605" asserts="0" description="Drain-CABTuiPending pre-handshake gating">
+            <results>
+              <test-case description="does NOT consume the welcome ack even when the child replies fast" name="Drain-CABTuiPending pre-handshake gating.does NOT consume the welcome ack even when the child replies fast" time="4.2522" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="_ParseCABTuiLine fatal teardown" executed="True" result="Success" success="True" time="5.1881" asserts="0" description="_ParseCABTuiLine fatal teardown">
+            <results>
+              <test-case description="kills the child process on parse failure (so Stop does not wait the dismiss timeout)" name="_ParseCABTuiLine fatal teardown.kills the child process on parse failure (so Stop does not wait the dismiss timeout)" time="0.7249" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Drain-CABTuiPending + Send-CABTuiEvent quit-surfacing" executed="True" result="Success" success="True" time="9.6291" asserts="0" description="Drain-CABTuiPending + Send-CABTuiEvent quit-surfacing">
+            <results>
+              <test-case description="surfaces a `quit` from the child during a long step (no prompt waiting)" name="Drain-CABTuiPending + Send-CABTuiEvent quit-surfacing.surfaces a `quit` from the child during a long step (no prompt waiting)" time="4.4378" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Test-CABTuiAvailable" executed="True" result="Ignored" success="True" time="9.8211" asserts="0" description="Test-CABTuiAvailable">
+            <results>
+              <test-case description="returns $false when the python binary is not on PATH" name="Test-CABTuiAvailable.returns $false when the python binary is not on PATH" time="0.0803" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns $false when python is present but cab_tui module is not importable" name="Test-CABTuiAvailable.returns $false when python is present but cab_tui module is not importable" time="0.0961" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns $true when cab_tui --check exits 0" name="Test-CABTuiAvailable.returns $true when cab_tui --check exits 0" time="0.0129" asserts="0" success="False" result="Ignored" executed="False" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Send-CABTuiEvent" executed="True" result="Success" success="True" time="10.3817" asserts="0" description="Send-CABTuiEvent">
+            <results>
+              <test-case description="serializes a hashtable to one line of JSON" name="Send-CABTuiEvent.serializes a hashtable to one line of JSON" time="0.1716" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles non-ASCII characters via UTF-8 encoding" name="Send-CABTuiEvent.handles non-ASCII characters via UTF-8 encoding" time="0.1823" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="throws if the child has already exited" name="Send-CABTuiEvent.throws if the child has already exited" time="0.2056" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Send-CABTuiProgress" executed="True" result="Success" success="True" time="10.8982" asserts="0" description="Send-CABTuiProgress">
+            <results>
+              <test-case description="serializes determinate progress (id + current + total + label)" name="Send-CABTuiProgress.serializes determinate progress (id + current + total + label)" time="0.1603" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="serializes indeterminate progress (no total → spinner)" name="Send-CABTuiProgress.serializes indeterminate progress (no total → spinner)" time="0.1684" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="serializes a close (done=$true) message" name="Send-CABTuiProgress.serializes a close (done=$true) message" time="0.1702" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="is a no-op when no bridge is running (does not throw)" name="Send-CABTuiProgress.is a no-op when no bridge is running (does not throw)" time="0.0065" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="swallows mid-call bridge failures (TOCTOU between HasExited and WriteLine)" name="Send-CABTuiProgress.swallows mid-call bridge failures (TOCTOU between HasExited and WriteLine)" time="0.0097" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Receive-CABTuiMessage" executed="True" result="Success" success="True" time="11.4282" asserts="0" description="Receive-CABTuiMessage">
+            <results>
+              <test-case description="parses one inbound line into a hashtable" name="Receive-CABTuiMessage.parses one inbound line into a hashtable" time="0.1645" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns $null on timeout when the child is silent" name="Receive-CABTuiMessage.returns $null on timeout when the child is silent" time="0.3643" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Stop-CABTuiBridge dismiss-timeout contract" executed="True" result="Success" success="True" time="15.041" asserts="0" description="Stop-CABTuiBridge dismiss-timeout contract">
+            <results>
+              <test-case description="sends `done` without immediately closing stdin so the user can dismiss the TUI" name="Stop-CABTuiBridge dismiss-timeout contract.sends `done` without immediately closing stdin so the user can dismiss the TUI" time="3.2886" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT=0 means wait indefinitely (until child exits naturally)" name="Stop-CABTuiBridge dismiss-timeout contract.CA_BOOTSTRAP_TUI_DISMISS_TIMEOUT=0 means wait indefinitely (until child exits naturally)" time="0.3222" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Start-CABTuiBridge handshake" executed="True" result="Success" success="True" time="26.2887" asserts="0" description="Start-CABTuiBridge handshake">
+            <results>
+              <test-case description="completes when the child acks within the timeout" name="Start-CABTuiBridge handshake.completes when the child acks within the timeout" time="4.2249" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="throws if the child never acks within the handshake timeout" name="Start-CABTuiBridge handshake.throws if the child never acks within the handshake timeout" time="7.0198" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/write-host-tui.tests.ps1" executed="True" result="Success" success="True" time="0.0878" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/lib/write-host-tui.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Install-CABTuiHostHooks" executed="True" result="Success" success="True" time="0.0646" asserts="0" description="Install-CABTuiHostHooks">
+            <results>
+              <test-case description="is idempotent (second install is a no-op)" name="Install-CABTuiHostHooks.is idempotent (second install is a no-op)" time="0.0067" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="routes Write-Host to a `log` event when TUI mode is active and bridge is alive" name="Install-CABTuiHostHooks.routes Write-Host to a `log` event when TUI mode is active and bridge is alive" time="0.0175" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps -ForegroundColor Red to stream=error so the TUI transcript can render it as an error" name="Install-CABTuiHostHooks.maps -ForegroundColor Red to stream=error so the TUI transcript can render it as an error" time="0.0049" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps -ForegroundColor Yellow to stream=warn" name="Install-CABTuiHostHooks.maps -ForegroundColor Yellow to stream=warn" time="0.0031" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="falls through to the real Write-Host when TUI mode is off" name="Install-CABTuiHostHooks.falls through to the real Write-Host when TUI mode is off" time="0.0068" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="falls through to the real Write-Host when the bridge has exited mid-flow" name="Install-CABTuiHostHooks.falls through to the real Write-Host when the bridge has exited mid-flow" time="0.0124" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="forwards Write-Host parameters to the real cmdlet on the CLI fallback path" name="Install-CABTuiHostHooks.forwards Write-Host parameters to the real cmdlet on the CLI fallback path" time="0.0036" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="joins multiple positional arguments with -Separator on the TUI path" name="Install-CABTuiHostHooks.joins multiple positional arguments with -Separator on the TUI path" time="0.0038" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sends an empty `log` event for `Write-Host` with no args (blank line)" name="Install-CABTuiHostHooks.sends an empty `log` event for `Write-Host` with no args (blank line)" time="0.0038" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.1-wsl-blocking.tests.ps1" executed="True" result="Ignored" success="True" time="0.0385" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.1-wsl-blocking.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Step 80 — wsl install command" executed="True" result="Ignored" success="True" time="0.0019" asserts="0" description="Step 80 — wsl install command">
+            <results>
+              <test-case description="auxiliary: the wsl command line includes --no-launch" name="Step 80 — wsl install command.auxiliary: the wsl command line includes --no-launch" time="0.0008" asserts="0" success="False" result="Ignored" executed="False" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 80 — wsl invocation property" executed="True" result="Success" success="True" time="0.0253" asserts="0" description="Step 80 — wsl invocation property">
+            <results>
+              <test-case description="property: wsl invocation completes within 5 seconds (vs 30s blocking stub)" name="Step 80 — wsl invocation property.property: wsl invocation completes within 5 seconds (vs 30s blocking stub)" time="0.0221" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.2-bootstrap-recovery.tests.ps1" executed="True" result="Success" success="True" time="2.3396" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.2-bootstrap-recovery.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="bootstrap.ps1 — cache recovery (regression v1.0.2)" executed="True" result="Success" success="True" time="2.3259" asserts="0" description="bootstrap.ps1 — cache recovery (regression v1.0.2)">
+            <results>
+              <test-case description="self-heals when the cache .git directory is corrupted" name="bootstrap.ps1 — cache recovery (regression v1.0.2).self-heals when the cache .git directory is corrupted" time="1.3669" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does not silently continue with stale cache when git is broken" name="bootstrap.ps1 — cache recovery (regression v1.0.2).does not silently continue with stale cache when git is broken" time="0.9542" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.3-workspace-relative.tests.ps1" executed="True" result="Success" success="True" time="0.0498" asserts="0" description="/home/runner/work/ca-bootstrap/ca-bootstrap/tests/regression/v1.0.3-workspace-relative.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Step 40 — workspace path resolution (regression v1.0.3)" executed="True" result="Success" success="True" time="0.0232" asserts="0" description="Step 40 — workspace path resolution (regression v1.0.3)">
+            <results>
+              <test-case description="rejects a relative path supplied via $env:CA_BOOTSTRAP_WORKSPACE" name="Step 40 — workspace path resolution (regression v1.0.3).rejects a relative path supplied via $env:CA_BOOTSTRAP_WORKSPACE" time="0.0153" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects relative custom path" name="Step 40 — workspace path resolution (regression v1.0.3).rejects relative custom path" time="0.0027" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Get-CABDefaultWorkspacePath returns a rooted path" name="Step 40 — workspace path resolution (regression v1.0.3).Get-CABDefaultWorkspacePath returns a rooted path" time="0.0036" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 50 / 60 — refuse to mutate disk on a relative WorkspacePath" executed="True" result="Success" success="True" time="0.0357" asserts="0" description="Step 50 / 60 — refuse to mutate disk on a relative WorkspacePath">
+            <results>
+              <test-case description="step 50 returns fail when WorkspacePath is relative" name="Step 50 / 60 — refuse to mutate disk on a relative WorkspacePath.step 50 returns fail when WorkspacePath is relative" time="0.004" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="step 60 returns fail when WorkspacePath is relative (no clone is attempted)" name="Step 50 / 60 — refuse to mutate disk on a relative WorkspacePath.step 60 returns fail when WorkspacePath is relative (no clone is attempted)" time="0.0056" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="step 60 returns fail when WorkspacePath is empty string" name="Step 50 / 60 — refuse to mutate disk on a relative WorkspacePath.step 60 returns fail when WorkspacePath is empty string" time="0.0018" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+    </results>
+  </test-suite>
+</test-results>

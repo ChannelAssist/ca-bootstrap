@@ -33,6 +33,7 @@ make setup                          # the wizard (auto-launches TUI if cab-tui i
 make setup-no-tui                   # force the legacy Read-Host CLI
 make tui-install                    # one-time: pip install the optional Textual TUI front-end
 make doctor                         # diagnose (drift = ok, not a make failure)
+make repos-drift                    # check manifest/repos.yaml against GitHub org
 make repair ARGS='--all'            # fix everything
 make repair ARGS='--target dotnet-10'  # fix one thing
 make undo ARGS='--force'            # reverse
