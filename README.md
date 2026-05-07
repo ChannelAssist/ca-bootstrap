@@ -239,6 +239,18 @@ make release VERSION=1.5.0
 
 `make release-dry-run VERSION=1.5.0` validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
 
+#### One-shot variant: `make release-full`
+
+Skip the manual bump-PR step:
+
+```bash
+make release-full VERSION=1.5.0
+```
+
+Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same `make release` chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use `make release` if your team wants the bump PR to go through normal review.
+
+`make release-full-dry-run VERSION=1.5.0` validates the chain end-to-end without mutating.
+
 ---
 
 ## License
