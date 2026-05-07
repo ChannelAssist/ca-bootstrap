@@ -23,8 +23,8 @@ folders:
     description: Legacy TFVC checkouts of pre-modernization code (read-only reference)
     optional: true
 
-  - path: learning
-    description: Training material and reference repos for upskilling
+  - path: ca-training
+    description: ChannelAssist training material and learning resources
     optional: true
 
   - path: experiments

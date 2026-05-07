@@ -49,12 +49,12 @@ groups:
       - { repo: ChannelAssist/cm-service-template,     into: cm-product/cm-service-template,     branch: master }
       - { repo: ChannelAssist/cm-shared-libs,          into: cm-product/cm-shared-libs,          branch: master }
 
-  - name: learning
-    description: Training material and reference repos for upskilling
+  - name: ca-training
+    description: ChannelAssist training material and learning resources
     repos:
-      - { repo: ChannelAssist/nlp-learning-paths,                into: learning/nlp-learning-paths,                branch: main, opt_in: true }
-      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: learning/Generative-AI-for-beginners-dotnet, branch: main, opt_in: true }
-      - { repo: ChannelAssist/desktop-tutorial,                  into: learning/desktop-tutorial,                  branch: dev,  opt_in: true }
+      - { repo: ChannelAssist/nlp-learning-paths,                into: ca-training/nlp-learning-paths,                branch: main, opt_in: true }
+      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main, opt_in: true }
+      - { repo: ChannelAssist/desktop-tutorial,                  into: ca-training/desktop-tutorial,                  branch: dev,  opt_in: true }
 
   - name: experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
