@@ -1,8 +1,5 @@
 #requires -Version 7.0
 # commands/setup.ps1 — runs all steps in order, install/fix mode.
-#
-# Phase 1 wires only step 10 (welcome). Subsequent phases will append
-# step 20…80 to the $stepIds list as they're implemented.
 
 # Invoke-CABQuitWithRollbackOffer — called when the user quits or a step
 # fails. Offers to undo this session's recorded actions so the user
@@ -100,13 +97,11 @@ function Invoke-CABCommandSetup {
     # Single source of truth for step id → title mapping AND execution
     # order. To rename or reorder a step, edit only Get-CABSetupStepDefs.
     $stepDefs = Get-CABSetupStepDefs
-    $stepIds = $stepDefs | ForEach-Object { $_.id }
     $Context.TotalSteps = $stepDefs.Count
 
     $ordinal = 0
     foreach ($stepDef in $stepDefs) {
         $stepId = $stepDef.id
-        $title  = $stepDef.title
         # Honor a Ctrl+C set during the previous step.
         if ($Script:CABQuitRequested) {
             Save-CABJournal
