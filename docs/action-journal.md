@@ -41,7 +41,7 @@ sessions:
   - id: 2026-05-15T09:30:00Z   # ISO 8601 UTC, used as session key
     command: setup              # 'setup' | 'repair' | 'undo'
     ca_bootstrap_version: 1.0.0
-    workspace_path: C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev
+    workspace_path: C:\Users\peter\Documents\Projects\ChannelAssistDev
     actions:                    # ordered, oldest first
       - { … }
       - { … }

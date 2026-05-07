@@ -336,14 +336,14 @@ Step 3/8 — GitHub authentication
     ✓ Logged in as peter-g.
 
 Step 4/8 — Workspace location
-  Default location: C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev
+  Default location: C:\Users\peter\Documents\Projects\ChannelAssistDev
 
   Use this default?
     [Y]es  [c]ustom path  [n]o (skip remaining steps)
   > Y
 
 Step 5/8 — Folder structure
-  Will create at C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev:
+  Will create at C:\Users\peter\Documents\Projects\ChannelAssistDev:
     ├── docs\
     ├── ca-platform\
     ├── cm-product\
@@ -438,7 +438,7 @@ ChannelAssist developer setup — diagnostic report
 =================================================
 Generated: 2026-05-15 09:32 UTC
 Host:      DESKTOP-PETER (Windows 11 22H2, x64)
-Workspace: C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev
+Workspace: C:\Users\peter\Documents\Projects\ChannelAssistDev
 
 Workspace                    ✓  exists, 4 expected folders present
 Folder structure             ✓  docs/  ca-platform/  cm-product/  ado-legacy/
@@ -869,7 +869,7 @@ All three functions return structured result objects so the orchestrator can ren
 
 **Purpose**: pick the workspace root path.
 
-**Default**: `~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev` (Windows uses `%USERPROFILE%`).
+**Default**: `~/Documents/Projects/ChannelAssistDev` (Windows uses `%USERPROFILE%`).
 
 **Asks**:
 - "Use the default? [Y/c/n]" — `c` for custom path, `n` quits.
@@ -972,7 +972,7 @@ sessions:
   - id: 2026-05-15T09:30:00Z
     command: setup
     ca_bootstrap_version: 1.0.0
-    workspace_path: C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev
+    workspace_path: C:\Users\peter\Documents\Projects\ChannelAssistDev
     actions:
 
       - id: 2026-05-15T09:30:14Z
@@ -1107,8 +1107,8 @@ Many ChannelAssist developers have personal git config pointing at a personal em
     name = Peter Giannopoulos
     email = peter.personal@gmail.com   # left untouched
 
-[includeIf "gitdir:~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev/"]
-    path = ~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev/.gitconfig
+[includeIf "gitdir:~/Documents/Projects/ChannelAssistDev/"]
+    path = ~/Documents/Projects/ChannelAssistDev/.gitconfig
 ```
 
 **ChannelAssistDev/.gitconfig** (new, written by us):
@@ -1158,7 +1158,7 @@ version: 1
 mode: unattended
 
 workspace:
-  path: ~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev
+  path: ~/Documents/Projects/ChannelAssistDev
   on_exists: keep                    # 'keep' | 'recreate' | 'fail'
 
 prerequisites:
