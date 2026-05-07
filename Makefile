@@ -37,8 +37,14 @@ help: ## Show this help (default target)
 smoke: ## Run an end-to-end smoke test against /tmp (no real workspace touched)
 	@printf "$(BLUE)Running ca-bootstrap smoke test...$(RESET)\n"
 	@rm -rf $(SMOKE_STATE) $(SMOKE_WORKSPACE)
+	@# Use the keyed unattended fixture instead of positional stdin.
+	@# The previous stdin-piped flow (tests/fixtures/smoke-answers.txt)
+	@# broke every time the manifest grew a group, since each group
+	@# adds a prompt. Keyed answers are stable across manifest churn:
+	@# they reference group names, not prompt order.
 	@CA_BOOTSTRAP_STATE=$(SMOKE_STATE) CA_BOOTSTRAP_WORKSPACE=$(SMOKE_WORKSPACE) \
-		$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup < tests/fixtures/smoke-answers.txt
+		$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup \
+		-Unattended -ConfigFile tests/fixtures/answers/hermetic.yaml
 	@printf "$(GREEN)✓ Smoke test passed$(RESET)\n"
 
 .PHONY: smoke-clean
