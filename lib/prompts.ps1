@@ -99,8 +99,17 @@ function Read-CABChoice {
         Write-Host "  $Question"
         Write-Host "    $hint"
         Write-Host "  > " -NoNewline
-        $ans = (Read-Host).Trim()
+        # Read-Host returns $null when stdin is at EOF (curl|bash with no
+        # /dev/tty re-attach). Coerce to '' so the .Trim() and the
+        # IsNullOrWhiteSpace check below handle the case uniformly.
+        $rawAns = Read-Host
+        $ans = if ($null -eq $rawAns) { '' } else { ([string]$rawAns).Trim() }
         if ([string]::IsNullOrWhiteSpace($ans) -and $Default) { return $Default }
+        if ($null -eq $rawAns -and -not $Default) {
+            # Stdin EOF + no default → can't recover; bail out instead of
+            # spinning the loop forever waiting for input that won't come.
+            throw 'Interactive prompt requested but stdin is at EOF (and no default provided). Run from a terminal, or use -Unattended -ConfigFile <path>.'
+        }
         $match = $Options | Where-Object { $_.Key -ieq $ans } | Select-Object -First 1
         if ($match) { return $match.Key }
         if ($ans -match '^[Qq](uit)?$') { return 'quit' }
