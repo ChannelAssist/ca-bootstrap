@@ -38,11 +38,17 @@ function Invoke-CABQuitWithRollbackOffer {
     }
 
     # Reuse undo's per-action reverser dispatch so we don't reimplement
-    # any of the safety rules (uncommitted-changes guard, etc.).
+    # any of the safety rules (uncommitted-changes guard, etc.). Per-
+    # action [N/total] counter mirrors the install + clone progress
+    # markers — long rollbacks now show where they are in the queue.
     . (Join-Path $Context.RepoRoot 'commands/undo.ps1')
     $reversed = 0
     $skipped = 0
+    $progressIndex = 0
+    $progressTotal = $actions.Count
     foreach ($entry in $actions) {
+        $progressIndex++
+        Write-CABColor DarkGray "  [$progressIndex/$progressTotal] reverting $($entry.action)..."
         $r = Invoke-CABUndoEntry -Entry $entry -Force:$false -IncludeFolders:$true -IncludeTools:$false -Context $Context
         switch ($r.status) {
             'ok'   { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $reversed++ }

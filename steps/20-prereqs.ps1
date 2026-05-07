@@ -68,12 +68,19 @@ function Invoke-CABStep20 {
         return @{ status = 'warn'; details = "$($missing.Count) optional tool(s) skipped." }
     }
 
-    # Install loop.
+    # Install loop. Per-tool [N/total] counter so the user can see
+    # progress through a long install list — package managers don't
+    # expose machine-readable progress, but at least the wizard can
+    # say where it is in the queue.
     $installed = 0
     $skipped = 0
     $failed = New-Object System.Collections.Generic.List[string]
+    $progressIndex = 0
+    $progressTotal = $missing.Count
 
     foreach ($r in $missing) {
+        $progressIndex++
+        $progressPrefix = "[$progressIndex/$progressTotal]"
         $tool = $byId[$r.id]
         if (-not $tool) { continue }
 
@@ -87,7 +94,7 @@ function Invoke-CABStep20 {
             } else { '' }
             $default = -not ($tool.heavy -or $tool.requires_reboot)
             $ans = Read-CABConfirm `
-                -Question "Install $($tool.name)$heavyHint$rebootHint?" `
+                -Question "$progressPrefix Install $($tool.name)$heavyHint$rebootHint?" `
                 -Default $default `
                 -AnswerKey "prereqs.install.$($tool.id)"
             if (Test-CABQuit $ans) {
@@ -97,14 +104,15 @@ function Invoke-CABStep20 {
         }
 
         if (-not $shouldInstall) {
-            Write-CABStatus -Status skip -Message "$($tool.id) skipped"
+            Write-CABStatus -Status skip -Message "$progressPrefix $($tool.id) skipped"
             $skipped++
             continue
         }
 
+        Write-CABColor DarkGray "  $progressPrefix Installing $($tool.name)..."
         $result = Install-CABTool -Tool $tool -Context $Context
         if ($result.ok) {
-            Write-CABStatus -Status ok -Message "$($tool.id) — $($result.details)"
+            Write-CABStatus -Status ok -Message "$progressPrefix $($tool.id) — $($result.details)"
             Add-CABJournalEntry -Step '20-prereqs' -Action 'install_tool' -Data @{
                 tool   = $tool.id
                 method = (Get-CABInstallEntry -Tool $tool).type
@@ -117,7 +125,7 @@ function Invoke-CABStep20 {
                 Write-CABColor Yellow "      ⓘ Post-install check still reports: $($recheck.details)"
             }
         } else {
-            Write-CABStatus -Status fail -Message "$($tool.id) — $($result.details)"
+            Write-CABStatus -Status fail -Message "$progressPrefix $($tool.id) — $($result.details)"
             $failed.Add($tool.id)
         }
     }

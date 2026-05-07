@@ -81,6 +81,13 @@ function Invoke-CABStep60 {
     $totalFailed = 0
     $failedDetails = New-Object System.Collections.Generic.List[string]
 
+    # Per-repo [N/total] counter so a long clone batch surfaces "where
+    # are we in the queue" without the user having to count rows. Total
+    # is across all groups so the numerator is monotonic — group skips
+    # advance the counter by the group's repo count.
+    $progressIndex = 0
+    $progressTotal = ($manifest.groups | ForEach-Object { $_.repos.Count } | Measure-Object -Sum).Sum
+
     foreach ($g in $manifest.groups) {
         Write-Host ''
         Write-CABColor White "  Group: $($g.name) — $($g.description)"
@@ -115,10 +122,13 @@ function Invoke-CABStep60 {
             # the per-repo $progressCurrent accumulator was removed
             # alongside the TUI progress bar.
             $totalSkipped += $g.repos.Count
+            $progressIndex += $g.repos.Count
             continue
         }
 
         foreach ($repo in $g.repos) {
+            $progressIndex++
+            $progressPrefix = "[$progressIndex/$progressTotal]"
             $into = Join-Path $Context.WorkspacePath $repo.into
             # Final paranoia check before any disk mutation.
             if (-not [System.IO.Path]::IsPathRooted($into)) {
@@ -126,20 +136,20 @@ function Invoke-CABStep60 {
             }
             $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
             if ($state -eq 'matches') {
-                Write-CABStatus -Status skip -Message "$($repo.repo) already cloned" -Detail $into
+                Write-CABStatus -Status skip -Message "$progressPrefix $($repo.repo) already cloned" -Detail $into
                 $fetch = Invoke-CABRepoFetch -Path $into
                 if ($fetch.ok) { $totalFetched++ }
                 continue
             }
             if ($state -eq 'mismatch') {
-                Write-CABStatus -Status warn -Message "$($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
+                Write-CABStatus -Status warn -Message "$progressPrefix $($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
                 $totalSkipped++
                 continue
             }
 
             $shouldClone = $true
             if ($groupChoice -ieq 's' -or $repo.opt_in) {
-                $promptText = "Clone $($repo.repo)?"
+                $promptText = "$progressPrefix Clone $($repo.repo)?"
                 if ($repo.warn) { Write-CABColor Yellow "    ⓘ $($repo.warn)" }
                 $default = -not $repo.opt_in
                 $ans = Read-CABConfirm -Question $promptText -Default $default -AnswerKey "repos.repo.$($repo.repo)"
@@ -150,16 +160,16 @@ function Invoke-CABStep60 {
             }
 
             if (-not $shouldClone) {
-                Write-CABStatus -Status skip -Message "$($repo.repo) skipped"
+                Write-CABStatus -Status skip -Message "$progressPrefix $($repo.repo) skipped"
                 $totalSkipped++
                 continue
             }
 
-            Write-Host "    cloning $($repo.repo) → $into..." -NoNewline
+            Write-Host "    $progressPrefix cloning $($repo.repo) → $into..." -NoNewline
             $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
             Write-Host ''
             if ($result.ok) {
-                Write-CABStatus -Status ok -Message "$($repo.repo) cloned"
+                Write-CABStatus -Status ok -Message "$progressPrefix $($repo.repo) cloned"
                 Add-CABJournalEntry -Step '60-repos' -Action 'clone_repo' -Data @{
                     repo   = $repo.repo
                     path   = $into
@@ -167,7 +177,7 @@ function Invoke-CABStep60 {
                 } | Out-Null
                 $totalCloned++
             } else {
-                Write-CABStatus -Status fail -Message "$($repo.repo) failed" -Detail $result.details
+                Write-CABStatus -Status fail -Message "$progressPrefix $($repo.repo) failed" -Detail $result.details
                 $failedDetails.Add("$($repo.repo): $($result.details)")
                 $totalFailed++
             }
