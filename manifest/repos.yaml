@@ -15,10 +15,16 @@ default_protocol: https
 clone_concurrency: 4
 
 groups:
+  - name: tools
+    description: Tooling repos
+    repos:
+      - { repo: ChannelAssist/ca-bootstrap,        into: ca-tools/ca-bootstrap,             branch: dev }
+
+
   - name: docs
     description: Documentation repos
     repos:
-      - { repo: ChannelAssist/Keystone,        into: docs/keystone,             branch: master }
+      - { repo: ChannelAssist/Keystone,        into: ca-docs/keystone,             branch: dev }
       - { repo: ChannelAssist/.github,         into: docs/org-profile-public,   branch: main }
       - { repo: ChannelAssist/.github-private, into: docs/org-profile-private,  branch: main, requires_membership: true }
 
@@ -28,8 +34,8 @@ groups:
       - { repo: ChannelAssist/ca-ai-agents,                    into: ca-platform/ca-ai-agents,                    branch: dev }
       - { repo: ChannelAssist/ca-claude-plugin,                into: ca-platform/ca-claude-plugin,                branch: dev }
       - { repo: ChannelAssist/ca-copilot-plugin,               into: ca-platform/ca-copilot-plugin,               branch: dev }
-      - { repo: ChannelAssist/ca-data-dictionnary-generator,   into: ca-platform/ca-data-dictionnary-generator,   branch: master }
-      - { repo: ChannelAssist/ca-privacy-gate,                 into: ca-platform/ca-privacy-gate,                 branch: main }
+      - { repo: ChannelAssist/ca-data-dictionnary-generator,   into: ca-platform/ca-data-dictionnary-generator,   branch: dev }
+      - { repo: ChannelAssist/ca-privacy-gate,                 into: ca-platform/ca-privacy-gate,                 branch: dev }
 
   - name: cm-product
     description: ChannelManager product repos
@@ -41,20 +47,19 @@ groups:
         warn: "Legacy monolith — clone is ≈4 GB and can take 10+ minutes."
         opt_in: true
       - { repo: ChannelAssist/cm-claims-validator,     into: cm-product/cm-claims-validator,     branch: dev }
-      - { repo: ChannelAssist/cm-contracts,            into: cm-product/cm-contracts,            branch: master }
+      - { repo: ChannelAssist/cm-contracts,            into: cm-product/cm-contracts,            branch: dev }
       - { repo: ChannelAssist/cm-currency-service,     into: cm-product/cm-currency-service,     branch: dev }
-      - { repo: ChannelAssist/cm-database-infra,       into: cm-product/cm-database-infra,       branch: main }
-      - { repo: ChannelAssist/cm-platform-infra,       into: cm-product/cm-platform-infra,       branch: master }
-      - { repo: ChannelAssist/cm-purchase-order-service, into: cm-product/cm-purchase-order-service, branch: main }
-      - { repo: ChannelAssist/cm-service-template,     into: cm-product/cm-service-template,     branch: master }
-      - { repo: ChannelAssist/cm-shared-libs,          into: cm-product/cm-shared-libs,          branch: master }
+      - { repo: ChannelAssist/cm-database-infra,       into: cm-product/cm-database-infra,       branch: dev }
+      - { repo: ChannelAssist/cm-platform-infra,       into: cm-product/cm-platform-infra,       branch: dev }
+      - { repo: ChannelAssist/cm-purchase-order-service, into: cm-product/cm-purchase-order-service, branch: dev }
+      - { repo: ChannelAssist/cm-service-template,     into: cm-product/cm-service-template,     branch: dev }
+      - { repo: ChannelAssist/cm-shared-libs,          into: cm-product/cm-shared-libs,          branch: dev }
 
   - name: ca-training
     description: ChannelAssist training material and learning resources
     repos:
       - { repo: ChannelAssist/nlp-learning-paths,                into: ca-training/nlp-learning-paths,                branch: main, opt_in: true }
       - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main, opt_in: true }
-      - { repo: ChannelAssist/desktop-tutorial,                  into: ca-training/desktop-tutorial,                  branch: dev,  opt_in: true }
 
   - name: experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
