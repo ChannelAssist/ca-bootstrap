@@ -14,9 +14,9 @@
 #   2   any ⚠ or ✗ found
 #  99   unexpected error
 
-# Run-CABDoctorChecks — produce the full check list. Returns an array of
+# Invoke-CABDoctorCheck — produce the full check list. Returns an array of
 # [ordered]@{ id; status; details; ...extra }.
-function Run-CABDoctorChecks {
+function Invoke-CABDoctorCheck {
     [CmdletBinding()]
     param([hashtable]$Context)
 
@@ -24,13 +24,13 @@ function Run-CABDoctorChecks {
 
     # ----- Workspace -----
     $workspace = $null
-    # Most-recent non-undone entry wins. Get-CABJournalEntries walks
+    # Most-recent non-undone entry wins. Get-CABJournalEntry walks
     # sessions oldest-first and returns them in that order, so [0] is the
     # OLDEST surviving record — which after a default-path change reads
     # back the previous default and reports a stale "missing" workspace
     # even when setup just finished writing to the new one. Take [-1] so
     # doctor reflects the workspace the most recent setup chose.
-    $workspaceEntries = @(Get-CABJournalEntries -Action 'create_folder' -Step '40-workspace')
+    $workspaceEntries = @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace')
     if ($workspaceEntries.Count -gt 0) {
         $workspace = [string]$workspaceEntries[-1].path
     } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {
@@ -123,7 +123,7 @@ function Run-CABDoctorChecks {
         # defaults — which is exactly what made `repair --all` flag 15
         # false-positive "deleted from disk" entries pointing at the
         # pre-1.4 Documents/Projects/Work/ChannelAssist/... root.
-        foreach ($je in (Get-CABJournalEntries -Action 'clone_repo')) {
+        foreach ($je in (Get-CABJournalEntry -Action 'clone_repo')) {
             if ($expectedRepoSlugs -contains [string]$je.repo) { continue }
             $jePath = [string]$je.path
             if ($jePath -and -not (Test-Path $jePath)) {
@@ -217,7 +217,7 @@ function Invoke-CABCommandDoctor {
         Write-Host ''
     }
 
-    $checks = Run-CABDoctorChecks -Context $Context
+    $checks = Invoke-CABDoctorCheck -Context $Context
 
     if ($Context.Json) {
         # Emit JSON on the success stream so `$output = & ./ca-bootstrap.ps1

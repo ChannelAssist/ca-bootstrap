@@ -3,8 +3,8 @@
 #
 # Phase 7 implementation. The journal is the source of truth for what
 # ca-bootstrap has done on this machine. doctor (phase 8), repair (phase 9),
-# and undo (phase 10) all consume it via Get-CABJournalEntries and update
-# it via Mark-CABEntryUndone.
+# and undo (phase 10) all consume it via Get-CABJournalEntry and update
+# it via Set-CABEntryUndone.
 #
 # File:    ~/.ca-bootstrap/journal.yaml
 # Schema:  see docs/action-journal.md
@@ -179,10 +179,10 @@ function Unlock-CABSession {
     }
 }
 
-# Get-CABCurrentSessionActions — return only this run's journal entries,
+# Get-CABCurrentSessionAction — return only this run's journal entries,
 # in reverse chronological order. Used by Invoke-CABQuitWithRollbackOffer
 # to roll back what the user just did, without touching prior sessions.
-function Get-CABCurrentSessionActions {
+function Get-CABCurrentSessionAction {
     $session = Get-CABCurrentSession
     if (-not $session) { return ,@() }
     # Materialize the list before filtering so PowerShell's pipeline
@@ -393,13 +393,13 @@ function Add-CABJournalEntry {
     return $entry
 }
 
-# Get-CABJournalEntries — query across all sessions in the loaded journal.
+# Get-CABJournalEntry — query across all sessions in the loaded journal.
 #   -Action <name>     filter by action type (e.g. 'clone_repo')
 #   -Step <id>         filter by step id (e.g. '60-repos')
 #   -OnlyOpen          return entries where undone == false (default)
 #   -IncludeUndone     also include entries marked undone
 #   -SessionCommand    filter by the session.command that produced the entry
-function Get-CABJournalEntries {
+function Get-CABJournalEntry {
     # -OnlyOpen used to be the inverse of -IncludeUndone but was never
     # wired in (the body always uses IncludeUndone). Removed to drop
     # the dead switch — callers that filter for "open" entries already
@@ -434,9 +434,9 @@ function Get-CABJournalEntries {
     return $results.ToArray()
 }
 
-# Mark-CABEntryUndone — set undone = true on the original entry, identified
+# Set-CABEntryUndone — set undone = true on the original entry, identified
 # by its `id` field (timestamps are unique within the journal).
-function Mark-CABEntryUndone {
+function Set-CABEntryUndone {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$EntryId,

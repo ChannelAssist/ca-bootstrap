@@ -23,7 +23,7 @@ function Invoke-CABCommandUndo {
     Write-CABHeader 'ca-bootstrap undo'
 
     Read-CABJournal | Out-Null
-    $entries = @(Get-CABJournalEntries -IncludeUndone:$false)
+    $entries = @(Get-CABJournalEntry -IncludeUndone:$false)
     if ($entries.Count -eq 0) {
         Write-CABStatus -Status info -Message 'No reversible actions recorded in the journal.'
         return 0
@@ -31,7 +31,7 @@ function Invoke-CABCommandUndo {
 
     # Filter by target if provided.
     if ($Target) {
-        $entries = @(Filter-CABUndoEntries -Entries $entries -Target $Target)
+        $entries = @(Select-CABUndoEntry -Entries $entries -Target $Target)
         if ($entries.Count -eq 0) {
             Write-CABStatus -Status info -Message "No reversible actions match target '$Target'."
             return 0
@@ -39,7 +39,7 @@ function Invoke-CABCommandUndo {
     }
 
     # Categorize so the user can decide group-by-group.
-    $byCategory = Group-CABUndoEntries -Entries $entries -IncludeTools:$IncludeTools
+    $byCategory = Group-CABUndoEntry -Entries $entries -IncludeTools:$IncludeTools
 
     Write-Host ''
     Write-Host '  Reversible actions found:'
@@ -76,9 +76,9 @@ function Invoke-CABCommandUndo {
         Write-CABColor DarkGray " undo $($entry.action) [$($entry.id)]"
         $result = Invoke-CABUndoEntry -Entry $entry -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force
         switch ($result.status) {
-            'ok'      { $undone++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
+            'ok'      { $undone++ ; Set-CABEntryUndone -EntryId $entry.id | Out-Null }
             'skip'    { $skipped++ }
-            'noop'    { $skipped++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
+            'noop'    { $skipped++ ; Set-CABEntryUndone -EntryId $entry.id | Out-Null }
             'refused' { $skipped++ }
             'fail'    { [void]$failed.Add("$($entry.action): $($result.details)") }
         }
@@ -106,7 +106,7 @@ function Invoke-CABCommandUndo {
 # Filter / group helpers
 # ---------------------------------------------------------------------------
 
-function Filter-CABUndoEntries {
+function Select-CABUndoEntry {
     param([array]$Entries, [string]$Target)
     $bare = $Target -replace '^tool\.', ''
     if ($bare -like 'repos:*') {
@@ -123,7 +123,7 @@ function Filter-CABUndoEntries {
     }
 }
 
-function Group-CABUndoEntries {
+function Group-CABUndoEntry {
     param([array]$Entries, [switch]$IncludeTools)
     $byCategory = [ordered]@{}
     $byCategory['identity']     = @($Entries | Where-Object { $_.action -eq 'configure_git_identity' })

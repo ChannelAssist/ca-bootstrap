@@ -40,8 +40,8 @@ function Invoke-CABCommandRepair {
     # Always run doctor first so we know what's wrong.
     Write-Host '  Running doctor first...'
     Write-Host ''
-    $checks = Run-CABDoctorChecks -Context $Context
-    $workspace = $Context.WorkspacePath   # populated by Run-CABDoctorChecks
+    $checks = Invoke-CABDoctorCheck -Context $Context
+    $workspace = $Context.WorkspacePath   # populated by Invoke-CABDoctorCheck
 
     $issues = @($checks | Where-Object { $_.status -in 'warn','fail' })
     if ($issues.Count -eq 0 -and -not $Target) {
@@ -77,7 +77,7 @@ function Invoke-CABCommandRepair {
     Write-Host ''
     Write-Host "  Re-running doctor to confirm..."
     Write-Host ''
-    $afterChecks = Run-CABDoctorChecks -Context $Context
+    $afterChecks = Invoke-CABDoctorCheck -Context $Context
     Format-CABDoctorReport -Checks $afterChecks -Summary
     Write-Host ''
 

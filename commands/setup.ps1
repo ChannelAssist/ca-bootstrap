@@ -11,7 +11,7 @@ function Invoke-CABQuitWithRollbackOffer {
         [hashtable]$Context,
         [string]$Reason = 'Quitting'
     )
-    $actions = Get-CABCurrentSessionActions
+    $actions = Get-CABCurrentSessionAction
     if ($actions.Count -eq 0) {
         Write-CABStatus -Status info -Message "$Reason. No actions recorded — nothing to roll back."
         return
@@ -50,8 +50,8 @@ function Invoke-CABQuitWithRollbackOffer {
         Write-CABColor DarkGray " reverting $($entry.action)..."
         $r = Invoke-CABUndoEntry -Entry $entry -Force:$false -IncludeFolders:$true -IncludeTools:$false
         switch ($r.status) {
-            'ok'   { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $reversed++ }
-            'noop' { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $skipped++ }
+            'ok'   { Set-CABEntryUndone -EntryId $entry.id | Out-Null; $reversed++ }
+            'noop' { Set-CABEntryUndone -EntryId $entry.id | Out-Null; $skipped++ }
             default { $skipped++ }
         }
     }
@@ -64,7 +64,7 @@ function Invoke-CABQuitWithRollbackOffer {
 # array of @{ id; title } hashtables used by both the orchestrator's
 # main loop AND (via the welcome RPC event) the TUI's Tree pane. To
 # rename or reorder a step, edit only this function.
-function Get-CABSetupStepDefs {
+function Get-CABSetupStepDef {
     @(
         @{ id = '10-welcome';       title = 'Welcome' }
         @{ id = '40-workspace';     title = 'Workspace location' }
@@ -95,8 +95,8 @@ function Invoke-CABCommandSetup {
     #   7. identity   — per-folder git config
     #   8. extras     — VS Code workspace, plugin, WSL2
     # Single source of truth for step id → title mapping AND execution
-    # order. To rename or reorder a step, edit only Get-CABSetupStepDefs.
-    $stepDefs = Get-CABSetupStepDefs
+    # order. To rename or reorder a step, edit only Get-CABSetupStepDef.
+    $stepDefs = Get-CABSetupStepDef
     $Context.TotalSteps = $stepDefs.Count
 
     $ordinal = 0

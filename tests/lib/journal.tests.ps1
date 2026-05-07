@@ -56,26 +56,26 @@ Describe 'Journal round-trip' {
         @($parsed.sessions).Count | Should -Be 2
     }
 
-    It 'filters Get-CABJournalEntries by Action and Step' {
+    It 'filters Get-CABJournalEntry by Action and Step' {
         Read-CABJournal | Out-Null
         Start-CABSession -Command 'setup' -Version '0.0.0-test'
         Add-CABJournalEntry -Step '40-workspace' -Action 'create_folder' -Data @{ path = '/tmp/ws' } | Out-Null
         Add-CABJournalEntry -Step '60-repos'     -Action 'clone_repo'    -Data @{ path = '/tmp/r1' } | Out-Null
         Add-CABJournalEntry -Step '60-repos'     -Action 'clone_repo'    -Data @{ path = '/tmp/r2' } | Out-Null
 
-        @(Get-CABJournalEntries -Action 'clone_repo').Count    | Should -Be 2
-        @(Get-CABJournalEntries -Step   '40-workspace').Count  | Should -Be 1
-        @(Get-CABJournalEntries -Action 'create_folder' -Step '40-workspace').Count | Should -Be 1
+        @(Get-CABJournalEntry -Action 'clone_repo').Count    | Should -Be 2
+        @(Get-CABJournalEntry -Step   '40-workspace').Count  | Should -Be 1
+        @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace').Count | Should -Be 1
     }
 
-    It 'Mark-CABEntryUndone updates the entry and excludes it from default queries' {
+    It 'Set-CABEntryUndone updates the entry and excludes it from default queries' {
         Read-CABJournal | Out-Null
         Start-CABSession -Command 'setup' -Version '0.0.0-test'
         $e = Add-CABJournalEntry -Step '60-repos' -Action 'clone_repo' -Data @{ path = '/tmp/r' }
 
-        Mark-CABEntryUndone -EntryId $e.id | Should -BeTrue
+        Set-CABEntryUndone -EntryId $e.id | Should -BeTrue
 
-        @(Get-CABJournalEntries -Action 'clone_repo').Count                 | Should -Be 0
-        @(Get-CABJournalEntries -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
+        @(Get-CABJournalEntry -Action 'clone_repo').Count                 | Should -Be 0
+        @(Get-CABJournalEntry -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
     }
 }

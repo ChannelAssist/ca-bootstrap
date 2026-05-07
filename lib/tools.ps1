@@ -231,7 +231,7 @@ function Install-CABTool {
 
     # Meta-tool: install_method drives a different code path.
     if ($Tool.install_method -eq 'code-cli') {
-        return Install-CABVSCodeExtensions -Tool $Tool -Context $Context
+        return Install-CABVSCodeExtension -Tool $Tool -Context $Context
     }
 
     $type = $entry.type
@@ -334,9 +334,9 @@ function Install-CABTool {
     return @{ ok = $true; details = "Installed via $type" }
 }
 
-# Install-CABVSCodeExtensions — meta-tool handler.
+# Install-CABVSCodeExtension — meta-tool handler.
 #   Iterates $Tool.extensions and calls `code --install-extension` for each.
-function Install-CABVSCodeExtensions {
+function Install-CABVSCodeExtension {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] $Tool,
