@@ -84,6 +84,15 @@ function Invoke-CABStep60 {
     foreach ($g in $manifest.groups) {
         Write-Host ''
         Write-CABColor White "  Group: $($g.name) — $($g.description)"
+        # List the repos so the user can see exactly what they'll be
+        # confirming. Without this, "Clone all 5 repos in ca-platform?"
+        # is opaque — the user has no way to know what's about to land
+        # on disk without flipping to manifest/repos.yaml.
+        foreach ($repo in $g.repos) {
+            $hint = if ($repo.opt_in) { ' (opt-in)' } else { '' }
+            Write-CABColor DarkGray "      • $($repo.repo)$hint"
+        }
+        Write-Host ''
 
         $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in $($g.name)?" `
             -Options @(
