@@ -44,7 +44,24 @@ groups:
       - { repo: ChannelAssist/cm-contracts,            into: cm-product/cm-contracts,            branch: master }
       - { repo: ChannelAssist/cm-currency-service,     into: cm-product/cm-currency-service,     branch: dev }
       - { repo: ChannelAssist/cm-database-infra,       into: cm-product/cm-database-infra,       branch: main }
+      - { repo: ChannelAssist/cm-ledger-service,       into: cm-product/cm-ledger-service,       branch: main }
       - { repo: ChannelAssist/cm-platform-infra,       into: cm-product/cm-platform-infra,       branch: master }
       - { repo: ChannelAssist/cm-purchase-order-service, into: cm-product/cm-purchase-order-service, branch: main }
       - { repo: ChannelAssist/cm-service-template,     into: cm-product/cm-service-template,     branch: master }
       - { repo: ChannelAssist/cm-shared-libs,          into: cm-product/cm-shared-libs,          branch: master }
+
+  - name: learning
+    description: Training material and reference repos for upskilling
+    repos:
+      - { repo: ChannelAssist/nlp-learning-paths,                into: learning/nlp-learning-paths,                branch: main }
+      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: learning/Generative-AI-for-beginners-dotnet, branch: main }
+      - { repo: ChannelAssist/desktop-tutorial,                  into: learning/desktop-tutorial,                  branch: dev }
+
+  - name: experiments
+    description: Internal experiments / prototypes — opt-in, not part of the default workspace
+    repos:
+      - { repo: ChannelAssist/blueprint,                  into: experiments/blueprint,                  branch: main, opt_in: true }
+      - { repo: ChannelAssist/channel-forge,              into: experiments/channel-forge,              branch: main, opt_in: true }
+      - { repo: ChannelAssist/command-center,             into: experiments/command-center,             branch: dev,  opt_in: true }
+      - { repo: ChannelAssist/digital-operations-bunker,  into: experiments/digital-operations-bunker,  branch: main, opt_in: true }
+      - { repo: ChannelAssist/team-pulse,                 into: experiments/team-pulse,                 branch: main, opt_in: true }

@@ -22,3 +22,11 @@ folders:
   - path: ado-legacy
     description: Legacy TFVC checkouts of pre-modernization code (read-only reference)
     optional: true
+
+  - path: learning
+    description: Training material and reference repos for upskilling
+    optional: true
+
+  - path: experiments
+    description: Internal experiments / prototypes (opt-in; sparse on disk by default)
+    optional: true

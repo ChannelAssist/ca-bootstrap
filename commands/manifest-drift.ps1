@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/manifest-drift.ps1 — surface drift between manifest/repos.yaml
 # and the actual ChannelAssist GitHub org. Opt-in maintenance command;
 # not part of the user-facing setup/doctor/repair/undo flow.

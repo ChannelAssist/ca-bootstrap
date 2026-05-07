@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/manifest-drift-cmd.tests.ps1 — regression tests for the
 # manifest-drift maintenance command (issue #18). Verifies:
 #   1. Get-CABSuggestedGroup heuristic behavior

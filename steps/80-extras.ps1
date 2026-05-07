@@ -23,11 +23,29 @@ function Get-CABClaudePluginsDir {
 }
 
 # Walk the workspace and collect everything that looks like a cloned repo.
+# Group list is derived from manifest/folders.yaml so adding a new top-level
+# group there (or in repos.yaml) flows through here automatically. Falls back
+# to a small hardcoded set if the manifest can't be read (e.g. unit tests
+# that exercise step 80 without RepoRoot wired in).
 function Get-CABClonedReposFromWorkspace {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$WorkspacePath)
+    param(
+        [Parameter(Mandatory)][string]$WorkspacePath,
+        [string]$RepoRoot
+    )
     $repos = New-Object System.Collections.Generic.List[hashtable]
-    $groups = @('docs','ca-platform','cm-product','ado-legacy')
+    $groups = $null
+    if ($RepoRoot) {
+        try {
+            $foldersManifest = Read-CABManifest -Path (Join-Path $RepoRoot 'manifest/folders.yaml')
+            $groups = @($foldersManifest.folders | ForEach-Object { [string]$_.path })
+        } catch {
+            Write-Verbose "Could not read folders.yaml: $($_.Exception.Message)"
+        }
+    }
+    if (-not $groups) {
+        $groups = @('docs','ca-platform','cm-product','ado-legacy','learning','experiments')
+    }
     foreach ($group in $groups) {
         $groupDir = Join-Path $WorkspacePath $group
         if (-not (Test-Path $groupDir)) { continue }
@@ -75,7 +93,7 @@ function Invoke-CABStep80 {
         return @{ status = 'quit'; details = 'User quit during extras step.' }
     }
     if (Test-CABYes $createWorkspaceFile) {
-        $repos = Get-CABClonedReposFromWorkspace -WorkspacePath $Context.WorkspacePath
+        $repos = Get-CABClonedReposFromWorkspace -WorkspacePath $Context.WorkspacePath -RepoRoot $Context.RepoRoot
         if ($repos.Count -eq 0) {
             Write-CABStatus -Status warn -Message 'No cloned repos detected — skipping workspace file.'
         } else {
