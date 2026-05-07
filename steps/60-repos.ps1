@@ -88,9 +88,16 @@ function Invoke-CABStep60 {
     $progressIndex = 0
     $progressTotal = ($manifest.groups | ForEach-Object { $_.repos.Count } | Measure-Object -Sum).Sum
 
+    # Group-level counter on the loud header line so position info is
+    # visible even on whole-group skips (the per-repo counter only
+    # surfaces inside a group the user accepted).
+    $groupIndex = 0
+    $groupTotal = $manifest.groups.Count
+
     foreach ($g in $manifest.groups) {
+        $groupIndex++
         Write-Host ''
-        Write-CABColor White "  Group: $($g.name) — $($g.description)"
+        Write-CABColor White "  Group $groupIndex/${groupTotal}: $($g.name) — $($g.description)"
         # List the repos so the user can see exactly what they'll be
         # confirming. Without this, "Clone all 5 repos in ca-platform?"
         # is opaque — the user has no way to know what's about to land
@@ -165,7 +172,13 @@ function Invoke-CABStep60 {
                 continue
             }
 
-            Write-Host "    $progressPrefix cloning $($repo.repo) → $into..." -NoNewline
+            # Bright prefix so the [N/total] pops visually against the
+            # surrounding plain text — without a colored icon (no ✓/↷)
+            # the in-progress line was reading dim and the marker was
+            # easy to miss.
+            Write-Host '    ' -NoNewline
+            Write-Host $progressPrefix -ForegroundColor Cyan -NoNewline
+            Write-Host " cloning $($repo.repo) → $into..." -NoNewline
             $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
             Write-Host ''
             if ($result.ok) {

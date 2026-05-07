@@ -109,7 +109,11 @@ function Invoke-CABStep20 {
             continue
         }
 
-        Write-CABColor DarkGray "  $progressPrefix Installing $($tool.name)..."
+        # Cyan prefix for visual prominence; rest stays dim so it doesn't
+        # compete with the post-install ✓/✗ status line that follows.
+        Write-Host '  ' -NoNewline
+        Write-Host $progressPrefix -ForegroundColor Cyan -NoNewline
+        Write-Host " Installing $($tool.name)..." -ForegroundColor DarkGray
         $result = Install-CABTool -Tool $tool -Context $Context
         if ($result.ok) {
             Write-CABStatus -Status ok -Message "$progressPrefix $($tool.id) — $($result.details)"

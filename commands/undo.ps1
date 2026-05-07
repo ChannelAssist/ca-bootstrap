@@ -71,7 +71,9 @@ function Invoke-CABCommandUndo {
 
     foreach ($entry in $sortedEntries) {
         $progressIndex++
-        Write-CABColor DarkGray "  [$progressIndex/$progressTotal] undo $($entry.action) [$($entry.id)]"
+        Write-Host '  ' -NoNewline
+        Write-Host "[$progressIndex/$progressTotal]" -ForegroundColor Cyan -NoNewline
+        Write-Host " undo $($entry.action) [$($entry.id)]" -ForegroundColor DarkGray
         $result = Invoke-CABUndoEntry -Entry $entry -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force -Context $Context
         switch ($result.status) {
             'ok'      { $undone++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
