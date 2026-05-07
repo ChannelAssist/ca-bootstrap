@@ -170,7 +170,31 @@ main() {
     color_green "✓ ca-bootstrap ready."
     echo
 
-    exec pwsh -NoLogo -File "$CACHE_DIR/ca-bootstrap.ps1" setup "$@"
+    # When invoked via `curl -fsSL ... | bash`, our stdin is the curl pipe
+    # — it's already at EOF (the script body itself was just consumed).
+    # Without re-attaching, pwsh inherits that empty stdin and Read-Host
+    # returns $null on every prompt. The wizard would silently auto-Y
+    # through every consent screen, then hard-crash on the first multi-
+    # option prompt (Read-CABChoice's `(Read-Host).Trim()` on $null).
+    # Re-attach to /dev/tty when stdin is non-tty AND a tty is reachable;
+    # otherwise refuse with a helpful message.
+    if [ -t 0 ]; then
+        exec pwsh -NoLogo -File "$CACHE_DIR/ca-bootstrap.ps1" setup "$@"
+    elif [ -e /dev/tty ]; then
+        exec pwsh -NoLogo -File "$CACHE_DIR/ca-bootstrap.ps1" setup "$@" </dev/tty
+    else
+        color_red 'ca-bootstrap setup needs an interactive terminal.'
+        echo ''
+        echo 'Options:'
+        echo '  • Run from a real terminal: download the script first, then bash it'
+        echo "      curl -fsSL $REPO_URL/raw/$REPO_REF/bootstrap.sh -o /tmp/cab.sh && bash /tmp/cab.sh"
+        echo ''
+        echo '  • Or clone the repo and use unattended mode:'
+        echo "      git clone $REPO_URL"
+        echo '      cd ca-bootstrap'
+        echo '      pwsh ./ca-bootstrap.ps1 setup -Unattended -ConfigFile manifest/answers.example.yaml'
+        exit 1
+    fi
 }
 
 main "$@"
