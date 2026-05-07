@@ -2,7 +2,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-ca-bootstrap orchestrator. Dispatches to one of: setup, doctor, repair, undo.
+ca-bootstrap orchestrator. Dispatches to one of: setup, doctor, repair, undo, repos-drift.
 
 .DESCRIPTION
 This is the multi-command entry point. The bootstrap.sh / bootstrap.ps1
@@ -18,6 +18,7 @@ install, and reversal logic for each step.
 ./ca-bootstrap.ps1 doctor
 ./ca-bootstrap.ps1 repair --all
 ./ca-bootstrap.ps1 undo
+./ca-bootstrap.ps1 repos-drift
 
 .EXAMPLE
 ./ca-bootstrap.ps1 setup -Unattended -ConfigFile answers.yaml
