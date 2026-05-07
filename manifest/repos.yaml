@@ -52,9 +52,9 @@ groups:
   - name: learning
     description: Training material and reference repos for upskilling
     repos:
-      - { repo: ChannelAssist/nlp-learning-paths,                into: learning/nlp-learning-paths,                branch: main }
-      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: learning/Generative-AI-for-beginners-dotnet, branch: main }
-      - { repo: ChannelAssist/desktop-tutorial,                  into: learning/desktop-tutorial,                  branch: dev }
+      - { repo: ChannelAssist/nlp-learning-paths,                into: learning/nlp-learning-paths,                branch: main, opt_in: true }
+      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: learning/Generative-AI-for-beginners-dotnet, branch: main, opt_in: true }
+      - { repo: ChannelAssist/desktop-tutorial,                  into: learning/desktop-tutorial,                  branch: dev,  opt_in: true }
 
   - name: experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace

@@ -23,10 +23,13 @@ function Get-CABClaudePluginsDir {
 }
 
 # Walk the workspace and collect everything that looks like a cloned repo.
-# Group list is derived from manifest/folders.yaml so adding a new top-level
-# group there (or in repos.yaml) flows through here automatically. Falls back
-# to a small hardcoded set if the manifest can't be read (e.g. unit tests
-# that exercise step 80 without RepoRoot wired in).
+# Group list is derived from manifest/folders.yaml — adding a top-level
+# group there flows through here automatically. (Note: a group declared
+# only in manifest/repos.yaml without a matching folders.yaml entry is
+# NOT discovered by this function; the convention is that every cloning
+# group has its own workspace folder declared in folders.yaml.) Falls
+# back to a hardcoded set if the manifest can't be read (e.g. unit
+# tests that exercise step 80 without RepoRoot wired in).
 function Get-CABClonedReposFromWorkspace {
     [CmdletBinding()]
     param(
