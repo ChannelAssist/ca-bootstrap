@@ -223,7 +223,21 @@ Following the ChannelAssist org convention:
 | `dev` | Default. Feature PRs target this branch. CI runs on every PR. |
 | `main` | Release source of truth. Only advances via fast-forward from `dev` at release time. Tagged `vX.Y.Z` on every release. |
 
-The bootstrap one-liners pin to `main`, so end-users always pull the most recently released code (not work-in-progress on `dev`). To cut a release: bump `$Script:CABootstrapVersion` in a PR to `dev`, merge it, then run `make release VERSION=X.Y.Z` — see [`docs/commands.md`](docs/commands.md#make-release) for the full flow.
+The bootstrap one-liners pin to `main`, so end-users always pull the most recently released code (not work-in-progress on `dev`).
+
+### Cutting a release
+
+```bash
+# 1. Open a PR to dev that bumps $Script:CABootstrapVersion in ca-bootstrap.ps1
+#    (and adds a CHANGELOG entry if you keep one).
+# 2. Merge that PR.
+# 3. From the repo root:
+make release VERSION=1.5.0
+```
+
+`make release` runs in this order: dependency check (`gh`/`jq`/`diff`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1`), smoke + Pester (skip with `SKIP_SMOKE=1` / `SKIP_TESTS=1`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. An `EXIT` trap restores main-protection even if a mid-flight step fails.
+
+`make release-dry-run VERSION=1.5.0` validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
 
 ---
 
