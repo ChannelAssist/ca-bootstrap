@@ -75,14 +75,17 @@ function Invoke-CABStep40 {
         return @{ status = 'fail'; details = $_.Exception.Message }
     }
 
-    # Include the resolved path in the prompt question itself so the TUI
-    # (which renders only the prompt event, not surrounding Write-Host
-    # output) gives the user enough context to decide. The legacy CLI
-    # gets the same self-contained question on its prompt line — slightly
-    # longer than the previous "Use this default?" but no longer requires
-    # a separate "Default location: ..." line above it.
+    # Print the resolved path on its own line above the prompt. A long
+    # path inlined into the question (the v1.4.x TUI-era shape) makes a
+    # 90+ char line that wraps mid-path on standard 80-col terminals;
+    # users miss the wrapped portion. Two lines reads cleanly: path
+    # first as a labeled line, then a short y/n.
+    Write-Host ''
+    Write-Host "  Default location: $default"
+    Write-Host ''
+
     $useDefault = Read-CABConfirm `
-        -Question "Use default workspace at $default?" `
+        -Question 'Use this default?' `
         -Default $true `
         -AnswerKey 'workspace.use_default'
     if (Test-CABQuit $useDefault) {
