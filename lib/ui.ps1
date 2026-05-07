@@ -43,7 +43,15 @@ function Write-CABStep {
         [Parameter(Mandatory)] [string]$Title
     )
     Write-Host ''
-    Write-CABColor White "Step $Number/$Total — $Title"
+    # Total = 0 means we're being invoked outside the setup wizard
+    # (repair, repair --target, ad-hoc step run). The "Step N/0"
+    # rendering reads as a count-out-of-bounds, so drop the X/Y suffix
+    # in that mode and just show the title.
+    if ($Total -gt 0) {
+        Write-CABColor White "Step $Number/$Total — $Title"
+    } else {
+        Write-CABColor White "$Title"
+    }
 }
 
 function Write-CABStatus {
