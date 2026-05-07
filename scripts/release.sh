@@ -8,12 +8,12 @@
 #   2. PR merges into dev (via standard review + CI gate).
 #   3. Maintainer runs `make release VERSION=X.Y.Z` from anywhere in the repo.
 #   4. This script then:
-#        a. Verifies the version constant on origin/dev already equals VERSION
-#           (so you can't accidentally tag a version dev hasn't claimed).
+#        a. Verifies the version constant on origin/dev already equals VERSION.
 #        b. Smoke + Pester (skippable for hotfixes via SKIP_SMOKE / SKIP_TESTS).
-#        c. Fast-forwards origin/main to origin/dev. Main-protection blocks
+#        c. Fast-forwards origin/main to origin/dev. main-protection blocks
 #           non-PR pushes, so this disables the ruleset, ff-pushes, and
-#           re-enables it (verified byte-identical via diff).
+#           re-enables it (verified byte-identical via diff). An EXIT trap
+#           guarantees the ruleset is restored even if a later step fails.
 #        d. Creates a GPG-signed tag vX.Y.Z on the new main HEAD.
 #        e. Pushes the tag.
 #        f. Creates the GitHub release with $NOTES_FILE or auto-generated
@@ -26,6 +26,8 @@
 #   - ca-bootstrap.ps1's version constant on dev doesn't match VERSION
 #   - Smoke or tests fail (override with SKIP_SMOKE=1 / SKIP_TESTS=1)
 #   - main can't fast-forward to dev (main has commits dev doesn't)
+#   - Required tools missing (gh, jq, diff)
+#   - The main-protection ruleset can't be located by name
 #
 # Env knobs (all optional unless noted):
 #   VERSION          required — semver, e.g. 1.5.0 (or v1.5.0)
@@ -54,6 +56,49 @@ info() { printf "${B}→${X} %s\n"       "$*"; }
 warn() { printf "${Y}⚠${X} %s\n"       "$*"; }
 
 # ---------------------------------------------------------------------------
+# State carried across the trap (must initialise before any failable step
+# can disable the ruleset, so trap can read them safely on early exits).
+# ---------------------------------------------------------------------------
+RULESET_DISABLED=0
+BEFORE_ENFORCEMENT=''
+MAIN_RULESET_ID=''
+REPO_SLUG=''
+TMPDIR_RELEASE="$(mktemp -d -t cab-release.XXXXXX)"
+
+cleanup_on_exit() {
+    local rc=$?
+    # Best-effort restore: if we disabled the ruleset and didn't get to
+    # the restore step (e.g. trap fired due to set -e on an intermediate
+    # command), put it back. Without this, a mid-flight error leaves
+    # main-protection wide open for the next unwary push.
+    if [ "$RULESET_DISABLED" = '1' ] \
+        && [ -n "$MAIN_RULESET_ID" ] \
+        && [ -n "$REPO_SLUG" ] \
+        && [ -n "$BEFORE_ENFORCEMENT" ]; then
+        warn "exit code $rc while main-protection was disabled — restoring..."
+        if jq -M -c --arg e "$BEFORE_ENFORCEMENT" \
+                '.enforcement = $e | {name, target, source_type, source, enforcement, conditions, rules}' \
+                "$TMPDIR_RELEASE/main-protection-before.json" \
+                > "$TMPDIR_RELEASE/main-protection-restore.json" 2>/dev/null \
+            && gh api -X PUT "repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID" \
+                --input "$TMPDIR_RELEASE/main-protection-restore.json" --jq '.enforcement' >/dev/null 2>&1; then
+            warn "main-protection enforcement re-enabled (best-effort after exit $rc)"
+        else
+            printf "${R}*** CRITICAL: main-protection ruleset $MAIN_RULESET_ID may still be DISABLED. Re-enable manually:\n" >&2
+            printf "    gh api -X PUT repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID --input '%s/main-protection-before.json'${X}\n" "$TMPDIR_RELEASE" >&2
+            # Preserve the snapshot in TMPDIR_RELEASE for forensics —
+            # only delete on clean exit.
+            return $rc
+        fi
+    fi
+    if [ -d "$TMPDIR_RELEASE" ]; then
+        rm -rf "$TMPDIR_RELEASE"
+    fi
+    return $rc
+}
+trap cleanup_on_exit EXIT
+
+# ---------------------------------------------------------------------------
 # 0. Validation
 # ---------------------------------------------------------------------------
 
@@ -65,7 +110,7 @@ VERSION="${VERSION#v}"
 TAG="v$VERSION"
 
 if ! git diff --quiet HEAD || ! git diff --cached --quiet; then
-    err "Working tree is dirty. Commit or stash first."
+    err 'Working tree is dirty. Commit or stash first.'
 fi
 
 if git rev-parse "$TAG" >/dev/null 2>&1; then
@@ -75,11 +120,26 @@ if git ls-remote --tags origin "$TAG" 2>/dev/null | grep -q .; then
     err "Tag $TAG already exists on origin."
 fi
 
-if ! command -v gh >/dev/null 2>&1; then
-    err 'gh CLI not installed. Install from https://cli.github.com/.'
-fi
+# Hard dependencies — fail fast before mutating anything (and before
+# the ruleset disable, so we don't enter the danger zone half-armed).
+for dep in gh jq diff; do
+    command -v "$dep" >/dev/null 2>&1 \
+        || err "$dep not on PATH (required for the ruleset disable-restore play)."
+done
 
-ok "VERSION=$VERSION TAG=$TAG (semver, clean tree, tag is new)"
+# Resolve the GitHub repo from `origin` so a fork running this script
+# operates against its own remote, not the upstream — critical for the
+# ruleset API calls below. Fall back to `gh repo view` for environments
+# where origin is set to an alias.
+ORIGIN_URL=$(git remote get-url origin 2>/dev/null || true)
+REPO_SLUG=$(printf '%s' "$ORIGIN_URL" \
+    | sed -E 's|^https?://[^/]+/||; s|^git@[^:]+:||; s|\.git$||' \
+    | tr -d '[:space:]')
+if [ -z "$REPO_SLUG" ] || ! [[ "$REPO_SLUG" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+    REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+fi
+[ -n "$REPO_SLUG" ] || err 'Could not derive repo slug from `git remote get-url origin` or `gh repo view`.'
+ok "VERSION=$VERSION TAG=$TAG REPO=$REPO_SLUG (semver, clean tree, tag is new)"
 
 # ---------------------------------------------------------------------------
 # 1. Fetch + verify version constant on dev matches VERSION
@@ -101,118 +161,123 @@ if [ "$DEV_VERSION" != "$VERSION" ]; then
 fi
 ok "origin/dev already at $VERSION"
 
-# Verify main can fast-forward to dev (no divergence).
 AHEAD_MAIN=$(git rev-list --count "origin/dev..origin/main" 2>/dev/null || echo 0)
 AHEAD_DEV=$(git rev-list --count "origin/main..origin/dev" 2>/dev/null || echo 0)
 if [ "$AHEAD_MAIN" -gt 0 ]; then
     err "origin/main has $AHEAD_MAIN commit(s) NOT on origin/dev. main must be a strict ancestor of dev for ff-promotion. Reconcile first."
 fi
 if [ "$AHEAD_DEV" -eq 0 ]; then
-    warn "origin/main is already at origin/dev; no promotion needed (will tag the existing HEAD)."
+    warn 'origin/main is already at origin/dev; no promotion needed (will tag the existing HEAD).'
 fi
 ok "main can fast-forward to dev (+$AHEAD_DEV commit(s) ahead)"
 
 # ---------------------------------------------------------------------------
-# 2. Smoke + tests (skippable)
+# 2. Smoke + tests (skippable; messaging differentiates skipped from passed)
 # ---------------------------------------------------------------------------
 
-if [ -z "$SKIP_SMOKE" ]; then
-    info 'running make smoke...'
-    if [ -z "$DRY_RUN" ]; then
-        make smoke >/dev/null 2>&1 || err 'smoke test failed. Pass SKIP_SMOKE=1 to override.'
-    fi
-    ok 'smoke test passed'
-else
+if [ -n "$SKIP_SMOKE" ]; then
     warn 'SKIP_SMOKE=1 set, skipping smoke test'
+elif [ -n "$DRY_RUN" ]; then
+    info 'DRY_RUN: smoke test would run here (skipping the actual `make smoke`)'
+else
+    info 'running make smoke...'
+    make smoke >/dev/null 2>&1 || err 'smoke test failed. Pass SKIP_SMOKE=1 to override.'
+    ok 'smoke test passed'
 fi
 
-if [ -z "$SKIP_TESTS" ]; then
-    info 'running Pester...'
-    if [ -z "$DRY_RUN" ]; then
-        pwsh -NoLogo -Command "
-            \$cfg = New-PesterConfiguration
-            \$cfg.Run.Path = './tests'
-            \$cfg.Output.Verbosity = 'Minimal'
-            \$cfg.Run.Exit = \$true
-            Invoke-Pester -Configuration \$cfg
-        " >/dev/null 2>&1 || err 'Pester tests failed. Pass SKIP_TESTS=1 to override.'
-    fi
-    ok 'Pester tests passed'
-else
+if [ -n "$SKIP_TESTS" ]; then
     warn 'SKIP_TESTS=1 set, skipping Pester'
+elif [ -n "$DRY_RUN" ]; then
+    info 'DRY_RUN: Pester would run here (skipping the actual Invoke-Pester)'
+else
+    info 'running Pester...'
+    pwsh -NoLogo -Command "
+        \$cfg = New-PesterConfiguration
+        \$cfg.Run.Path = './tests'
+        \$cfg.Output.Verbosity = 'Minimal'
+        \$cfg.Run.Exit = \$true
+        Invoke-Pester -Configuration \$cfg
+    " >/dev/null 2>&1 || err 'Pester tests failed. Pass SKIP_TESTS=1 to override.'
+    ok 'Pester tests passed'
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Confirmation gate (final chance to back out)
+# 3. Locate main-protection ruleset by name (fork-safe)
+# ---------------------------------------------------------------------------
+
+info 'locating main-protection ruleset...'
+MAIN_RULESET_ID=$(gh api "repos/$REPO_SLUG/rulesets" --jq '.[] | select(.name == "main-protection") | .id' 2>/dev/null | head -1 || true)
+if [ -z "$MAIN_RULESET_ID" ]; then
+    err "Could not find a ruleset named 'main-protection' on $REPO_SLUG. Either it doesn't exist (no protection to disable — push directly?) or the API call failed."
+fi
+ok "main-protection ruleset id = $MAIN_RULESET_ID"
+
+# ---------------------------------------------------------------------------
+# 4. Confirmation gate
 # ---------------------------------------------------------------------------
 
 if [ -z "$DRY_RUN" ] && [ -z "$CONFIRM" ]; then
     echo ''
-    warn "About to ff-promote origin/dev → origin/main and tag $TAG."
+    warn "About to ff-promote origin/dev → origin/main and tag $TAG on $REPO_SLUG."
     warn "Type 'yes' to proceed, anything else to abort:"
     read -r RESP
     [ "$RESP" = 'yes' ] || err 'aborted by user.'
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Promote origin/dev → origin/main (with disable-restore on ruleset)
+# 5. Promote origin/dev → origin/main (with disable-restore on ruleset)
 # ---------------------------------------------------------------------------
-# main-protection (ruleset 16051054) requires PRs for any change to main.
-# A direct ff-push from dev would be rejected. Standard play: capture the
-# ruleset, set enforcement=disabled, do the push, restore enforcement,
-# verify the round-trip is byte-identical.
-
-MAIN_RULESET_ID=16051054
 
 if [ "$AHEAD_DEV" -gt 0 ]; then
     if [ -z "$DRY_RUN" ]; then
         info 'capturing main-protection ruleset...'
-        gh api "repos/ChannelAssist/ca-bootstrap/rulesets/$MAIN_RULESET_ID" \
-            > /tmp/main-protection-before.json 2>/dev/null \
-            || err "could not read ruleset $MAIN_RULESET_ID"
-        BEFORE_ENFORCEMENT=$(jq -r '.enforcement' /tmp/main-protection-before.json)
+        gh api "repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID" \
+            > "$TMPDIR_RELEASE/main-protection-before.json" 2>/dev/null \
+            || err "could not read ruleset $MAIN_RULESET_ID on $REPO_SLUG"
+        BEFORE_ENFORCEMENT=$(jq -r '.enforcement' "$TMPDIR_RELEASE/main-protection-before.json")
         ok "captured (enforcement=$BEFORE_ENFORCEMENT)"
 
         info 'disabling main-protection enforcement...'
         jq -M -c '.enforcement = "disabled" | {name, target, source_type, source, enforcement, conditions, rules}' \
-            /tmp/main-protection-before.json > /tmp/main-protection-disable.json
-        gh api -X PUT "repos/ChannelAssist/ca-bootstrap/rulesets/$MAIN_RULESET_ID" \
-            --input /tmp/main-protection-disable.json --jq '.enforcement' >/dev/null
+            "$TMPDIR_RELEASE/main-protection-before.json" > "$TMPDIR_RELEASE/main-protection-disable.json"
+        gh api -X PUT "repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID" \
+            --input "$TMPDIR_RELEASE/main-protection-disable.json" --jq '.enforcement' >/dev/null
+        # Critical: from now until the matching restore, any error path
+        # must trigger the EXIT trap to put the ruleset back.
+        RULESET_DISABLED=1
         ok 'main-protection disabled'
 
-        # Local checkout of main, ff-merge dev, push.
         info 'ff-promoting origin/dev → origin/main...'
         ORIG_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-        # Use a detached working area to avoid disturbing the user's branch.
         git checkout main >/dev/null 2>&1 || git checkout -B main origin/main >/dev/null 2>&1
         git merge --ff-only origin/dev >/dev/null
         git push origin main >/dev/null
-        # Restore the user's original branch — they were probably on dev.
         git checkout "$ORIG_BRANCH" >/dev/null 2>&1 || true
         ok "origin/main fast-forwarded to $(git rev-parse --short origin/dev)"
 
         info 'restoring main-protection enforcement...'
         jq -M -c --arg e "$BEFORE_ENFORCEMENT" '.enforcement = $e | {name, target, source_type, source, enforcement, conditions, rules}' \
-            /tmp/main-protection-before.json > /tmp/main-protection-restore.json
-        gh api -X PUT "repos/ChannelAssist/ca-bootstrap/rulesets/$MAIN_RULESET_ID" \
-            --input /tmp/main-protection-restore.json --jq '.enforcement' >/dev/null
-        # Verify byte-identical round-trip.
-        gh api "repos/ChannelAssist/ca-bootstrap/rulesets/$MAIN_RULESET_ID" \
-            > /tmp/main-protection-after.json 2>/dev/null
+            "$TMPDIR_RELEASE/main-protection-before.json" > "$TMPDIR_RELEASE/main-protection-restore.json"
+        gh api -X PUT "repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID" \
+            --input "$TMPDIR_RELEASE/main-protection-restore.json" --jq '.enforcement' >/dev/null
+        RULESET_DISABLED=0
+
+        gh api "repos/$REPO_SLUG/rulesets/$MAIN_RULESET_ID" \
+            > "$TMPDIR_RELEASE/main-protection-after.json" 2>/dev/null
         if ! diff -q \
-                <(jq -SM 'del(.updated_at) | .' /tmp/main-protection-before.json) \
-                <(jq -SM 'del(.updated_at) | .' /tmp/main-protection-after.json) >/dev/null; then
+                <(jq -SM 'del(.updated_at) | .' "$TMPDIR_RELEASE/main-protection-before.json") \
+                <(jq -SM 'del(.updated_at) | .' "$TMPDIR_RELEASE/main-protection-after.json") >/dev/null; then
             warn 'main-protection ruleset content drifted after restore; review manually.'
         else
             ok 'main-protection re-enabled (byte-identical)'
         fi
     else
-        info "DRY_RUN: would ff-promote origin/dev → origin/main"
+        info 'DRY_RUN: would ff-promote origin/dev → origin/main with disable-restore on main-protection'
     fi
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Tag main + push tag
+# 6. Tag main + push tag
 # ---------------------------------------------------------------------------
 
 if [ -z "$DRY_RUN" ]; then
@@ -225,10 +290,9 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. GitHub release
+# 7. GitHub release
 # ---------------------------------------------------------------------------
 
-# Resolve the previous tag for changelog generation.
 PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "^$TAG$" | head -1 || true)
 
 if [ -n "$NOTES_FILE" ] && [ -f "$NOTES_FILE" ]; then
@@ -251,12 +315,12 @@ $COMMITS
 
 \`\`\`powershell
 # Windows
-iwr -useb https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/$TAG/bootstrap.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/$REPO_SLUG/$TAG/bootstrap.ps1 | iex
 \`\`\`
 
 \`\`\`bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/$TAG/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/$REPO_SLUG/$TAG/bootstrap.sh | bash
 \`\`\`"
 fi
 
@@ -268,7 +332,7 @@ if [ -z "$DRY_RUN" ]; then
     URL=$(gh release view "$TAG" --json url -q .url)
     ok "GitHub release created: $URL"
 else
-    info "DRY_RUN: would create GitHub release with notes:"
+    info 'DRY_RUN: would create GitHub release with notes:'
     echo "$NOTES_BODY"
 fi
 
