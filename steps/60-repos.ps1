@@ -114,13 +114,20 @@ function Invoke-CABStep60 {
         }
         Write-Host ''
 
+        # Default to "no" when every repo in the group is opt-in. Without
+        # this, accepting the group prompt with Enter walks the user
+        # through a per-repo opt-in confirmation for every entry —
+        # extra friction in the common "skip the whole group" path.
+        # Groups with at least one non-opt-in repo still default to Y.
+        $allOptIn = -not @($g.repos | Where-Object { -not $_.opt_in }).Count
+        $groupDefault = if ($allOptIn) { 'n' } else { 'Y' }
         $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in $($g.name)?" `
             -Options @(
                 @{ Key = 'Y'; Label = 'Yes' },
                 @{ Key = 'n'; Label = 'No (skip group)' },
                 @{ Key = 's'; Label = 'Select' }
             ) `
-            -Default 'Y' `
+            -Default $groupDefault `
             -AnswerKey "repos.group.$($g.name)"
 
         if ($groupChoice -eq 'quit') {
