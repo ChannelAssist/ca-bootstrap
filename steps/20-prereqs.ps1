@@ -104,7 +104,7 @@ function Invoke-CABStep20 {
         }
 
         if (-not $shouldInstall) {
-            Write-CABStatus -Status skip -Message "$progressPrefix $($tool.id) skipped"
+            Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($tool.id) skipped"
             $skipped++
             continue
         }
@@ -116,7 +116,7 @@ function Invoke-CABStep20 {
         Write-Host " Installing $($tool.name)..." -ForegroundColor DarkGray
         $result = Install-CABTool -Tool $tool -Context $Context
         if ($result.ok) {
-            Write-CABStatus -Status ok -Message "$progressPrefix $($tool.id) — $($result.details)"
+            Write-CABStatus -Status ok -Prefix $progressPrefix -Message "$($tool.id) — $($result.details)"
             Add-CABJournalEntry -Step '20-prereqs' -Action 'install_tool' -Data @{
                 tool   = $tool.id
                 method = (Get-CABInstallEntry -Tool $tool).type
@@ -129,7 +129,7 @@ function Invoke-CABStep20 {
                 Write-CABColor Yellow "      ⓘ Post-install check still reports: $($recheck.details)"
             }
         } else {
-            Write-CABStatus -Status fail -Message "$progressPrefix $($tool.id) — $($result.details)"
+            Write-CABStatus -Status fail -Prefix $progressPrefix -Message "$($tool.id) — $($result.details)"
             $failed.Add($tool.id)
         }
     }

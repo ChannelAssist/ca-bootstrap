@@ -59,7 +59,12 @@ function Write-CABStatus {
     param(
         [Parameter(Mandatory)] [ValidateSet('ok','warn','fail','info','skip')] [string]$Status,
         [Parameter(Mandatory)] [string]$Message,
-        [string]$Detail
+        [string]$Detail,
+        # Prefix renders in cyan ahead of the message so progress
+        # markers like "[3/17]" stand out against status colors —
+        # especially the skip path where the whole message is
+        # DarkGray and an inlined marker reads dim.
+        [string]$Prefix
     )
     $icon, $color = switch ($Status) {
         'ok'   { '✓', 'Green'   }
@@ -68,7 +73,13 @@ function Write-CABStatus {
         'info' { 'ⓘ', 'Cyan'    }
         'skip' { '↷', 'DarkGray' }
     }
-    Write-CABColor ([ConsoleColor]$color) "  $icon  $Message" -NoNewLine
+    Write-CABColor ([ConsoleColor]$color) "  $icon  " -NoNewLine
+    if ($Prefix) {
+        Write-CABColor Cyan $Prefix -NoNewLine
+        Write-CABColor ([ConsoleColor]$color) " $Message" -NoNewLine
+    } else {
+        Write-CABColor ([ConsoleColor]$color) $Message -NoNewLine
+    }
     if ($Detail) { Write-Host "  ($Detail)" } else { Write-Host '' }
 }
 

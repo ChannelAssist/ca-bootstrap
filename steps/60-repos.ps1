@@ -143,13 +143,13 @@ function Invoke-CABStep60 {
             }
             $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
             if ($state -eq 'matches') {
-                Write-CABStatus -Status skip -Message "$progressPrefix $($repo.repo) already cloned" -Detail $into
+                Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($repo.repo) already cloned" -Detail $into
                 $fetch = Invoke-CABRepoFetch -Path $into
                 if ($fetch.ok) { $totalFetched++ }
                 continue
             }
             if ($state -eq 'mismatch') {
-                Write-CABStatus -Status warn -Message "$progressPrefix $($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
+                Write-CABStatus -Status warn -Prefix $progressPrefix -Message "$($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
                 $totalSkipped++
                 continue
             }
@@ -167,7 +167,7 @@ function Invoke-CABStep60 {
             }
 
             if (-not $shouldClone) {
-                Write-CABStatus -Status skip -Message "$progressPrefix $($repo.repo) skipped"
+                Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($repo.repo) skipped"
                 $totalSkipped++
                 continue
             }
@@ -182,7 +182,7 @@ function Invoke-CABStep60 {
             $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
             Write-Host ''
             if ($result.ok) {
-                Write-CABStatus -Status ok -Message "$progressPrefix $($repo.repo) cloned"
+                Write-CABStatus -Status ok -Prefix $progressPrefix -Message "$($repo.repo) cloned"
                 Add-CABJournalEntry -Step '60-repos' -Action 'clone_repo' -Data @{
                     repo   = $repo.repo
                     path   = $into
@@ -190,7 +190,7 @@ function Invoke-CABStep60 {
                 } | Out-Null
                 $totalCloned++
             } else {
-                Write-CABStatus -Status fail -Message "$progressPrefix $($repo.repo) failed" -Detail $result.details
+                Write-CABStatus -Status fail -Prefix $progressPrefix -Message "$($repo.repo) failed" -Detail $result.details
                 $failedDetails.Add("$($repo.repo): $($result.details)")
                 $totalFailed++
             }
