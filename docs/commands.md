@@ -25,8 +25,9 @@ If `<command>` is omitted, `setup` runs.
 | `make test` | Full Pester suite. |
 | `make smoke` | End-to-end smoke test against a /tmp workspace. |
 | `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
-| `make release VERSION=X.Y.Z` | Full release: bump version, smoke + tests, commit, tag, push, GH release. |
+| `make release VERSION=X.Y.Z` | Promote `dev` → `main` (ff), tag GPG-signed, push, create GH release. Requires the version constant on `dev` to already equal X.Y.Z — bump it via a PR to `dev` first. |
 | `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
+| `make manifest-drift` | Show drift between `manifest/repos.yaml` and the live ChannelAssist org (read-only). |
 
 ---
 

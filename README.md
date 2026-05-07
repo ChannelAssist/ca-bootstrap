@@ -214,6 +214,17 @@ Most changes are YAML edits, no code required:
 
 For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
 
+### Branch model
+
+Following the ChannelAssist org convention:
+
+| Branch | Role |
+|---|---|
+| `dev` | Default. Feature PRs target this branch. CI runs on every PR. |
+| `main` | Release source of truth. Only advances via fast-forward from `dev` at release time. Tagged `vX.Y.Z` on every release. |
+
+The bootstrap one-liners pin to `main`, so end-users always pull the most recently released code (not work-in-progress on `dev`). To cut a release: bump `$Script:CABootstrapVersion` in a PR to `dev`, merge it, then run `make release VERSION=X.Y.Z` — see [`docs/commands.md`](docs/commands.md#make-release) for the full flow.
+
 ---
 
 ## License
