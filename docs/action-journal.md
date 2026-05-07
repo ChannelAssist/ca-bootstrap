@@ -35,13 +35,13 @@ YAML 1.2. Top-level structure:
 schema_version: 1
 host:
   os: windows                  # 'windows' | 'macos' | 'linux-debian' | 'linux-rhel' | 'linux-arch'
-  user: peter
-  hostname: DESKTOP-PETER
+  user: user
+  hostname: DESKTOP-USER
 sessions:
   - id: 2026-05-15T09:30:00Z   # ISO 8601 UTC, used as session key
     command: setup              # 'setup' | 'repair' | 'undo'
     ca_bootstrap_version: 1.0.0
-    workspace_path: C:\Users\peter\Documents\Projects\Work\ChannelAssist\ChannelAssistDev
+    workspace_path: C:\Users\user\Documents\Projects\ChannelAssistDev
     actions:                    # ordered, oldest first
       - { … }
       - { … }
@@ -99,7 +99,7 @@ Listed in the order steps typically produce them.
   step: 30-gh-auth
   action: gh_auth_login
   protocol: https
-  user: peter-g
+  user: user-g
   reversible: true
   undone: false
 ```
@@ -134,8 +134,8 @@ Listed in the order steps typically produce them.
   workspace: C:\…\ChannelAssistDev
   global_gitconfig_includeif_added: true
   workspace_gitconfig_path: C:\…\ChannelAssistDev\.gitconfig
-  previous_global_email: peter.personal@gmail.com  # captured before our change
-  new_workspace_email: peter.g@channelassist.com
+  previous_global_email: user.personal@example.com  # captured before our change
+  new_workspace_email: user@channelassist.com
   reversible: true
   undone: false
 ```

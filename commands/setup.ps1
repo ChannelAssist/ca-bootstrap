@@ -1,8 +1,5 @@
 #requires -Version 7.0
 # commands/setup.ps1 — runs all steps in order, install/fix mode.
-#
-# Phase 1 wires only step 10 (welcome). Subsequent phases will append
-# step 20…80 to the $stepIds list as they're implemented.
 
 # Invoke-CABQuitWithRollbackOffer — called when the user quits or a step
 # fails. Offers to undo this session's recorded actions so the user
@@ -38,11 +35,19 @@ function Invoke-CABQuitWithRollbackOffer {
     }
 
     # Reuse undo's per-action reverser dispatch so we don't reimplement
-    # any of the safety rules (uncommitted-changes guard, etc.).
+    # any of the safety rules (uncommitted-changes guard, etc.). Per-
+    # action [N/total] counter mirrors the install + clone progress
+    # markers — long rollbacks now show where they are in the queue.
     . (Join-Path $Context.RepoRoot 'commands/undo.ps1')
     $reversed = 0
     $skipped = 0
+    $progressIndex = 0
+    $progressTotal = $actions.Count
     foreach ($entry in $actions) {
+        $progressIndex++
+        Write-Host '  ' -NoNewline
+        Write-CABColor Cyan "[$progressIndex/$progressTotal]" -NoNewLine
+        Write-CABColor DarkGray " reverting $($entry.action)..."
         $r = Invoke-CABUndoEntry -Entry $entry -Force:$false -IncludeFolders:$true -IncludeTools:$false -Context $Context
         switch ($r.status) {
             'ok'   { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $reversed++ }
@@ -90,18 +95,13 @@ function Invoke-CABCommandSetup {
     #   7. identity   — per-folder git config
     #   8. extras     — VS Code workspace, plugin, WSL2
     # Single source of truth for step id → title mapping AND execution
-    # order. The TUI receives this list in the `welcome` event (see
-    # Get-CABSetupStepDefs / lib/tui-rpc.ps1) and builds its Tree pane
-    # from it, so a rename or reorder here automatically propagates to
-    # the TUI without any matching change in cab_tui/app.py.
+    # order. To rename or reorder a step, edit only Get-CABSetupStepDefs.
     $stepDefs = Get-CABSetupStepDefs
-    $stepIds = $stepDefs | ForEach-Object { $_.id }
     $Context.TotalSteps = $stepDefs.Count
 
     $ordinal = 0
     foreach ($stepDef in $stepDefs) {
         $stepId = $stepDef.id
-        $title  = $stepDef.title
         # Honor a Ctrl+C set during the previous step.
         if ($Script:CABQuitRequested) {
             Save-CABJournal
@@ -121,85 +121,25 @@ function Invoke-CABCommandSetup {
         $stepNum = ($stepId -split '-')[0]
         $invokeFn = "Invoke-CABStep$stepNum"
 
-        # Retry loop: a step that fails can ask the user (via TUI recovery
-        # prompt) to retry, skip, or quit. CLI mode keeps the legacy
-        # "fail → rollback" path because Read-CABRecovery returns 'quit'.
-        $shouldRetry = $true
-        while ($shouldRetry) {
-            $shouldRetry = $false
+        $result = & $invokeFn -Context $Context
 
-            # Emit step.start every iteration so retries flip the tree icon
-            # back from ✗ to ▶ for the duration of the retry attempt. The
-            # step files themselves don't need to know.
-            if ($Script:CABootstrapTuiMode) {
-                try {
-                    Send-CABTuiEvent -Event @{
-                        type    = 'step'
-                        phase   = 'start'
-                        step    = $stepId
-                        title   = $title
-                        ordinal = $ordinal
-                        total   = $Context.TotalSteps
-                    }
-                } catch { }
+        switch ($result.status) {
+            'ok'      { Write-CABStatus -Status ok   -Message $result.details }
+            'skip'    { Write-CABStatus -Status skip -Message $result.details }
+            'warn'    { Write-CABStatus -Status warn -Message $result.details }
+            'quit'    {
+                Save-CABJournal
+                Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'You quit'
+                return 1
             }
-
-            $result = & $invokeFn -Context $Context
-
-            # Emit step.end mirroring the result. Done before the switch's
-            # status-write so the TUI's Tree updates in lockstep with the CLI.
-            if ($Script:CABootstrapTuiMode) {
-                try {
-                    Send-CABTuiEvent -Event @{
-                        type    = 'step'
-                        phase   = if ($result.status -eq 'skip') { 'skip' } else { 'end' }
-                        step    = $stepId
-                        status  = $result.status
-                        details = $result.details
-                    }
-                } catch { }
+            'fail'    {
+                Write-CABStatus -Status fail -Message $result.details
+                Save-CABJournal
+                Invoke-CABQuitWithRollbackOffer -Context $Context -Reason "Step '$stepId' failed"
+                return 2
             }
-
-            switch ($result.status) {
-                'ok'      { Write-CABStatus -Status ok   -Message $result.details }
-                'skip'    { Write-CABStatus -Status skip -Message $result.details }
-                'warn'    { Write-CABStatus -Status warn -Message $result.details }
-                'quit'    {
-                    Save-CABJournal
-                    Invoke-CABQuitWithRollbackOffer -Context $Context -Reason 'You quit'
-                    return 1
-                }
-                'fail'    {
-                    Write-CABStatus -Status fail -Message $result.details
-                    $action = Read-CABRecovery -StepId $stepId -Details $result.details
-                    if ($action -eq 'retry') {
-                        Write-CABStatus -Status info -Message "Retrying '$stepId'..."
-                        $shouldRetry = $true
-                    } elseif ($action -eq 'skip') {
-                        Write-CABStatus -Status warn -Message "Skipped after failure: $($result.details)"
-                        # Replace the ✗ icon with ↷ in the TUI Tree —
-                        # otherwise the user sees a "failed" step the
-                        # orchestrator has actually moved past.
-                        if ($Script:CABootstrapTuiMode) {
-                            try {
-                                Send-CABTuiEvent -Event @{
-                                    type    = 'step'
-                                    phase   = 'skip'
-                                    step    = $stepId
-                                    status  = 'skip'
-                                    details = "Skipped after failure: $($result.details)"
-                                }
-                            } catch { }
-                        }
-                    } else {
-                        Save-CABJournal
-                        Invoke-CABQuitWithRollbackOffer -Context $Context -Reason "Step '$stepId' failed"
-                        return 2
-                    }
-                }
-                'pending' { Write-CABStatus -Status info -Message $result.details }
-                default   { Write-CABStatus -Status warn -Message "Unknown step status: $($result.status)" }
-            }
+            'pending' { Write-CABStatus -Status info -Message $result.details }
+            default   { Write-CABStatus -Status warn -Message "Unknown step status: $($result.status)" }
         }
     }
 

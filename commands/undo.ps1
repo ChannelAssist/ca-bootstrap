@@ -62,10 +62,18 @@ function Invoke-CABCommandUndo {
     $skipped = 0
     $failed = New-Object System.Collections.ArrayList
 
-    # Walk entries in REVERSE chronological order (LIFO).
+    # Walk entries in REVERSE chronological order (LIFO). Per-entry
+    # [N/total] counter so a long undo run surfaces "where am I in the
+    # queue" — same pattern as install/clone/quit-rollback.
     $sortedEntries = $entries | Sort-Object -Property id -Descending
+    $progressIndex = 0
+    $progressTotal = $sortedEntries.Count
 
     foreach ($entry in $sortedEntries) {
+        $progressIndex++
+        Write-Host '  ' -NoNewline
+        Write-CABColor Cyan "[$progressIndex/$progressTotal]" -NoNewLine
+        Write-CABColor DarkGray " undo $($entry.action) [$($entry.id)]"
         $result = Invoke-CABUndoEntry -Entry $entry -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force -Context $Context
         switch ($result.status) {
             'ok'      { $undone++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
@@ -140,9 +148,10 @@ function Group-CABUndoEntries {
 function Invoke-CABUndoEntry {
     param([hashtable]$Entry, [switch]$IncludeTools, [switch]$IncludeFolders, [switch]$Force, [hashtable]$Context)
 
-    Write-Host ''
-    Write-Host "  → undo $($Entry.action) [$($Entry.id)]"
-
+    # Caller (the undo loop or Invoke-CABQuitWithRollbackOffer) already
+    # emits a "[N/M] reverting/undo <action>" line before invoking us,
+    # so this function just dispatches to the per-action reverser. No
+    # duplicate header line here.
     switch ($Entry.action) {
         'configure_git_identity' { return Invoke-CABUndoIdentity -Entry $Entry -Force:$Force }
         'clone_repo'             { return Invoke-CABUndoCloneRepo -Entry $Entry -Force:$Force }

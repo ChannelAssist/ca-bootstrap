@@ -31,7 +31,19 @@ function Get-CABDefaultWorkspacePath {
     if (-not $profileDir) {
         throw "Could not resolve a user profile directory. Tried: $($candidates -join ', '). Set CA_BOOTSTRAP_WORKSPACE to an absolute path and re-run."
     }
-    $sub = if ($IsWindows) { 'Documents\Projects\Work\ChannelAssist\ChannelAssistDev' } else { 'Documents/Projects/Work/ChannelAssist/ChannelAssistDev' }
+    # Prefer Documents/ when it exists (the typical desktop layout). On
+    # headless / minimal Linux installs the XDG userdirs may not be
+    # configured and ~/Documents/ won't exist — silently creating one
+    # there would be surprising. Fall back to <profile>/Projects/ in
+    # that case so the workspace lands somewhere the user expects on a
+    # bare box.
+    $docsDir = Join-Path $profileDir 'Documents'
+    $hasDocs = Test-Path $docsDir -PathType Container
+    if ($hasDocs) {
+        $sub = if ($IsWindows) { 'Documents\Projects\ChannelAssistDev' } else { 'Documents/Projects/ChannelAssistDev' }
+    } else {
+        $sub = if ($IsWindows) { 'Projects\ChannelAssistDev' } else { 'Projects/ChannelAssistDev' }
+    }
     return [System.IO.Path]::GetFullPath((Join-Path $profileDir $sub))
 }
 
@@ -75,14 +87,17 @@ function Invoke-CABStep40 {
         return @{ status = 'fail'; details = $_.Exception.Message }
     }
 
-    # Include the resolved path in the prompt question itself so the TUI
-    # (which renders only the prompt event, not surrounding Write-Host
-    # output) gives the user enough context to decide. The legacy CLI
-    # gets the same self-contained question on its prompt line — slightly
-    # longer than the previous "Use this default?" but no longer requires
-    # a separate "Default location: ..." line above it.
+    # Print the resolved path on its own line above the prompt. A long
+    # path inlined into the question (the v1.4.x TUI-era shape) makes a
+    # 90+ char line that wraps mid-path on standard 80-col terminals;
+    # users miss the wrapped portion. Two lines reads cleanly: path
+    # first as a labeled line, then a short y/n.
+    Write-Host ''
+    Write-Host "  Default location: $default"
+    Write-Host ''
+
     $useDefault = Read-CABConfirm `
-        -Question "Use default workspace at $default?" `
+        -Question 'Use this default?' `
         -Default $true `
         -AnswerKey 'workspace.use_default'
     if (Test-CABQuit $useDefault) {

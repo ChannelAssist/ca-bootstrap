@@ -43,7 +43,15 @@ function Write-CABStep {
         [Parameter(Mandatory)] [string]$Title
     )
     Write-Host ''
-    Write-CABColor White "Step $Number/$Total — $Title"
+    # Total = 0 means we're being invoked outside the setup wizard
+    # (repair, repair --target, ad-hoc step run). The "Step N/0"
+    # rendering reads as a count-out-of-bounds, so drop the X/Y suffix
+    # in that mode and just show the title.
+    if ($Total -gt 0) {
+        Write-CABColor White "Step $Number/$Total — $Title"
+    } else {
+        Write-CABColor White "$Title"
+    }
 }
 
 function Write-CABStatus {
@@ -51,7 +59,12 @@ function Write-CABStatus {
     param(
         [Parameter(Mandatory)] [ValidateSet('ok','warn','fail','info','skip')] [string]$Status,
         [Parameter(Mandatory)] [string]$Message,
-        [string]$Detail
+        [string]$Detail,
+        # Prefix renders in cyan ahead of the message so progress
+        # markers like "[3/17]" stand out against status colors —
+        # especially the skip path where the whole message is
+        # DarkGray and an inlined marker reads dim.
+        [string]$Prefix
     )
     $icon, $color = switch ($Status) {
         'ok'   { '✓', 'Green'   }
@@ -60,7 +73,13 @@ function Write-CABStatus {
         'info' { 'ⓘ', 'Cyan'    }
         'skip' { '↷', 'DarkGray' }
     }
-    Write-CABColor ([ConsoleColor]$color) "  $icon  $Message" -NoNewLine
+    Write-CABColor ([ConsoleColor]$color) "  $icon  " -NoNewLine
+    if ($Prefix) {
+        Write-CABColor Cyan $Prefix -NoNewLine
+        Write-CABColor ([ConsoleColor]$color) " $Message" -NoNewLine
+    } else {
+        Write-CABColor ([ConsoleColor]$color) $Message -NoNewLine
+    }
     if ($Detail) { Write-Host "  ($Detail)" } else { Write-Host '' }
 }
 

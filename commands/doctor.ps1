@@ -24,18 +24,29 @@ function Run-CABDoctorChecks {
 
     # ----- Workspace -----
     $workspace = $null
+    # Most-recent non-undone entry wins. Get-CABJournalEntries walks
+    # sessions oldest-first and returns them in that order, so [0] is the
+    # OLDEST surviving record — which after a default-path change reads
+    # back the previous default and reports a stale "missing" workspace
+    # even when setup just finished writing to the new one. Take [-1] so
+    # doctor reflects the workspace the most recent setup chose.
     $workspaceEntries = @(Get-CABJournalEntries -Action 'create_folder' -Step '40-workspace')
     if ($workspaceEntries.Count -gt 0) {
-        $workspace = [string]$workspaceEntries[0].path
+        $workspace = [string]$workspaceEntries[-1].path
     } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {
         $workspace = $env:CA_BOOTSTRAP_WORKSPACE
     } else {
-        # Best-effort default per the workspace step.
-        $workspace = if ($IsWindows) {
-            Join-Path $env:USERPROFILE 'Documents\Projects\Work\ChannelAssist\ChannelAssistDev'
+        # Best-effort default mirroring Get-CABDefaultWorkspacePath in
+        # steps/40-workspace.ps1: prefer Documents/ when it exists,
+        # otherwise root at <profile>/Projects/ for headless boxes.
+        $profileDir = if ($IsWindows) { $env:USERPROFILE } else { $HOME }
+        $docsDir = Join-Path $profileDir 'Documents'
+        $sub = if (Test-Path $docsDir -PathType Container) {
+            if ($IsWindows) { 'Documents\Projects\ChannelAssistDev' } else { 'Documents/Projects/ChannelAssistDev' }
         } else {
-            Join-Path $HOME 'Documents/Projects/Work/ChannelAssist/ChannelAssistDev'
+            if ($IsWindows) { 'Projects\ChannelAssistDev' } else { 'Projects/ChannelAssistDev' }
         }
+        $workspace = Join-Path $profileDir $sub
     }
     $Context.WorkspacePath = $workspace
 
@@ -95,6 +106,7 @@ function Run-CABDoctorChecks {
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml')
         $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object { -not $_.opt_in })
+        $expectedRepoSlugs = @($expectedRepos | ForEach-Object { $_.repo })
         $missingRepos = New-Object System.Collections.Generic.List[string]
         $okRepos = 0
         foreach ($r in $expectedRepos) {
@@ -103,9 +115,16 @@ function Run-CABDoctorChecks {
             if ($state -eq 'matches') { $okRepos++ }
             else { $missingRepos.Add("$($r.repo) ($state)") }
         }
-        # Also surface entries the journal recorded that have since been
-        # deleted from disk (drift detection).
+        # Drift detection: surface repos the journal recorded as cloned
+        # but that are no longer in the current manifest (ghost clones —
+        # e.g. cm-claim-checker after it was removed). Repos still in
+        # the manifest are validated by the loop above; including them
+        # here double-reports stale journal paths from previous workspace
+        # defaults — which is exactly what made `repair --all` flag 15
+        # false-positive "deleted from disk" entries pointing at the
+        # pre-1.4 Documents/Projects/Work/ChannelAssist/... root.
         foreach ($je in (Get-CABJournalEntries -Action 'clone_repo')) {
+            if ($expectedRepoSlugs -contains [string]$je.repo) { continue }
             $jePath = [string]$je.path
             if ($jePath -and -not (Test-Path $jePath)) {
                 $missingRepos.Add("$($je.repo) (deleted from disk)")

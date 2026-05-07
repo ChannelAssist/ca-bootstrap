@@ -79,124 +79,146 @@ function Invoke-CABStep60 {
     $totalSkipped = 0
     $totalFetched = 0
     $totalFailed = 0
+    # Mismatch is its own bucket — distinct from "user said no" or
+    # "group skipped". A mismatch means a path exists with a wrong/
+    # broken clone (often a partially-cloned .git missing HEAD/config),
+    # which the user has to clean up manually before re-running.
+    $totalMismatch = 0
+    $mismatchPaths = New-Object System.Collections.Generic.List[string]
     $failedDetails = New-Object System.Collections.Generic.List[string]
 
-    # Determinate progress: one bar that ticks as each repo finishes.
-    # Total is across all groups; opt-in repos contribute regardless of
-    # whether the user picks them, so the bar caps at attempts not selections.
-    $allManifestRepos = @($manifest.groups | ForEach-Object { $_.repos })
-    $progressTotal = $allManifestRepos.Count
-    $progressCurrent = 0
-    Send-CABTuiProgress -Id 'clone-batch' -Current 0 -Total $progressTotal -Label 'Repositories'
+    # Per-repo [N/total] counter so a long clone batch surfaces "where
+    # are we in the queue" without the user having to count rows. Total
+    # is across all groups so the numerator is monotonic — group skips
+    # advance the counter by the group's repo count.
+    $progressIndex = 0
+    $progressTotal = ($manifest.groups | ForEach-Object { $_.repos.Count } | Measure-Object -Sum).Sum
 
-    # Early-return result captured here; the try/finally below guarantees
-    # the progress bar is always closed before we return, even on quit /
-    # bad-path-shape exits. (Without this, a `return` inside the loops
-    # would leave the bar mounted in the TUI through the recovery prompt
-    # and into later steps.)
-    $earlyReturn = $null
-    try {
-        foreach ($g in $manifest.groups) {
-            Write-Host ''
-            Write-CABColor White "  Group: $($g.name) — $($g.description)"
+    # Group-level counter on the loud header line so position info is
+    # visible even on whole-group skips (the per-repo counter only
+    # surfaces inside a group the user accepted).
+    $groupIndex = 0
+    $groupTotal = $manifest.groups.Count
 
-            $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in $($g.name)?" `
-                -Options @(
-                    @{ Key = 'Y'; Label = 'Yes' },
-                    @{ Key = 'n'; Label = 'No (skip group)' },
-                    @{ Key = 's'; Label = 'Select' }
-                ) `
-                -Default 'Y' `
-                -AnswerKey "repos.group.$($g.name)"
+    foreach ($g in $manifest.groups) {
+        $groupIndex++
+        Write-Host ''
+        Write-CABColor White "  Group $groupIndex/${groupTotal}: $($g.name) — $($g.description)"
+        # List the repos so the user can see exactly what they'll be
+        # confirming. Without this, "Clone all 5 repos in ca-platform?"
+        # is opaque — the user has no way to know what's about to land
+        # on disk without flipping to manifest/repos.yaml.
+        foreach ($repo in $g.repos) {
+            $hint = if ($repo.opt_in) { ' (opt-in)' } else { '' }
+            Write-CABColor DarkGray "      • $($repo.repo)$hint"
+        }
+        Write-Host ''
 
-            if ($groupChoice -eq 'quit') {
-                $earlyReturn = @{ status = 'quit'; details = 'User quit during repo cloning.' }
-                break
+        $groupChoice = Read-CABChoice -Question "Clone all $($g.repos.Count) repos in $($g.name)?" `
+            -Options @(
+                @{ Key = 'Y'; Label = 'Yes' },
+                @{ Key = 'n'; Label = 'No (skip group)' },
+                @{ Key = 's'; Label = 'Select' }
+            ) `
+            -Default 'Y' `
+            -AnswerKey "repos.group.$($g.name)"
+
+        if ($groupChoice -eq 'quit') {
+            return @{ status = 'quit'; details = 'User quit during repo cloning.' }
+        }
+        if ($groupChoice -ieq 'n') {
+            Write-CABStatus -Status skip -Message "Group $($g.name) skipped."
+            # Account for the whole group's worth of repos so the
+            # end-of-step summary reflects what actually happened.
+            # Without this, a "no" on every group would still print
+            # "0 skipped" — caught by Copilot review on PR #17 after
+            # the per-repo $progressCurrent accumulator was removed
+            # alongside the TUI progress bar.
+            $totalSkipped += $g.repos.Count
+            $progressIndex += $g.repos.Count
+            continue
+        }
+
+        foreach ($repo in $g.repos) {
+            $progressIndex++
+            $progressPrefix = "[$progressIndex/$progressTotal]"
+            $into = Join-Path $Context.WorkspacePath $repo.into
+            # Final paranoia check before any disk mutation.
+            if (-not [System.IO.Path]::IsPathRooted($into)) {
+                return @{ status = 'fail'; details = "Computed clone path '$into' is not absolute (workspace='$($Context.WorkspacePath)', into='$($repo.into)')." }
             }
-            if ($groupChoice -ieq 'n') {
-                Write-CABStatus -Status skip -Message "Group $($g.name) skipped."
-                $progressCurrent += $g.repos.Count
-                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label "Group $($g.name) skipped"
+            $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
+            if ($state -eq 'matches') {
+                Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($repo.repo) already cloned" -Detail $into
+                $fetch = Invoke-CABRepoFetch -Path $into
+                if ($fetch.ok) { $totalFetched++ }
+                continue
+            }
+            if ($state -eq 'mismatch') {
+                Write-CABStatus -Status warn -Prefix $progressPrefix -Message "$($repo.repo) — path exists but is not a valid clone of this repo; skipping" -Detail $into
+                $totalMismatch++
+                $mismatchPaths.Add($into)
                 continue
             }
 
-            foreach ($repo in $g.repos) {
-                $into = Join-Path $Context.WorkspacePath $repo.into
-                # Final paranoia check before any disk mutation.
-                if (-not [System.IO.Path]::IsPathRooted($into)) {
-                    $earlyReturn = @{ status = 'fail'; details = "Computed clone path '$into' is not absolute (workspace='$($Context.WorkspacePath)', into='$($repo.into)')." }
-                    break
+            $shouldClone = $true
+            if ($groupChoice -ieq 's' -or $repo.opt_in) {
+                $promptText = "$progressPrefix Clone $($repo.repo)?"
+                if ($repo.warn) { Write-CABColor Yellow "    ⓘ $($repo.warn)" }
+                $default = -not $repo.opt_in
+                $ans = Read-CABConfirm -Question $promptText -Default $default -AnswerKey "repos.repo.$($repo.repo)"
+                if (Test-CABQuit $ans) {
+                    return @{ status = 'quit'; details = 'User quit during repo cloning.' }
                 }
-                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
-                $state = Test-CABRepoCloned -Path $into -ExpectedRepo $repo.repo
-                if ($state -eq 'matches') {
-                    Write-CABStatus -Status skip -Message "$($repo.repo) already cloned" -Detail $into
-                    $fetch = Invoke-CABRepoFetch -Path $into
-                    if ($fetch.ok) { $totalFetched++ }
-                    $progressCurrent++
-                    Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
-                    continue
-                }
-                if ($state -eq 'mismatch') {
-                    Write-CABStatus -Status warn -Message "$($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
-                    $totalSkipped++
-                    $progressCurrent++
-                    Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
-                    continue
-                }
-
-                $shouldClone = $true
-                if ($groupChoice -ieq 's' -or $repo.opt_in) {
-                    $promptText = "Clone $($repo.repo)?"
-                    if ($repo.warn) { Write-CABColor Yellow "    ⓘ $($repo.warn)" }
-                    $default = -not $repo.opt_in
-                    $ans = Read-CABConfirm -Question $promptText -Default $default -AnswerKey "repos.repo.$($repo.repo)"
-                    if (Test-CABQuit $ans) {
-                        $earlyReturn = @{ status = 'quit'; details = 'User quit during repo cloning.' }
-                        break
-                    }
-                    $shouldClone = (Test-CABYes $ans)
-                }
-
-                if (-not $shouldClone) {
-                    Write-CABStatus -Status skip -Message "$($repo.repo) skipped"
-                    $totalSkipped++
-                    $progressCurrent++
-                    Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
-                    continue
-                }
-
-                Write-Host "    cloning $($repo.repo) → $into..." -NoNewline
-                $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
-                Write-Host ''
-                if ($result.ok) {
-                    Write-CABStatus -Status ok -Message "$($repo.repo) cloned"
-                    Add-CABJournalEntry -Step '60-repos' -Action 'clone_repo' -Data @{
-                        repo   = $repo.repo
-                        path   = $into
-                        branch = $repo.branch
-                    } | Out-Null
-                    $totalCloned++
-                } else {
-                    Write-CABStatus -Status fail -Message "$($repo.repo) failed" -Detail $result.details
-                    $failedDetails.Add("$($repo.repo): $($result.details)")
-                    $totalFailed++
-                }
-                $progressCurrent++
-                Send-CABTuiProgress -Id 'clone-batch' -Current $progressCurrent -Total $progressTotal -Label $repo.repo
+                $shouldClone = (Test-CABYes $ans)
             }
-            if ($earlyReturn) { break }
+
+            if (-not $shouldClone) {
+                Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($repo.repo) skipped"
+                $totalSkipped++
+                continue
+            }
+
+            # Bright prefix so the [N/total] pops visually against the
+            # surrounding plain text — without a colored icon (no ✓/↷)
+            # the in-progress line was reading dim and the marker was
+            # easy to miss. Route through Write-CABColor so NO_COLOR /
+            # CA_BOOTSTRAP_NO_COLOR are honored consistently with the
+            # rest of the wizard (Copilot review, PR #17).
+            Write-Host '    ' -NoNewline
+            Write-CABColor Cyan $progressPrefix -NoNewLine
+            Write-Host " cloning $($repo.repo) → $into..." -NoNewline
+            $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
+            Write-Host ''
+            if ($result.ok) {
+                Write-CABStatus -Status ok -Prefix $progressPrefix -Message "$($repo.repo) cloned"
+                Add-CABJournalEntry -Step '60-repos' -Action 'clone_repo' -Data @{
+                    repo   = $repo.repo
+                    path   = $into
+                    branch = $repo.branch
+                } | Out-Null
+                $totalCloned++
+            } else {
+                Write-CABStatus -Status fail -Prefix $progressPrefix -Message "$($repo.repo) failed" -Detail $result.details
+                $failedDetails.Add("$($repo.repo): $($result.details)")
+                $totalFailed++
+            }
         }
     }
-    finally {
-        # Always close the progress bar — leaks the widget through the
-        # recovery prompt and into later steps otherwise.
-        Send-CABTuiProgress -Id 'clone-batch' -Done
-    }
-    if ($earlyReturn) { return $earlyReturn }
 
     Write-Host ''
-    $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalFailed failed"
+    if ($totalMismatch -gt 0) {
+        # Surface a single recovery hint at the end — repeating it on
+        # every mismatch line would just be noise. The paths are listed
+        # above (each with its own ⚠ row); this tells the user how to
+        # unstick them. We don't try to auto-fix because the path could
+        # contain uncommitted user work; manual confirmation is right.
+        Write-CABColor Yellow "  ⓘ $totalMismatch path(s) exist but aren't valid clones. Inspect each path,"
+        Write-CABColor Yellow "    then either delete it manually or run 'ca-bootstrap.ps1 undo' to remove"
+        Write-CABColor Yellow "    everything this session tracked. Re-run setup to re-clone."
+        Write-Host ''
+    }
+    $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalMismatch mismatched, $totalFailed failed"
     if ($totalFailed -gt 0) {
         return @{ status = 'fail'; details = "$summary. Errors:`n  $($failedDetails -join "`n  ")" }
     }

@@ -68,12 +68,19 @@ function Invoke-CABStep20 {
         return @{ status = 'warn'; details = "$($missing.Count) optional tool(s) skipped." }
     }
 
-    # Install loop.
+    # Install loop. Per-tool [N/total] counter so the user can see
+    # progress through a long install list — package managers don't
+    # expose machine-readable progress, but at least the wizard can
+    # say where it is in the queue.
     $installed = 0
     $skipped = 0
     $failed = New-Object System.Collections.Generic.List[string]
+    $progressIndex = 0
+    $progressTotal = $missing.Count
 
     foreach ($r in $missing) {
+        $progressIndex++
+        $progressPrefix = "[$progressIndex/$progressTotal]"
         $tool = $byId[$r.id]
         if (-not $tool) { continue }
 
@@ -87,7 +94,7 @@ function Invoke-CABStep20 {
             } else { '' }
             $default = -not ($tool.heavy -or $tool.requires_reboot)
             $ans = Read-CABConfirm `
-                -Question "Install $($tool.name)$heavyHint$rebootHint?" `
+                -Question "$progressPrefix Install $($tool.name)$heavyHint$rebootHint?" `
                 -Default $default `
                 -AnswerKey "prereqs.install.$($tool.id)"
             if (Test-CABQuit $ans) {
@@ -97,20 +104,21 @@ function Invoke-CABStep20 {
         }
 
         if (-not $shouldInstall) {
-            Write-CABStatus -Status skip -Message "$($tool.id) skipped"
+            Write-CABStatus -Status skip -Prefix $progressPrefix -Message "$($tool.id) skipped"
             $skipped++
             continue
         }
 
-        # Indeterminate spinner — package managers (winget/brew/scoop/apt)
-        # don't expose machine-readable progress, so we just signal "busy
-        # with $tool.name" until Install-CABTool returns.
-        $progressId = "install-$($tool.id)"
-        Send-CABTuiProgress -Id $progressId -Label "Installing $($tool.name)…"
+        # Cyan prefix for visual prominence; rest stays dim so it doesn't
+        # compete with the post-install ✓/✗ status line that follows.
+        # Both segments go through Write-CABColor so NO_COLOR is honored
+        # (Copilot review, PR #17).
+        Write-Host '  ' -NoNewline
+        Write-CABColor Cyan $progressPrefix -NoNewLine
+        Write-CABColor DarkGray " Installing $($tool.name)..."
         $result = Install-CABTool -Tool $tool -Context $Context
-        Send-CABTuiProgress -Id $progressId -Done
         if ($result.ok) {
-            Write-CABStatus -Status ok -Message "$($tool.id) — $($result.details)"
+            Write-CABStatus -Status ok -Prefix $progressPrefix -Message "$($tool.id) — $($result.details)"
             Add-CABJournalEntry -Step '20-prereqs' -Action 'install_tool' -Data @{
                 tool   = $tool.id
                 method = (Get-CABInstallEntry -Tool $tool).type
@@ -123,7 +131,7 @@ function Invoke-CABStep20 {
                 Write-CABColor Yellow "      ⓘ Post-install check still reports: $($recheck.details)"
             }
         } else {
-            Write-CABStatus -Status fail -Message "$($tool.id) — $($result.details)"
+            Write-CABStatus -Status fail -Prefix $progressPrefix -Message "$($tool.id) — $($result.details)"
             $failed.Add($tool.id)
         }
     }

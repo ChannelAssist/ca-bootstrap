@@ -40,7 +40,6 @@ groups:
         large: true
         warn: "Legacy monolith — clone is ≈4 GB and can take 10+ minutes."
         opt_in: true
-      - { repo: ChannelAssist/cm-claim-checker,        into: cm-product/cm-claim-checker,        branch: main }
       - { repo: ChannelAssist/cm-claims-validator,     into: cm-product/cm-claims-validator,     branch: dev }
       - { repo: ChannelAssist/cm-contracts,            into: cm-product/cm-contracts,            branch: master }
       - { repo: ChannelAssist/cm-currency-service,     into: cm-product/cm-currency-service,     branch: dev }
