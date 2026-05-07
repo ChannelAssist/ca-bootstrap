@@ -308,9 +308,11 @@ make manifest-drift
 1. Reads `manifest/repos.yaml`.
 2. Lists the org's repos via `gh repo list ChannelAssist --limit 1000 --json nameWithOwner,isArchived,isPrivate,defaultBranchRef`.
 3. Diffs the two and emits a report in three sections:
-   - **Missing**: on GitHub but not in the manifest. Output includes a PR-ready YAML snippet, with the `into` path / branch / suggested group filled in. Group suggestion is heuristic: `ca-*` → `ca-platform`, `cm-*` / `channel-manager` → `cm-product`, `.github*` / `Keystone` → `docs`, anything else → `unsorted` (maintainer fixes manually).
+   - **Missing**: on GitHub, not archived, and not in the manifest. Output includes a PR-ready YAML snippet, with the `into` path / branch / suggested group filled in. Group suggestion is heuristic: `ca-*` → `ca-platform`, `cm-*` / `channel-manager` → `cm-product`, `.github*` / `Keystone` → `docs`, anything else → `unsorted` (maintainer fixes manually).
    - **Stale**: in the manifest but no longer on GitHub (deleted, renamed, made private). These should be removed from the manifest.
-   - **Archived**: present in both but archived on GitHub. Optional removal — archived repos clone read-only, which is usually not what we want for a dev workspace.
+   - **Archived**: present in both, but archived on GitHub. Per maintainer policy, archived repos shouldn't be in the manifest at all (they clone read-only and aren't part of an active dev workspace) — surfacing here means "remove from manifest".
+
+> **Archived-but-not-in-manifest repos are deliberately invisible** to this report. The policy is to ignore them entirely; if you ever want to revive one, unarchive on GitHub first, then re-run `manifest-drift` and it'll show up under Missing.
 
 ### Flags
 

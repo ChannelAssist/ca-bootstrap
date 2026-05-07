@@ -67,12 +67,18 @@ groups:
         # exit 0) and `gh repo list <Org> --limit 1000 --json ...`.
         $script:shimDir = Join-Path $script:tempRoot 'shim'
         New-Item -ItemType Directory -Path $script:shimDir -Force | Out-Null
+        # Org listing covers all four buckets:
+        #   * Keystone, ca-foo                 — in manifest, not archived (matches; not reported)
+        #   * ca-new                           — not in manifest, not archived (missing)
+        #   * cm-stale-archived                — in manifest AND archived (archived bucket → remove)
+        #   * archived-ghost                   — NOT in manifest, archived (per policy: silently ignored)
         $payload = @'
 [
   {"nameWithOwner":"ChannelAssist/Keystone","isArchived":false,"isPrivate":false,"defaultBranchRef":{"name":"master"}},
   {"nameWithOwner":"ChannelAssist/ca-foo","isArchived":false,"isPrivate":false,"defaultBranchRef":{"name":"main"}},
   {"nameWithOwner":"ChannelAssist/ca-new","isArchived":false,"isPrivate":false,"defaultBranchRef":{"name":"main"}},
-  {"nameWithOwner":"ChannelAssist/cm-stale-archived","isArchived":true,"isPrivate":false,"defaultBranchRef":{"name":"main"}}
+  {"nameWithOwner":"ChannelAssist/cm-stale-archived","isArchived":true,"isPrivate":false,"defaultBranchRef":{"name":"main"}},
+  {"nameWithOwner":"ChannelAssist/archived-ghost","isArchived":true,"isPrivate":true,"defaultBranchRef":{"name":"main"}}
 ]
 '@
         $payloadFile = Join-Path $script:shimDir 'gh-payload.json'
@@ -137,18 +143,24 @@ Invoke-CABCommandManifestDrift -Context `$ctx -Json | Out-Null
 "@ > $jsonOutFile
 
         $report = Get-Content -Raw $jsonOutFile | ConvertFrom-Json
-        $report.org_repo_count   | Should -Be 4
+        $report.org_repo_count   | Should -Be 5
         $report.manifest_count   | Should -Be 4
 
         @($report.missing).Count | Should -Be 1
         ($report.missing | ForEach-Object { $_.slug }) | Should -Contain 'ChannelAssist/ca-new'
         $report.missing[0].suggested_group | Should -Be 'ca-platform'
+        # archived-ghost is on GitHub + archived + not-in-manifest → must NOT
+        # appear under missing per the maintainer policy ("ignore archived").
+        ($report.missing | ForEach-Object { $_.slug }) | Should -Not -Contain 'ChannelAssist/archived-ghost'
 
         @($report.stale).Count   | Should -Be 1
         ($report.stale | ForEach-Object { $_.slug }) | Should -Contain 'ChannelAssist/cm-deleted'
 
         @($report.archived).Count | Should -Be 1
         ($report.archived | ForEach-Object { $_.slug }) | Should -Contain 'ChannelAssist/cm-stale-archived'
+        # archived-ghost should NOT appear here either — the archived
+        # bucket is for in-manifest entries that need removing.
+        ($report.archived | ForEach-Object { $_.slug }) | Should -Not -Contain 'ChannelAssist/archived-ghost'
 
         $report.drift_total | Should -Be 3
     }

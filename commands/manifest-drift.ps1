@@ -81,21 +81,32 @@ function Invoke-CABCommandManifestDrift {
     $archived = New-Object System.Collections.Generic.List[hashtable]   # in both, but archived on GitHub
 
     foreach ($slug in $orgSlugs.Keys) {
-        if (-not $manifestRepos.ContainsKey($slug)) {
-            $missing.Add(@{
-                slug    = $slug
-                private = [bool]$orgSlugs[$slug].isPrivate
-                default = [string]$orgSlugs[$slug].defaultBranchRef.name
-                # Suggest a group based on naming convention. Maintainer
-                # can override; this is just a starting hint.
-                suggested_group = (Get-CABSuggestedGroup -Slug $slug)
-            })
-        } elseif ($orgSlugs[$slug].isArchived) {
+        $isArchived = [bool]$orgSlugs[$slug].isArchived
+        $inManifest = $manifestRepos.ContainsKey($slug)
+
+        if ($inManifest -and $isArchived) {
+            # In manifest AND archived → policy says remove. Surface in
+            # the "archived" bucket so the maintainer can take action.
             $archived.Add(@{
                 slug  = $slug
                 group = $manifestRepos[$slug].group
             })
+        } elseif (-not $inManifest -and -not $isArchived) {
+            # On GitHub, not in manifest, not archived → genuine
+            # add-candidate. Suggest a group based on naming convention;
+            # maintainer can override.
+            $missing.Add(@{
+                slug    = $slug
+                private = [bool]$orgSlugs[$slug].isPrivate
+                default = [string]$orgSlugs[$slug].defaultBranchRef.name
+                suggested_group = (Get-CABSuggestedGroup -Slug $slug)
+            })
         }
+        # Two other states are intentionally NOT surfaced:
+        #   * not-in-manifest + archived → policy is to ignore archived
+        #     repos entirely. They aren't add-candidates; if you want
+        #     to revive one, unarchive on GitHub first then re-run.
+        #   * in-manifest + not-archived → matches; no report.
     }
     foreach ($slug in $manifestRepos.Keys) {
         if (-not $orgSlugs.ContainsKey($slug)) {
