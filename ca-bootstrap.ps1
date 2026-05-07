@@ -159,8 +159,11 @@ if ($ForceUnlock) {
 
 try {
     if ($silent) {
-        # Still need the journal session, but skip the on-screen banner.
-        Read-CABJournal | Out-Null
+        # JSON / quiet modes avoid stdout noise. manifest-drift is read-only,
+        # so its silent path can skip journal I/O entirely.
+        if ($Command -ne 'manifest-drift') {
+            Read-CABJournal | Out-Null
+        }
         $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
     } else {
         Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
@@ -227,9 +230,9 @@ try {
         'manifest-drift' {
             . (Join-Path $Script:CABootstrapRoot 'commands/manifest-drift.ps1')
             $r = Invoke-CABCommandManifestDrift -Context $context -Json:$Json
-            # In sync → 0; drift detected → 8 (distinct from 2/9 used by
-            # doctor/repair so CI / pre-commit hooks can branch on it).
-            $exitCode = if ($r.ok) { 0 } else { 8 }
+            # In sync → 0; drift detected → 8; operational failures keep
+            # their own non-8 exit code so callers can distinguish them.
+            $exitCode = if ($null -ne $r.exit_code) { [int]$r.exit_code } elseif ($r.ok) { 0 } else { 8 }
         }
     }
 }
@@ -242,7 +245,9 @@ catch {
 }
 finally {
     if ($silent) {
-        Save-CABJournal
+        if ($Command -ne 'manifest-drift') {
+            Save-CABJournal
+        }
     } else {
         Stop-CABSession -ExitCode $exitCode
     }

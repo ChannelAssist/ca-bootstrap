@@ -105,6 +105,33 @@ groups:
 . '$rr/lib/yaml.ps1'
 . '$rr/lib/journal.ps1'
 . '$rr/commands/manifest-drift.ps1'
+function Read-CABManifest {
+    param([string]`$Path, [switch]`$Quiet)
+    if (-not `$Quiet) { Write-Host 'NOISY-MANIFEST-READ' }
+    return [pscustomobject]@{
+        groups = @(
+            [pscustomobject]@{
+                name = 'docs'
+                repos = @(
+                    [pscustomobject]@{ repo = 'ChannelAssist/Keystone'; into = 'docs/keystone'; branch = 'master' }
+                )
+            },
+            [pscustomobject]@{
+                name = 'ca-platform'
+                repos = @(
+                    [pscustomobject]@{ repo = 'ChannelAssist/ca-foo'; into = 'ca-platform/ca-foo'; branch = 'main' }
+                )
+            },
+            [pscustomobject]@{
+                name = 'cm-product'
+                repos = @(
+                    [pscustomobject]@{ repo = 'ChannelAssist/cm-deleted'; into = 'cm-product/cm-deleted'; branch = 'main' },
+                    [pscustomobject]@{ repo = 'ChannelAssist/cm-stale-archived'; into = 'cm-product/cm-stale-archived'; branch = 'main' }
+                )
+            }
+        )
+    }
+}
 `$ctx = @{ RepoRoot = '$tr' }
 Invoke-CABCommandManifestDrift -Context `$ctx -Json | Out-Null
 "@ > $jsonOutFile
@@ -124,5 +151,32 @@ Invoke-CABCommandManifestDrift -Context `$ctx -Json | Out-Null
         ($report.archived | ForEach-Object { $_.slug }) | Should -Contain 'ChannelAssist/cm-stale-archived'
 
         $report.drift_total | Should -Be 3
+    }
+
+    It 'preserves a non-drift exit code when gh auth fails' {
+        $stateDir = Join-Path $script:tempRoot 'state'
+        New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
+
+        $shimPath = if ($IsWindows) {
+            Join-Path $script:shimDir 'gh.cmd'
+        } else {
+            Join-Path $script:shimDir 'gh'
+        }
+        if ($IsWindows) {
+            Set-Content -Path $shimPath -Value "@echo off`r`nif `"%1`"==`"auth`" exit /b 1`r`nexit /b 0"
+        } else {
+            Set-Content -Path $shimPath -Value "#!/bin/bash`nif [ `"`$1`" = `"auth`" ]; then exit 1; fi`nexit 0"
+            chmod +x $shimPath
+        }
+
+        $repoScript = Join-Path $script:repoRoot 'ca-bootstrap.ps1'
+        $oldState = $env:CA_BOOTSTRAP_STATE
+        try {
+            $env:CA_BOOTSTRAP_STATE = $stateDir
+            & pwsh -NoProfile -File $repoScript manifest-drift -NoColor | Out-Null
+            $LASTEXITCODE | Should -Be 1
+        } finally {
+            $env:CA_BOOTSTRAP_STATE = $oldState
+        }
     }
 }

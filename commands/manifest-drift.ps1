@@ -23,18 +23,18 @@ function Invoke-CABCommandManifestDrift {
     )
 
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        return @{ ok = $false; details = 'gh CLI is not installed.' }
+        return @{ ok = $false; exit_code = 1; details = 'gh CLI is not installed.' }
     }
     & gh auth status 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        return @{ ok = $false; details = 'gh CLI is not authenticated. Run `gh auth login` and try again.' }
+        return @{ ok = $false; exit_code = 1; details = 'gh CLI is not authenticated. Run `gh auth login` and try again.' }
     }
 
     $manifestPath = Join-Path $Context.RepoRoot 'manifest/repos.yaml'
     if (-not (Test-Path $manifestPath)) {
-        return @{ ok = $false; details = "Manifest not found: $manifestPath" }
+        return @{ ok = $false; exit_code = 1; details = "Manifest not found: $manifestPath" }
     }
-    $manifest = Read-CABManifest -Path $manifestPath
+    $manifest = Read-CABManifest -Path $manifestPath -Quiet:$Json
 
     # Map of slug → @{ repo; group; archived (filled later) } from manifest.
     $manifestRepos = @{}
@@ -63,7 +63,7 @@ function Invoke-CABCommandManifestDrift {
     $rawRepos = & gh repo list $Org --limit 1000 --json nameWithOwner,isArchived,isPrivate,defaultBranchRef 2>&1
     if ($LASTEXITCODE -ne 0) {
         if (-not $Json) { Write-Host '' }
-        return @{ ok = $false; details = "gh repo list failed: $($rawRepos -join '; ')" }
+        return @{ ok = $false; exit_code = 1; details = "gh repo list failed: $($rawRepos -join '; ')" }
     }
     $orgRepos = $rawRepos | ConvertFrom-Json
     if (-not $Json) {
@@ -122,7 +122,11 @@ function Invoke-CABCommandManifestDrift {
         # status-hashtable return value. [Console]::WriteLine writes
         # straight to stdout.
         [Console]::WriteLine(($report | ConvertTo-Json -Depth 6))
-        return @{ ok = ($report.drift_total -eq 0); details = "Drift JSON emitted ($($report.drift_total) item(s))." }
+        return @{
+            ok        = ($report.drift_total -eq 0)
+            exit_code = if ($report.drift_total -eq 0) { 0 } else { 8 }
+            details   = "Drift JSON emitted ($($report.drift_total) item(s))."
+        }
     }
 
     # Human-readable report.
@@ -132,7 +136,7 @@ function Invoke-CABCommandManifestDrift {
 
     if ($missing.Count -eq 0 -and $stale.Count -eq 0 -and $archived.Count -eq 0) {
         Write-CABStatus -Status ok -Message 'No drift — manifest is in sync with the org.'
-        return @{ ok = $true; details = 'in sync' }
+        return @{ ok = $true; exit_code = 0; details = 'in sync' }
     }
 
     if ($missing.Count -gt 0) {
@@ -178,7 +182,7 @@ function Invoke-CABCommandManifestDrift {
     }
 
     $total = $missing.Count + $stale.Count + $archived.Count
-    return @{ ok = $false; details = "$total drift item(s) — see report above." }
+    return @{ ok = $false; exit_code = 8; details = "$total drift item(s) — see report above." }
 }
 
 # Get-CABSuggestedGroup — heuristic for placing a new repo into a manifest
