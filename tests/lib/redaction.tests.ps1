@@ -24,7 +24,7 @@ Describe 'Test-CABContainsSensitive' {
         Test-CABContainsSensitive '-----BEGIN RSA PRIVATE KEY-----' | Should -BeTrue
     }
     It 'returns false for ordinary strings' {
-        Test-CABContainsSensitive '/Users/peter/Documents/Projects/Work/ChannelAssistDev' | Should -BeFalse
+        Test-CABContainsSensitive '/Users/peter/Documents/Projects/ChannelAssistDev' | Should -BeFalse
         Test-CABContainsSensitive 'ChannelAssist/Keystone' | Should -BeFalse
     }
 }

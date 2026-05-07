@@ -31,7 +31,19 @@ function Get-CABDefaultWorkspacePath {
     if (-not $profileDir) {
         throw "Could not resolve a user profile directory. Tried: $($candidates -join ', '). Set CA_BOOTSTRAP_WORKSPACE to an absolute path and re-run."
     }
-    $sub = if ($IsWindows) { 'Documents\Projects\Work\ChannelAssist\ChannelAssistDev' } else { 'Documents/Projects/Work/ChannelAssist/ChannelAssistDev' }
+    # Prefer Documents/ when it exists (the typical desktop layout). On
+    # headless / minimal Linux installs the XDG userdirs may not be
+    # configured and ~/Documents/ won't exist — silently creating one
+    # there would be surprising. Fall back to <profile>/Projects/ in
+    # that case so the workspace lands somewhere the user expects on a
+    # bare box.
+    $docsDir = Join-Path $profileDir 'Documents'
+    $hasDocs = Test-Path $docsDir -PathType Container
+    if ($hasDocs) {
+        $sub = if ($IsWindows) { 'Documents\Projects\ChannelAssistDev' } else { 'Documents/Projects/ChannelAssistDev' }
+    } else {
+        $sub = if ($IsWindows) { 'Projects\ChannelAssistDev' } else { 'Projects/ChannelAssistDev' }
+    }
     return [System.IO.Path]::GetFullPath((Join-Path $profileDir $sub))
 }
 

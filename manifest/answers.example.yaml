@@ -17,7 +17,7 @@ version: 1
 mode: unattended
 
 workspace:
-  path: ~/Documents/Projects/Work/ChannelAssist/ChannelAssistDev
+  path: ~/Documents/Projects/ChannelAssistDev
   on_exists: keep                    # 'keep' | 'recreate' | 'fail'
 
 prerequisites:

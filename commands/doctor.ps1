@@ -30,12 +30,17 @@ function Run-CABDoctorChecks {
     } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {
         $workspace = $env:CA_BOOTSTRAP_WORKSPACE
     } else {
-        # Best-effort default per the workspace step.
-        $workspace = if ($IsWindows) {
-            Join-Path $env:USERPROFILE 'Documents\Projects\Work\ChannelAssist\ChannelAssistDev'
+        # Best-effort default mirroring Get-CABDefaultWorkspacePath in
+        # steps/40-workspace.ps1: prefer Documents/ when it exists,
+        # otherwise root at <profile>/Projects/ for headless boxes.
+        $profileDir = if ($IsWindows) { $env:USERPROFILE } else { $HOME }
+        $docsDir = Join-Path $profileDir 'Documents'
+        $sub = if (Test-Path $docsDir -PathType Container) {
+            if ($IsWindows) { 'Documents\Projects\ChannelAssistDev' } else { 'Documents/Projects/ChannelAssistDev' }
         } else {
-            Join-Path $HOME 'Documents/Projects/Work/ChannelAssist/ChannelAssistDev'
+            if ($IsWindows) { 'Projects\ChannelAssistDev' } else { 'Projects/ChannelAssistDev' }
         }
+        $workspace = Join-Path $profileDir $sub
     }
     $Context.WorkspacePath = $workspace
 
