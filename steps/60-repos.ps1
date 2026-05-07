@@ -175,9 +175,11 @@ function Invoke-CABStep60 {
             # Bright prefix so the [N/total] pops visually against the
             # surrounding plain text — without a colored icon (no ✓/↷)
             # the in-progress line was reading dim and the marker was
-            # easy to miss.
+            # easy to miss. Route through Write-CABColor so NO_COLOR /
+            # CA_BOOTSTRAP_NO_COLOR are honored consistently with the
+            # rest of the wizard (Copilot review, PR #17).
             Write-Host '    ' -NoNewline
-            Write-Host $progressPrefix -ForegroundColor Cyan -NoNewline
+            Write-CABColor Cyan $progressPrefix -NoNewLine
             Write-Host " cloning $($repo.repo) → $into..." -NoNewline
             $result = Invoke-CABRepoClone -Repo $repo.repo -Into $into -Branch $repo.branch
             Write-Host ''

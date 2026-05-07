@@ -142,7 +142,7 @@ Prerequisites
   python-312             ✓  3.12.1
   docker                 ✓  24.0.6
   vscode                 ✓  1.85.0
-GitHub auth              ✓  logged in as peter-g
+GitHub auth              ✓  logged in as user-g
 Repositories             ⚠  13/14 cloned          → repair --target repos
   cm-product/cm-shared-libs  missing
 Git identity             ✓  configured for ChannelAssistDev/
@@ -333,17 +333,17 @@ Step 3/8 — GitHub authentication
     Choose a protocol: HTTPS (recommended)
     Authenticate via browser? [Y/n]: Y
     Opening browser for device flow...
-    ✓ Logged in as peter-g.
+    ✓ Logged in as user-g.
 
 Step 4/8 — Workspace location
-  Default location: C:\Users\peter\Documents\Projects\ChannelAssistDev
+  Default location: C:\Users\user\Documents\Projects\ChannelAssistDev
 
   Use this default?
     [Y]es  [c]ustom path  [n]o (skip remaining steps)
   > Y
 
 Step 5/8 — Folder structure
-  Will create at C:\Users\peter\Documents\Projects\ChannelAssistDev:
+  Will create at C:\Users\user\Documents\Projects\ChannelAssistDev:
     ├── docs\
     ├── ca-platform\
     ├── cm-product\
@@ -388,14 +388,14 @@ Step 6/8 — Clone repositories
   ✓ All clones complete (3m 18s total).
 
 Step 7/8 — Git identity for ChannelAssist
-  Detected global git identity: Peter Giannopoulos <peter.personal@gmail.com>
+  Detected global git identity: Jane Doe <user.personal@example.com>
 
   ChannelAssist repos should commit with your work email. Configure
   per-workspace identity (uses git's includeIf — does not change global)?
   [Y/n]: Y
 
-  Name for ChannelAssist commits [Peter Giannopoulos]:
-  Email for ChannelAssist commits: peter.g@channelassist.com
+  Name for ChannelAssist commits [Jane Doe]:
+  Email for ChannelAssist commits: user@channelassist.com
 
   ✓ Wrote ChannelAssistDev\.gitconfig
   ✓ Added includeIf entry to %USERPROFILE%\.gitconfig
@@ -437,8 +437,8 @@ $ ca-bootstrap.ps1 doctor
 ChannelAssist developer setup — diagnostic report
 =================================================
 Generated: 2026-05-15 09:32 UTC
-Host:      DESKTOP-PETER (Windows 11 22H2, x64)
-Workspace: C:\Users\peter\Documents\Projects\ChannelAssistDev
+Host:      DESKTOP-USER (Windows 11 22H2, x64)
+Workspace: C:\Users\user\Documents\Projects\ChannelAssistDev
 
 Workspace                    ✓  exists, 4 expected folders present
 Folder structure             ✓  docs/  ca-platform/  cm-product/  ado-legacy/
@@ -450,7 +450,7 @@ Prerequisites
   python-312                 ✓  3.12.1
   docker                     ✓  24.0.6
   vscode                     ✓  1.85.0
-GitHub authentication        ✓  logged in as peter-g (HTTPS)
+GitHub authentication        ✓  logged in as user-g (HTTPS)
 Repositories                 ⚠  13/14 cloned (1 missing)
   ✓ ChannelAssist/Keystone                    docs/keystone
   ✓ ChannelAssist/.github                     docs/org-profile-public
@@ -461,8 +461,8 @@ Repositories                 ⚠  13/14 cloned (1 missing)
   ✗ ChannelAssist/cm-shared-libs              cm-product/cm-shared-libs (missing)
   ✓ ... 7 more cm-product repos
 Git identity                 ✓  configured for ChannelAssistDev/
-                                  user.name = Peter Giannopoulos
-                                  user.email = peter.g@channelassist.com
+                                  user.name = Jane Doe
+                                  user.email = user@channelassist.com
 Action journal               ✓  ~/.ca-bootstrap/journal.yaml is consistent
 
 ==================================================
@@ -965,20 +965,20 @@ The action journal is a YAML file at `~/.ca-bootstrap/journal.yaml` that records
 schema_version: 1
 host:
   os: windows
-  user: peter
-  hostname: DESKTOP-PETER
+  user: user
+  hostname: DESKTOP-USER
 
 sessions:
   - id: 2026-05-15T09:30:00Z
     command: setup
     ca_bootstrap_version: 1.0.0
-    workspace_path: C:\Users\peter\Documents\Projects\ChannelAssistDev
+    workspace_path: C:\Users\user\Documents\Projects\ChannelAssistDev
     actions:
 
       - id: 2026-05-15T09:30:14Z
         step: 50-folders
         action: create_folder
-        path: C:\Users\peter\Documents\...\ChannelAssistDev\docs
+        path: C:\Users\user\Documents\...\ChannelAssistDev\docs
         reversible: true
         undone: false
 
@@ -997,7 +997,7 @@ sessions:
         step: 60-repos
         action: clone_repo
         repo: ChannelAssist/Keystone
-        path: C:\Users\peter\Documents\...\docs\keystone
+        path: C:\Users\user\Documents\...\docs\keystone
         branch: master
         clone_size_bytes: 15728640
         reversible: true
@@ -1006,11 +1006,11 @@ sessions:
       - id: 2026-05-15T09:34:02Z
         step: 70-git-identity
         action: configure_git_identity
-        workspace: C:\Users\peter\Documents\...\ChannelAssistDev
+        workspace: C:\Users\user\Documents\...\ChannelAssistDev
         global_gitconfig_includeif_added: true
-        workspace_gitconfig_path: C:\Users\peter\Documents\...\ChannelAssistDev\.gitconfig
-        previous_global_email: peter.personal@gmail.com   # for restoration
-        new_workspace_email: peter.g@channelassist.com
+        workspace_gitconfig_path: C:\Users\user\Documents\...\ChannelAssistDev\.gitconfig
+        previous_global_email: user.personal@example.com   # for restoration
+        new_workspace_email: user@channelassist.com
         reversible: true
         undone: false
 ```
@@ -1104,8 +1104,8 @@ Many ChannelAssist developers have personal git config pointing at a personal em
 **~/.gitconfig** (global, modified):
 ```ini
 [user]
-    name = Peter Giannopoulos
-    email = peter.personal@gmail.com   # left untouched
+    name = Jane Doe
+    email = user.personal@example.com   # left untouched
 
 [includeIf "gitdir:~/Documents/Projects/ChannelAssistDev/"]
     path = ~/Documents/Projects/ChannelAssistDev/.gitconfig
@@ -1114,8 +1114,8 @@ Many ChannelAssist developers have personal git config pointing at a personal em
 **ChannelAssistDev/.gitconfig** (new, written by us):
 ```ini
 [user]
-    name = Peter Giannopoulos
-    email = peter.g@channelassist.com
+    name = Jane Doe
+    email = user@channelassist.com
 ```
 
 Result: any commit made inside the workspace uses the work email. Any commit outside it uses the personal config. Zero impact on personal repos.
@@ -1184,8 +1184,8 @@ github_auth:
 
 git_identity:
   configure: true
-  name: Peter Giannopoulos
-  email: peter.g@channelassist.com
+  name: Jane Doe
+  email: user@channelassist.com
 
 clone:
   groups:
