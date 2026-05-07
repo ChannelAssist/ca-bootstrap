@@ -25,8 +25,8 @@ groups:
     description: Documentation repos
     repos:
       - { repo: ChannelAssist/Keystone,        into: ca-docs/keystone,             branch: dev }
-      - { repo: ChannelAssist/.github,         into: docs/org-profile-public,   branch: main }
-      - { repo: ChannelAssist/.github-private, into: docs/org-profile-private,  branch: main, requires_membership: true }
+      - { repo: ChannelAssist/.github,         into: ca-docs/org-profile-public,   branch: main }
+      - { repo: ChannelAssist/.github-private, into: ca-docs/org-profile-private,  branch: main, requires_membership: true }
 
   - name: ca-platform
     description: ChannelAssist platform-wide services
