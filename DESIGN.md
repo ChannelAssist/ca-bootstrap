@@ -213,7 +213,7 @@ This will reverse 14 actions recorded in the journal:
     ✓ Action journal itself (~/.ca-bootstrap/)
 
   Reversible but destructive — confirm each (3):
-    ⚠ Cloned repo: docs/keystone (15 MB)
+    ⚠ Cloned repo: ca-docs/keystone (15 MB)
     ⚠ Cloned repo: ca-platform/ca-privacy-gate (8 MB)
     ⚠ Cloned repo: ca-platform/ca-data-dictionnary-generator (12 MB) — has uncommitted changes!
     ⚠ ... 11 more (49 MB total)
@@ -452,9 +452,9 @@ Prerequisites
   vscode                     ✓  1.85.0
 GitHub authentication        ✓  logged in as user-g (HTTPS)
 Repositories                 ⚠  13/14 cloned (1 missing)
-  ✓ ChannelAssist/Keystone                    docs/keystone
-  ✓ ChannelAssist/.github                     docs/org-profile-public
-  ✓ ChannelAssist/.github-private             docs/org-profile-private
+  ✓ ChannelAssist/Keystone                    ca-docs/keystone
+  ✓ ChannelAssist/.github                     ca-docs/org-profile-public
+  ✓ ChannelAssist/.github-private             ca-docs/org-profile-private
   ✓ ChannelAssist/ca-claude-plugin            ca-platform/ca-claude-plugin
   ✓ ChannelAssist/ca-data-dictionnary-generator
   ✓ ChannelAssist/ca-privacy-gate
@@ -534,8 +534,8 @@ Categories:
       • Action journal entries
 
   [2] Cloned repositories  (14 items, ~73 MB total)
-      • docs/keystone                                        (15 MB, clean)
-      • docs/org-profile-public                              (1 MB, clean)
+      • ca-docs/keystone                                     (15 MB, clean)
+      • ca-docs/org-profile-public                           (1 MB, clean)
       • ca-platform/ca-data-dictionnary-generator            (12 MB, ⚠ uncommitted changes)
       • ca-platform/ca-privacy-gate                          (8 MB, clean)
       • cm-product/cm-claims-validator                       (3 MB, clean)
@@ -574,8 +574,8 @@ Proceeding...
   ✓ Marked 4 journal entries as undone
 
 [2/4] Cloned repositories
-  Delete docs/keystone (15 MB, clean)? [Y/n]: Y         → ✓ Removed
-  Delete docs/org-profile-public (1 MB, clean)? [Y/n]: Y → ✓ Removed
+  Delete ca-docs/keystone (15 MB, clean)? [Y/n]: Y         → ✓ Removed
+  Delete ca-docs/org-profile-public (1 MB, clean)? [Y/n]: Y → ✓ Removed
   Delete ca-platform/ca-data-dictionnary-generator (⚠ uncommitted)? [y/N/diff]: diff
     Showing uncommitted changes...
     [git diff output shown]
@@ -640,9 +640,9 @@ groups:
   - name: docs
     description: Documentation repos
     repos:
-      - { repo: ChannelAssist/Keystone, into: docs/keystone, branch: master }
-      - { repo: ChannelAssist/.github, into: docs/org-profile-public, branch: main }
-      - { repo: ChannelAssist/.github-private, into: docs/org-profile-private, branch: main, requires_membership: true }
+      - { repo: ChannelAssist/Keystone, into: ca-docs/keystone, branch: dev }
+      - { repo: ChannelAssist/.github, into: ca-docs/org-profile-public, branch: main }
+      - { repo: ChannelAssist/.github-private, into: ca-docs/org-profile-private, branch: main, requires_membership: true }
 
   - name: ca-platform
     description: ChannelAssist platform-wide services

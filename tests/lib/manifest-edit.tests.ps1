@@ -41,7 +41,7 @@ Describe 'Find-CABGroupInsertIndex' {
             'groups:',
             '  - name: docs',
             '    repos:',
-            '      - { repo: ChannelAssist/Keystone, into: docs/keystone, branch: master }',
+            '      - { repo: ChannelAssist/Keystone, into: ca-docs/keystone, branch: dev }',
             '',
             '  - name: ca-platform',
             '    repos:',
@@ -82,7 +82,7 @@ version: 1
 groups:
   - name: docs
     repos:
-      - { repo: ChannelAssist/Keystone, into: docs/keystone, branch: master }
+      - { repo: ChannelAssist/Keystone, into: ca-docs/keystone, branch: dev }
 
   - name: ca-platform
     repos:
