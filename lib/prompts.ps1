@@ -14,7 +14,14 @@ function Set-CABPromptMode {
         [hashtable]$Answers
     )
     $Script:CABootstrapUnattended = $Unattended
-    if ($Answers) { $Script:CABootstrapAnswers = $Answers }
+    # Use ContainsKey instead of `if ($Answers)`: an empty hashtable
+    # is falsy in PowerShell, but callers explicitly pass `-Answers @{}`
+    # to reset prior answers between commands. Without this guard the
+    # reset would silently no-op and stale answers from a previous
+    # unattended run would leak into the next one.
+    if ($PSBoundParameters.ContainsKey('Answers')) {
+        $Script:CABootstrapAnswers = $Answers
+    }
 }
 
 # Read-CABConfirm — yes/no prompt with a default.

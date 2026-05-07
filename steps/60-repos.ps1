@@ -99,6 +99,13 @@ function Invoke-CABStep60 {
         }
         if ($groupChoice -ieq 'n') {
             Write-CABStatus -Status skip -Message "Group $($g.name) skipped."
+            # Account for the whole group's worth of repos so the
+            # end-of-step summary reflects what actually happened.
+            # Without this, a "no" on every group would still print
+            # "0 skipped" — caught by Copilot review on PR #17 after
+            # the per-repo $progressCurrent accumulator was removed
+            # alongside the TUI progress bar.
+            $totalSkipped += $g.repos.Count
             continue
         }
 
