@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/manifest-edit.ps1 — interactive editor that lists every repo
 # in the ChannelAssist org against manifest/repos.yaml and lets a
 # maintainer add/remove entries without leaving the terminal.
@@ -134,8 +134,7 @@ function Invoke-CABCommandManifestEdit {
             'r' {
                 Remove-CABManifestEditEntry `
                     -ManifestRepos $manifestRepos `
-                    -PendingRemoves $pendingRemoves `
-                    -PendingAdds $pendingAdds
+                    -PendingRemoves $pendingRemoves
             }
             's' {
                 if ($pendingAdds.Count -eq 0 -and $pendingRemoves.Count -eq 0) {
@@ -238,7 +237,6 @@ function Add-CABManifestEditEntry {
     $name = ($slug -split '/')[-1]
     $defaultGroup  = Get-CABSuggestedGroup -Slug $slug
     $defaultBranch = if ($repo.defaultBranchRef.name) { [string]$repo.defaultBranchRef.name } else { 'main' }
-    $defaultInto   = "$defaultGroup/$name"
 
     Write-Host -NoNewline "  Group [$defaultGroup] (one of: $($GroupNames -join ', ')): "
     $group = Read-Host
@@ -272,8 +270,7 @@ function Remove-CABManifestEditEntry {
     [CmdletBinding()]
     param(
         [hashtable]$ManifestRepos,
-        $PendingRemoves,
-        $PendingAdds
+        $PendingRemoves
     )
     $candidates = @($ManifestRepos.Keys | Sort-Object | Where-Object { $PendingRemoves -notcontains $_ })
     if ($candidates.Count -eq 0) {

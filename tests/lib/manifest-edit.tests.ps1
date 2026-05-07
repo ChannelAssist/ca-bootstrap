@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/manifest-edit.tests.ps1 — regression tests for the
 # manifest-edit command (issue #26). Focuses on the pure functions
 # that mutate the YAML; the interactive prompt path is exercised

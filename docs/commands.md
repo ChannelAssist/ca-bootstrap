@@ -384,7 +384,7 @@ ca-bootstrap manifest-edit
   Repos in 28-style listing:
     [x]  ChannelAssist/.github                       docs/org-profile-public (main)
     [x]  ChannelAssist/.github-private               docs/org-profile-private (main)
-    [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  learning/Generative-AI-for-beginners-dotnet (main, opt-in)
+    [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  ca-training/Generative-AI-for-beginners-dotnet (main, opt-in)
     [ ]  ChannelAssist/cm-new-thing  (private)       → suggested group: cm-product
     [-]  ChannelAssist/cm-ledger-service             cm-product/cm-ledger-service (main) [auto-queued for removal]
     ...
