@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/20-prereqs.ps1 — detect installed tools; install in phase 4.
 
 function Test-CABStep20 {
@@ -94,7 +94,7 @@ function Invoke-CABStep20 {
             } else { '' }
             $default = -not ($tool.heavy -or $tool.requires_reboot)
             $ans = Read-CABConfirm `
-                -Question "$progressPrefix Install $($tool.name)$heavyHint$rebootHint?" `
+                -Question "$progressPrefix Install $($tool.name)$($heavyHint)$($rebootHint)?" `
                 -Default $default `
                 -AnswerKey "prereqs.install.$($tool.id)"
             if (Test-CABQuit $ans) {

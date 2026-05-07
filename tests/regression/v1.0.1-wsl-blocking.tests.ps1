@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/regression/v1.0.1-wsl-blocking.tests.ps1
 #
 # Bug fixed: 363553a — `wsl --install -d Ubuntu-22.04` (without --no-launch)

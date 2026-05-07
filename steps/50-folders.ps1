@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/50-folders.ps1 — create the standard folder skeleton in the workspace.
 
 function Test-CABStep50 {

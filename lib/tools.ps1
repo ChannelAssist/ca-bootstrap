@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/tools.ps1 — generic tool detection.
 #
 # A "tool" is any entry in manifest/tools.yaml. Detection runs the entry's
@@ -61,7 +61,11 @@ function Test-CABTool {
 
     $cmdParts = $Tool.check.cmd -split '\s+', 2
     $exe = $cmdParts[0]
-    $args = if ($cmdParts.Count -gt 1) { $cmdParts[1] } else { $null }
+    # Renamed from $args to avoid shadowing the PowerShell automatic
+    # variable (PSAvoidAssignmentToAutomaticVariable). $args is the
+    # parameter array of the enclosing scriptblock; assigning to it
+    # corrupts the enclosing function's view of its own arguments.
+    $cmdArgs = if ($cmdParts.Count -gt 1) { $cmdParts[1] } else { $null }
 
     if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
         $result.status = 'fail'
@@ -70,8 +74,8 @@ function Test-CABTool {
     }
 
     try {
-        $output = if ($args) {
-            (& $exe $args.Split(' ') 2>&1) -join "`n"
+        $output = if ($cmdArgs) {
+            (& $exe $cmdArgs.Split(' ') 2>&1) -join "`n"
         } else {
             (& $exe 2>&1) -join "`n"
         }
@@ -227,7 +231,7 @@ function Install-CABTool {
 
     # Meta-tool: install_method drives a different code path.
     if ($Tool.install_method -eq 'code-cli') {
-        return Install-CABVSCodeExtensions -Tool $Tool -Context $Context
+        return Install-CABVSCodeExtension -Tool $Tool -Context $Context
     }
 
     $type = $entry.type
@@ -304,7 +308,14 @@ function Install-CABTool {
                 }
             }
             'command' {
-                Invoke-Expression $entry.cmd 2>&1 | Out-Host
+                # Avoid Invoke-Expression (PSAvoidUsingInvokeExpression).
+                # Manifest install commands are space-delimited
+                # invocations like "winget install Foo.Bar --silent";
+                # split into command + args and call & directly.
+                $cmdParts = $entry.cmd -split '\s+'
+                $exe = $cmdParts[0]
+                $exeArgs = if ($cmdParts.Count -gt 1) { $cmdParts[1..($cmdParts.Count - 1)] } else { @() }
+                & $exe @exeArgs 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE
             }
             default {
@@ -316,7 +327,7 @@ function Install-CABTool {
     }
 
     Write-Host ''
-    if ($cmdResult -ne 0 -and $cmdResult -ne $null) {
+    if ($cmdResult -ne 0 -and $null -ne $cmdResult) {
         return @{ ok = $false; details = "$type install exited $cmdResult" }
     }
 
@@ -330,9 +341,9 @@ function Install-CABTool {
     return @{ ok = $true; details = "Installed via $type" }
 }
 
-# Install-CABVSCodeExtensions — meta-tool handler.
+# Install-CABVSCodeExtension — meta-tool handler.
 #   Iterates $Tool.extensions and calls `code --install-extension` for each.
-function Install-CABVSCodeExtensions {
+function Install-CABVSCodeExtension {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)] $Tool,

@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/regression/v1.0.3-workspace-relative.tests.ps1
 #
 # Bug fixed: e83e9cc — workspace path could leak through as relative,

@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/regression/v1.0.2-bootstrap-recovery.tests.ps1
 #
 # Bug fixed: d40dea1 — bootstrap.ps1's `git pull` exited non-zero when the

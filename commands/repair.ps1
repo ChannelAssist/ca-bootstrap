@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/repair.ps1 — fix what doctor found.
 #
 # Phase 9 implementation. Reuses each step's Invoke function: instead of
@@ -40,8 +40,9 @@ function Invoke-CABCommandRepair {
     # Always run doctor first so we know what's wrong.
     Write-Host '  Running doctor first...'
     Write-Host ''
-    $checks = Run-CABDoctorChecks -Context $Context
-    $workspace = $Context.WorkspacePath   # populated by Run-CABDoctorChecks
+    # Invoke-CABDoctorCheck populates $Context.WorkspacePath as a
+    # side effect; downstream targets read it from there directly.
+    $checks = Invoke-CABDoctorCheck -Context $Context
 
     $issues = @($checks | Where-Object { $_.status -in 'warn','fail' })
     if ($issues.Count -eq 0 -and -not $Target) {
@@ -62,7 +63,7 @@ function Invoke-CABCommandRepair {
     foreach ($t in $targets) {
         Write-Host ''
         Write-CABColor White "  → repair $t"
-        $result = Invoke-CABRepairTarget -Target $t -Context $Context -DoctorChecks $checks
+        $result = Invoke-CABRepairTarget -Target $t -Context $Context
         if ($result.ok) {
             Write-CABStatus -Status ok -Message $result.details
             $applied++
@@ -77,7 +78,7 @@ function Invoke-CABCommandRepair {
     Write-Host ''
     Write-Host "  Re-running doctor to confirm..."
     Write-Host ''
-    $afterChecks = Run-CABDoctorChecks -Context $Context
+    $afterChecks = Invoke-CABDoctorCheck -Context $Context
     Format-CABDoctorReport -Checks $afterChecks -Summary
     Write-Host ''
 
@@ -101,11 +102,15 @@ function Invoke-CABCommandRepair {
 # Invoke-CABRepairTarget — dispatch one target string to the corresponding
 # step's Invoke function in repair mode.
 function Invoke-CABRepairTarget {
+    # DoctorChecks was passed to give the dispatcher per-target visibility
+    # into the failed checks, but every branch below resolves the work
+    # itself by re-invoking the relevant step's Invoke function — none
+    # peek at the doctor result. Dropped the parameter; if a future
+    # target needs the diagnostics, add it back then.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Target,
-        [Parameter(Mandatory)][hashtable]$Context,
-        [array]$DoctorChecks
+        [Parameter(Mandatory)][hashtable]$Context
     )
 
     # Strip the "tool." prefix doctor uses (so users can type the manifest

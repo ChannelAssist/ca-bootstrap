@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/platform.ps1 — OS detection and package-manager dispatch helpers.
 #
 # Returns a normalized OS family string used as the lookup key in

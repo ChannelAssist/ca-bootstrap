@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/10-welcome.ps1 — explain scope, get consent.
 #
 # Each step exposes Test/Invoke/Undo. Phase 1 only implements the

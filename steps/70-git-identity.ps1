@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/70-git-identity.ps1 — per-workspace git identity via git includeIf.
 #
 # We never touch the user's global user.name / user.email. Instead we add
@@ -84,7 +84,7 @@ function Invoke-CABStep70 {
         # is global across all setups the user has run, so a previous
         # setup at a different path would otherwise be picked up and
         # restored into the wrong workspace's .gitconfig.
-        $prior = Get-CABJournalEntries -Action 'configure_git_identity' |
+        $prior = Get-CABJournalEntry -Action 'configure_git_identity' |
             Where-Object { [string]$_.workspace -eq [string]$Context.WorkspacePath } |
             Sort-Object -Property id -Descending |
             Select-Object -First 1

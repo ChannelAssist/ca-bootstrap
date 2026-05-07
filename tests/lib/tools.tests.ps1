@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/tools.tests.ps1 — Pester tests for lib/tools.ps1.
 
 BeforeAll {

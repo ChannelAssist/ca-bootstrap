@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/80-extras.ps1 — optional finishing touches.
 #
 # Four offers (each independently confirmable):
@@ -68,7 +68,7 @@ function Invoke-CABStep80 {
     $workspaceFile = Join-Path $Context.WorkspacePath 'ChannelAssist.code-workspace'
     $existsHint = if (Test-Path $workspaceFile) { ' (already exists; will overwrite)' } else { '' }
     $createWorkspaceFile = Read-CABConfirm `
-        -Question "Create VS Code multi-root workspace file at ChannelAssist.code-workspace$existsHint?" `
+        -Question "Create VS Code multi-root workspace file at ChannelAssist.code-workspace$($existsHint)?" `
         -Default $true `
         -AnswerKey 'extras.vscode_workspace_file'
     if (Test-CABQuit $createWorkspaceFile) {
@@ -199,8 +199,16 @@ function Invoke-CABStep80 {
 
     # ---------- 4. WSL2 + Ubuntu 22.04 (Windows-only) ----------
     if ($IsWindows) {
-        if (-not $Context.WhatIfMode -and (Get-Command wsl -ErrorAction SilentlyContinue) `
-            -and ((& wsl -l 2>$null | Out-String) -match 'Ubuntu')) {
+        # Pre-compute the wsl-already-has-Ubuntu check on its own line.
+        # Inlining `2>$null` inside the if-condition triggered
+        # PSPossibleIncorrectUsageOfRedirectionOperator (PSSA mis-parses
+        # the redirect across the backtick continuation).
+        $wslHasUbuntu = $false
+        if (-not $Context.WhatIfMode -and (Get-Command wsl -ErrorAction SilentlyContinue)) {
+            $wslList = (& wsl -l 2>$null | Out-String)
+            $wslHasUbuntu = $wslList -match 'Ubuntu'
+        }
+        if ($wslHasUbuntu) {
             Write-CABStatus -Status skip -Message 'WSL with Ubuntu already installed.'
         } else {
             Write-CABColor DarkGray '    ⓘ Will install with --no-launch so the wizard does not block. After'

@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/identity-recreate.tests.ps1 — regression tests for the
 # step 70 "includeIf present but workspace .gitconfig missing" path
 # added in PR #17 (chore/drop-tui-restore-cli-focus). Verifies:
@@ -27,7 +27,7 @@ Describe 'Test-CABStep70 — structured recreate flag' {
         Reset-CABJournalState
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch { }
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
         foreach ($p in @($script:tempState, $script:tempHome, $script:tempWS)) {
             if ($p -and (Test-Path $p)) {
@@ -98,7 +98,7 @@ Describe 'Invoke-CABStep70 — restore from journal honors workspace scope' {
         Mock -CommandName Write-CABStep -MockWith { }
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch { }
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
         foreach ($p in @($script:tempState, $script:tempHome, $script:tempWS)) {
             if ($p -and (Test-Path $p)) {

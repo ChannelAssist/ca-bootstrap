@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/undo.ps1 — reverse changes recorded in the action journal.
 #
 # Phase 10 implementation. Walks the journal in reverse and dispatches
@@ -23,7 +23,7 @@ function Invoke-CABCommandUndo {
     Write-CABHeader 'ca-bootstrap undo'
 
     Read-CABJournal | Out-Null
-    $entries = @(Get-CABJournalEntries -IncludeUndone:$false)
+    $entries = @(Get-CABJournalEntry -IncludeUndone:$false)
     if ($entries.Count -eq 0) {
         Write-CABStatus -Status info -Message 'No reversible actions recorded in the journal.'
         return 0
@@ -31,7 +31,7 @@ function Invoke-CABCommandUndo {
 
     # Filter by target if provided.
     if ($Target) {
-        $entries = @(Filter-CABUndoEntries -Entries $entries -Target $Target)
+        $entries = @(Select-CABUndoEntry -Entries $entries -Target $Target)
         if ($entries.Count -eq 0) {
             Write-CABStatus -Status info -Message "No reversible actions match target '$Target'."
             return 0
@@ -39,7 +39,7 @@ function Invoke-CABCommandUndo {
     }
 
     # Categorize so the user can decide group-by-group.
-    $byCategory = Group-CABUndoEntries -Entries $entries -IncludeTools:$IncludeTools
+    $byCategory = Group-CABUndoEntry -Entries $entries -IncludeTools:$IncludeTools
 
     Write-Host ''
     Write-Host '  Reversible actions found:'
@@ -74,11 +74,11 @@ function Invoke-CABCommandUndo {
         Write-Host '  ' -NoNewline
         Write-CABColor Cyan "[$progressIndex/$progressTotal]" -NoNewLine
         Write-CABColor DarkGray " undo $($entry.action) [$($entry.id)]"
-        $result = Invoke-CABUndoEntry -Entry $entry -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force -Context $Context
+        $result = Invoke-CABUndoEntry -Entry $entry -IncludeTools:$IncludeTools -IncludeFolders:$IncludeFolders -Force:$Force
         switch ($result.status) {
-            'ok'      { $undone++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
+            'ok'      { $undone++ ; Set-CABEntryUndone -EntryId $entry.id | Out-Null }
             'skip'    { $skipped++ }
-            'noop'    { $skipped++ ; Mark-CABEntryUndone -EntryId $entry.id | Out-Null }
+            'noop'    { $skipped++ ; Set-CABEntryUndone -EntryId $entry.id | Out-Null }
             'refused' { $skipped++ }
             'fail'    { [void]$failed.Add("$($entry.action): $($result.details)") }
         }
@@ -106,7 +106,7 @@ function Invoke-CABCommandUndo {
 # Filter / group helpers
 # ---------------------------------------------------------------------------
 
-function Filter-CABUndoEntries {
+function Select-CABUndoEntry {
     param([array]$Entries, [string]$Target)
     $bare = $Target -replace '^tool\.', ''
     if ($bare -like 'repos:*') {
@@ -123,7 +123,7 @@ function Filter-CABUndoEntries {
     }
 }
 
-function Group-CABUndoEntries {
+function Group-CABUndoEntry {
     param([array]$Entries, [switch]$IncludeTools)
     $byCategory = [ordered]@{}
     $byCategory['identity']     = @($Entries | Where-Object { $_.action -eq 'configure_git_identity' })
@@ -146,20 +146,24 @@ function Group-CABUndoEntries {
 # ---------------------------------------------------------------------------
 
 function Invoke-CABUndoEntry {
-    param([hashtable]$Entry, [switch]$IncludeTools, [switch]$IncludeFolders, [switch]$Force, [hashtable]$Context)
+    # Context was dispatched to per-action reversers but every reverser
+    # has been refactored to read what it needs from $Entry directly.
+    # Dropped the parameter here; both call sites in this file and
+    # commands/setup.ps1 lose their `-Context $Context` argument.
+    param([hashtable]$Entry, [switch]$IncludeTools, [switch]$IncludeFolders, [switch]$Force)
 
     # Caller (the undo loop or Invoke-CABQuitWithRollbackOffer) already
     # emits a "[N/M] reverting/undo <action>" line before invoking us,
     # so this function just dispatches to the per-action reverser. No
     # duplicate header line here.
     switch ($Entry.action) {
-        'configure_git_identity' { return Invoke-CABUndoIdentity -Entry $Entry -Force:$Force }
+        'configure_git_identity' { return Invoke-CABUndoIdentity -Entry $Entry }
         'clone_repo'             { return Invoke-CABUndoCloneRepo -Entry $Entry -Force:$Force }
         'create_folder'          { return Invoke-CABUndoCreateFolder -Entry $Entry -IncludeFolders:$IncludeFolders -Force:$Force }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'install_ca_claude_plugin' { return Invoke-CABUndoPluginLink -Entry $Entry }
-        'gh_auth_login'          { return Invoke-CABUndoGhAuth -Entry $Entry }
-        'install_tool'           { return Invoke-CABUndoToolInstall -Entry $Entry -IncludeTools:$IncludeTools -Context $Context }
+        'gh_auth_login'          { return Invoke-CABUndoGhAuth }
+        'install_tool'           { return Invoke-CABUndoToolInstall -Entry $Entry -IncludeTools:$IncludeTools }
         'install_wsl'            {
             Write-CABStatus -Status info -Message 'WSL install is not auto-reversed. To remove manually: `wsl --unregister Ubuntu-22.04`'
             return @{ status = 'noop'; details = 'WSL reversal must be manual' }
@@ -171,7 +175,11 @@ function Invoke-CABUndoEntry {
 }
 
 function Invoke-CABUndoIdentity {
-    param([hashtable]$Entry, [switch]$Force)
+    # -Force was declared for parity with sibling reversers but never
+    # consulted — identity reversal has no destructive-skip path that
+    # would key off it. Dropped from the signature; the dispatch site
+    # above lost its `-Force:$Force` argument.
+    param([hashtable]$Entry)
     $globalPath = [string]$Entry.global_gitconfig_path
     $wsPath     = [string]$Entry.workspace_gitconfig_path
     $workspace  = [string]$Entry.workspace
@@ -271,7 +279,9 @@ function Invoke-CABUndoPluginLink {
 }
 
 function Invoke-CABUndoGhAuth {
-    param([hashtable]$Entry)
+    # Entry isn't consulted — gh auth logout is repo-agnostic. Dropped
+    # the parameter to silence PSReviewUnusedParameter.
+    param()
     & gh auth logout --hostname github.com 2>$null
     if ($LASTEXITCODE -ne 0) {
         return @{ status = 'noop'; details = 'gh logout already done or unavailable' }
@@ -280,7 +290,11 @@ function Invoke-CABUndoGhAuth {
 }
 
 function Invoke-CABUndoToolInstall {
-    param([hashtable]$Entry, [switch]$IncludeTools, [hashtable]$Context)
+    # Context was declared for dispatch uniformity but tool uninstall
+    # doesn't read from it (winget/brew are global). Dropped to satisfy
+    # PSReviewUnusedParameter; the dispatch site above lost its
+    # `-Context $Context`.
+    param([hashtable]$Entry, [switch]$IncludeTools)
     if (-not $IncludeTools) {
         Write-CABStatus -Status skip -Message "Tool $($Entry.tool) install kept (pass -IncludeTools to uninstall)"
         return @{ status = 'skip'; details = 'tool reversal opt-in only' }

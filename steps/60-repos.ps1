@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/60-repos.ps1 — clone repos group by group.
 
 function Test-CABStep60 {

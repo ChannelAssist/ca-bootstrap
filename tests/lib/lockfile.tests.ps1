@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/lockfile.tests.ps1 — concurrency / single-writer guarantee.
 
 BeforeAll {

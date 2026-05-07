@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/encoding-and-paths.tests.ps1 — v1.2.0 hardening:
 #   * Path-with-spaces / non-ASCII workspace round-trips
 #   * UTF-8 encoding for git config writes (catches windows-1252 mangling)
@@ -58,7 +58,7 @@ Describe 'Step 70 — UTF-8 encoding (regression v1.2.0)' {
         }
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch {}
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Unlock-CABSession
         Set-CABPromptMode -Unattended $false -Answers @{}
         Remove-Item Env:CA_BOOTSTRAP_GIT_NAME, Env:CA_BOOTSTRAP_GIT_EMAIL, Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
@@ -109,7 +109,7 @@ Describe 'Step 70 — re-run idempotency under UTF-8 (encoding round-trip)' {
         }
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch {}
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Unlock-CABSession
         Set-CABPromptMode -Unattended $false -Answers @{}
         Remove-Item Env:CA_BOOTSTRAP_GIT_NAME, Env:CA_BOOTSTRAP_GIT_EMAIL, Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
