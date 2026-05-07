@@ -32,7 +32,11 @@ function Invoke-CABStep30 {
     }
 
     if ($detection.status -eq 'ok') {
-        return @{ status = 'skip'; details = $detection.details }
+        # Already authenticated — return 'ok' (✓) not 'skip' (↷). The
+        # skip icon implies a no-op intentional bypass (user said no,
+        # not applicable); a successful idempotent re-detect should
+        # render as a positive state, not a deflection.
+        return @{ status = 'ok'; details = $detection.details }
     }
 
     Write-Host '  You are not signed in to gh CLI. The browser device flow will'

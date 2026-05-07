@@ -79,6 +79,12 @@ function Invoke-CABStep60 {
     $totalSkipped = 0
     $totalFetched = 0
     $totalFailed = 0
+    # Mismatch is its own bucket — distinct from "user said no" or
+    # "group skipped". A mismatch means a path exists with a wrong/
+    # broken clone (often a partially-cloned .git missing HEAD/config),
+    # which the user has to clean up manually before re-running.
+    $totalMismatch = 0
+    $mismatchPaths = New-Object System.Collections.Generic.List[string]
     $failedDetails = New-Object System.Collections.Generic.List[string]
 
     # Per-repo [N/total] counter so a long clone batch surfaces "where
@@ -149,8 +155,9 @@ function Invoke-CABStep60 {
                 continue
             }
             if ($state -eq 'mismatch') {
-                Write-CABStatus -Status warn -Prefix $progressPrefix -Message "$($repo.repo) — path exists but is not a matching clone; skipping" -Detail $into
-                $totalSkipped++
+                Write-CABStatus -Status warn -Prefix $progressPrefix -Message "$($repo.repo) — path exists but is not a valid clone of this repo; skipping" -Detail $into
+                $totalMismatch++
+                $mismatchPaths.Add($into)
                 continue
             }
 
@@ -200,7 +207,18 @@ function Invoke-CABStep60 {
     }
 
     Write-Host ''
-    $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalFailed failed"
+    if ($totalMismatch -gt 0) {
+        # Surface a single recovery hint at the end — repeating it on
+        # every mismatch line would just be noise. The paths are listed
+        # above (each with its own ⚠ row); this tells the user how to
+        # unstick them. We don't try to auto-fix because the path could
+        # contain uncommitted user work; manual confirmation is right.
+        Write-CABColor Yellow "  ⓘ $totalMismatch path(s) exist but aren't valid clones. Inspect each path,"
+        Write-CABColor Yellow "    then either delete it manually or run 'ca-bootstrap.ps1 undo' to remove"
+        Write-CABColor Yellow "    everything this session tracked. Re-run setup to re-clone."
+        Write-Host ''
+    }
+    $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalMismatch mismatched, $totalFailed failed"
     if ($totalFailed -gt 0) {
         return @{ status = 'fail'; details = "$summary. Errors:`n  $($failedDetails -join "`n  ")" }
     }

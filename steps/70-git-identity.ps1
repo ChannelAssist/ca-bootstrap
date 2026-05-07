@@ -62,7 +62,9 @@ function Invoke-CABStep70 {
 
     $detection = Test-CABStep70 -Context $Context
     if ($detection.status -eq 'ok') {
-        return @{ status = 'skip'; details = $detection.details }
+        # See note in step 30: idempotent re-detect of an already-good
+        # state should be ✓ not ↷.
+        return @{ status = 'ok'; details = $detection.details }
     }
 
     # Recreate-only path: includeIf is already wired up but the workspace

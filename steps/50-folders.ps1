@@ -33,10 +33,16 @@ function Invoke-CABStep50 {
     $required = @($manifest.folders | Where-Object { -not $_.optional })
 
     Write-Host "  Will ensure these folders under $($Context.WorkspacePath):"
+    # Mirror the Format-CABToolReport / Write-CABToolLine pattern so the
+    # ✓-row formatting (4 spaces + icon + 2 spaces + 20-wide label +
+    # 2 spaces + description) is identical to step 3's tool list.
+    # Existing folders → ✓ (Green, no-op needed). Missing → + (Cyan,
+    # will-create).
     foreach ($f in $required) {
         $present = Test-Path (Join-Path $Context.WorkspacePath $f.path)
-        $marker = if ($present) { '✓' } else { '+' }
-        Write-Host ("    {0} {1,-15} {2}" -f $marker, $f.path, $f.description)
+        $icon, $color = if ($present) { '✓', 'Green' } else { '+', 'Cyan' }
+        $label = ([string]$f.path).PadRight(20)
+        Write-CABColor ([ConsoleColor]$color) "    $icon  $label  $($f.description)"
     }
     Write-Host ''
 
