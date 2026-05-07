@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/identity-recreate.tests.ps1 — regression tests for the
 # step 70 "includeIf present but workspace .gitconfig missing" path
 # added in PR #17 (chore/drop-tui-restore-cli-focus). Verifies:

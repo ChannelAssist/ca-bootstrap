@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/setup.ps1 — runs all steps in order, install/fix mode.
 
 # Invoke-CABQuitWithRollbackOffer — called when the user quits or a step

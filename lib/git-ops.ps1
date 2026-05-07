@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/git-ops.ps1 — git/gh helpers used by the repos step.
 
 # Test-CABCommandAvailable — quick check; returns true if the named

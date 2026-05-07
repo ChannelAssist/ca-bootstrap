@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/80-extras.ps1 — optional finishing touches.
 #
 # Four offers (each independently confirmable):

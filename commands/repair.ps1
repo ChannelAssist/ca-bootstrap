@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/repair.ps1 — fix what doctor found.
 #
 # Phase 9 implementation. Reuses each step's Invoke function: instead of

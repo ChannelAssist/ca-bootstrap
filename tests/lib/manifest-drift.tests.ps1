@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/manifest-drift.tests.ps1 — catches manifest tool-regex drift.
 #
 # When a tool's --version output format changes (e.g. dotnet 11 ships and

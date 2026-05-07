@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/doctor.ps1 — diagnostic-only run.
 #
 # Phase 8 implementation. Walks every step's Test function and the journal

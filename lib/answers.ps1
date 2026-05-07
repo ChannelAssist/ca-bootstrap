@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/answers.ps1 — flatten the structured answers.yaml into the flat
 # AnswerKey form the Read-CABConfirm / Read-CABChoice helpers consume.
 #

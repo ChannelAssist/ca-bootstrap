@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # commands/undo.ps1 — reverse changes recorded in the action journal.
 #
 # Phase 10 implementation. Walks the journal in reverse and dispatches

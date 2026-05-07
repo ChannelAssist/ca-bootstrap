@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/70-git-identity.ps1 — per-workspace git identity via git includeIf.
 #
 # We never touch the user's global user.name / user.email. Instead we add

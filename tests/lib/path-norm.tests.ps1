@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/path-norm.tests.ps1 — path-normalization invariants.
 #
 # These tests guard against the v1.0.2 bug class: a Windows backslash

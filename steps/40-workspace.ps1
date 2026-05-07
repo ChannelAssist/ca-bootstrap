@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/40-workspace.ps1 — pick the workspace root path.
 
 function Test-CABStep40 {

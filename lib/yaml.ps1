@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/yaml.ps1 — YAML parsing for manifests.
 #
 # Wraps the powershell-yaml community module. Installs it on demand if

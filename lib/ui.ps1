@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/ui.ps1 — color output, headers, banners, status icons.
 
 $Script:CABootstrapColor = -not ($env:NO_COLOR -or $env:CA_BOOTSTRAP_NO_COLOR)

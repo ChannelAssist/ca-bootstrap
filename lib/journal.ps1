@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/journal.ps1 — action journal: read, write, append, query, recover.
 #
 # Phase 7 implementation. The journal is the source of truth for what

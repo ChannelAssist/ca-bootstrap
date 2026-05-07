@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/answers.tests.ps1 — Convert-CABAnswersToFlat unit tests.
 
 BeforeAll {

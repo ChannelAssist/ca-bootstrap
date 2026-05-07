@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/redaction.tests.ps1 — token redaction in journal entries.
 
 BeforeAll {

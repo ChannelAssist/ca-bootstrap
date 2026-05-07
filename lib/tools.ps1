@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/tools.ps1 — generic tool detection.
 #
 # A "tool" is any entry in manifest/tools.yaml. Detection runs the entry's

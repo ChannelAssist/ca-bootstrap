@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/30-gh-auth.ps1 — ensure the user is authenticated to GitHub via gh CLI.
 
 function Test-CABStep30 {

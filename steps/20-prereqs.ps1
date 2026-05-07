@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # steps/20-prereqs.ps1 — detect installed tools; install in phase 4.
 
 function Test-CABStep20 {

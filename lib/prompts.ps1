@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # lib/prompts.ps1 — interactive prompt helpers (Read-Host wizard).
 #
 # All prompts respect $Script:CABootstrapUnattended; in unattended mode

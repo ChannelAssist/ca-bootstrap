@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/encoding-and-paths.tests.ps1 — v1.2.0 hardening:
 #   * Path-with-spaces / non-ASCII workspace round-trips
 #   * UTF-8 encoding for git config writes (catches windows-1252 mangling)

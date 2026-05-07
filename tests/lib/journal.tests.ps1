@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/journal.tests.ps1 — Pester tests for the action journal.
 
 BeforeAll {

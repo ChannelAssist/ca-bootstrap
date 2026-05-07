@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/wizard/setup-end-to-end.tests.ps1
 #
 # Layer 3: spawn the wizard as a subprocess and assert the resulting
