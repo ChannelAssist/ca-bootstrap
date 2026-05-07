@@ -20,9 +20,9 @@ BeforeAll {
 
 Describe 'ConvertTo-CABGitdirPattern' {
     It 'always produces forward slashes' {
-        $r = ConvertTo-CABGitdirPattern -Path 'C:\Users\peter\ws'
+        $r = ConvertTo-CABGitdirPattern -Path 'C:\Users\user\ws'
         $r | Should -Not -Match '\\'
-        $r | Should -Match '^C:/Users/peter/ws/$'
+        $r | Should -Match '^C:/Users/user/ws/$'
     }
     It 'always ends with a single trailing slash' {
         (ConvertTo-CABGitdirPattern -Path '/tmp/ws')   | Should -Be '/tmp/ws/'

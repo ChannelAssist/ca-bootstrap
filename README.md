@@ -86,7 +86,7 @@ pwsh ./ca-bootstrap.ps1 setup
 2. **Check prerequisites** — detects which tools are installed at which versions
 3. **Install missing tools** — git, GitHub CLI, .NET SDK 10, Node.js 20 LTS, Python 3.12, Docker, VS Code, VS Code extensions
 4. **Authenticate** — runs `gh auth login` so private repos can clone
-5. **Pick a workspace location** — defaults to `~/Documents/Projects/ChannelAssistDev/` (Windows: `%USERPROFILE%\Documents\Projects\ChannelAssistDev\`)
+5. **Pick a workspace location** — defaults to `~/Documents/Projects/ChannelAssistDev/` (Windows: `%USERPROFILE%\Documents\Projects\ChannelAssistDev\`). On a headless box where `~/Documents/` doesn't exist, the default falls back to `~/Projects/ChannelAssistDev/`.
 6. **Create the folder structure** — `docs/`, `ca-platform/`, `cm-product/`, `ado-legacy/`
 7. **Clone repositories** — group by group, individually selectable, respects your team membership
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
