@@ -48,7 +48,7 @@ Describe 'Add-CABJournalEntry redacts sensitive Data fields' {
         Start-CABSession -Command 'setup' -Version 'test'
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch {}
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Unlock-CABSession
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
         if ($script:tempState -and (Test-Path $script:tempState)) {

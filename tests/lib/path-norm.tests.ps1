@@ -80,7 +80,7 @@ Describe 'Step 70 — git identity content (regression v1.0.2)' {
         Start-CABSession -Command 'setup' -Version 'test'
     }
     AfterEach {
-        try { Stop-Transcript | Out-Null } catch { }
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         Set-CABPromptMode -Unattended $false -Answers @{}
         Remove-Item Env:CA_BOOTSTRAP_GIT_NAME, Env:CA_BOOTSTRAP_GIT_EMAIL, Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
         if ($script:tempHome -and (Test-Path $script:tempHome)) {

@@ -334,7 +334,7 @@ function Stop-CABSession {
     Save-CABJournal
     Write-Host ''
     Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
-    try { Stop-Transcript | Out-Null } catch { }
+    try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
     Unlock-CABSession
 }
 

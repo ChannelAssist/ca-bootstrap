@@ -20,7 +20,7 @@ Describe 'Journal round-trip' {
         # Stop any active transcript so Windows releases the file handle
         # before we try to delete the temp dir. Linux/macOS allow deletion
         # of open files, but NTFS does not.
-        try { Stop-Transcript | Out-Null } catch { }
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
         if ($script:tempState -and (Test-Path $script:tempState)) {
             Remove-Item -Recurse -Force $script:tempState -ErrorAction SilentlyContinue
         }
@@ -45,7 +45,7 @@ Describe 'Journal round-trip' {
         Start-CABSession -Command 'setup' -Version '0.0.0-test'
         Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = '/tmp/a' } | Out-Null
         Save-CABJournal
-        try { Stop-Transcript | Out-Null } catch { }
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
 
         Reset-CABJournalState
         Read-CABJournal | Out-Null
