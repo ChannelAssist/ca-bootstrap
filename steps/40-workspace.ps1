@@ -2,8 +2,12 @@
 # steps/40-workspace.ps1 — pick the workspace root path.
 
 function Test-CABStep40 {
+    # Test-CABStep40 reads from CA_BOOTSTRAP_WORKSPACE / the default
+    # resolver, not from Context — kept signature-less to silence
+    # PSReviewUnusedParameter. If a future caller needs to bias
+    # detection by Context.WorkspacePath, add the parameter back then.
     [CmdletBinding()]
-    param([hashtable]$Context)
+    param()
     $path = if ($env:CA_BOOTSTRAP_WORKSPACE) {
         $env:CA_BOOTSTRAP_WORKSPACE
     } else {

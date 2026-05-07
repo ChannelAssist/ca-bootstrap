@@ -62,7 +62,7 @@ function Invoke-CABCommandRepair {
     foreach ($t in $targets) {
         Write-Host ''
         Write-CABColor White "  → repair $t"
-        $result = Invoke-CABRepairTarget -Target $t -Context $Context -DoctorChecks $checks
+        $result = Invoke-CABRepairTarget -Target $t -Context $Context
         if ($result.ok) {
             Write-CABStatus -Status ok -Message $result.details
             $applied++
@@ -101,11 +101,15 @@ function Invoke-CABCommandRepair {
 # Invoke-CABRepairTarget — dispatch one target string to the corresponding
 # step's Invoke function in repair mode.
 function Invoke-CABRepairTarget {
+    # DoctorChecks was passed to give the dispatcher per-target visibility
+    # into the failed checks, but every branch below resolves the work
+    # itself by re-invoking the relevant step's Invoke function — none
+    # peek at the doctor result. Dropped the parameter; if a future
+    # target needs the diagnostics, add it back then.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$Target,
-        [Parameter(Mandatory)][hashtable]$Context,
-        [array]$DoctorChecks
+        [Parameter(Mandatory)][hashtable]$Context
     )
 
     # Strip the "tool." prefix doctor uses (so users can type the manifest

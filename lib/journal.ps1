@@ -400,13 +400,17 @@ function Add-CABJournalEntry {
 #   -IncludeUndone     also include entries marked undone
 #   -SessionCommand    filter by the session.command that produced the entry
 function Get-CABJournalEntries {
+    # -OnlyOpen used to be the inverse of -IncludeUndone but was never
+    # wired in (the body always uses IncludeUndone). Removed to drop
+    # the dead switch — callers that filter for "open" entries already
+    # rely on the default behavior (undone entries excluded unless
+    # IncludeUndone is passed).
     [CmdletBinding()]
     param(
         [string]$Action,
         [string]$Step,
         [string]$SessionCommand,
-        [switch]$IncludeUndone,
-        [switch]$OnlyOpen
+        [switch]$IncludeUndone
     )
     if (-not $Script:CABJournalState) { Read-CABJournal | Out-Null }
     if (-not $Script:CABJournalState.sessions) { return @() }

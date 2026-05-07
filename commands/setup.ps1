@@ -48,7 +48,7 @@ function Invoke-CABQuitWithRollbackOffer {
         Write-Host '  ' -NoNewline
         Write-CABColor Cyan "[$progressIndex/$progressTotal]" -NoNewLine
         Write-CABColor DarkGray " reverting $($entry.action)..."
-        $r = Invoke-CABUndoEntry -Entry $entry -Force:$false -IncludeFolders:$true -IncludeTools:$false -Context $Context
+        $r = Invoke-CABUndoEntry -Entry $entry -Force:$false -IncludeFolders:$true -IncludeTools:$false
         switch ($r.status) {
             'ok'   { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $reversed++ }
             'noop' { Mark-CABEntryUndone -EntryId $entry.id | Out-Null; $skipped++ }

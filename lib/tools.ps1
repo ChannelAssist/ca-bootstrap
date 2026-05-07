@@ -61,7 +61,11 @@ function Test-CABTool {
 
     $cmdParts = $Tool.check.cmd -split '\s+', 2
     $exe = $cmdParts[0]
-    $args = if ($cmdParts.Count -gt 1) { $cmdParts[1] } else { $null }
+    # Renamed from $args to avoid shadowing the PowerShell automatic
+    # variable (PSAvoidAssignmentToAutomaticVariable). $args is the
+    # parameter array of the enclosing scriptblock; assigning to it
+    # corrupts the enclosing function's view of its own arguments.
+    $cmdArgs = if ($cmdParts.Count -gt 1) { $cmdParts[1] } else { $null }
 
     if (-not (Get-Command $exe -ErrorAction SilentlyContinue)) {
         $result.status = 'fail'
@@ -70,8 +74,8 @@ function Test-CABTool {
     }
 
     try {
-        $output = if ($args) {
-            (& $exe $args.Split(' ') 2>&1) -join "`n"
+        $output = if ($cmdArgs) {
+            (& $exe $cmdArgs.Split(' ') 2>&1) -join "`n"
         } else {
             (& $exe 2>&1) -join "`n"
         }

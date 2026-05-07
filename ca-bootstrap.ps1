@@ -188,8 +188,13 @@ $Script:CABQuitRequested = $false
 # checks between steps and on prompt return, so the user gets the same
 # rollback offer they'd get by typing 'q'.
 $null = [Console]::add_CancelKeyPress({
-    param($sender, $eventArgs)
-    $eventArgs.Cancel = $true   # don't terminate; let us handle it
+    # The CancelKeyPress delegate signature is (object sender,
+    # ConsoleCancelEventArgs e). We only need eArgs but the binding
+    # requires both positional params. Reading $src once anchors PSSA's
+    # "used" detection without changing behavior.
+    param($src, $eArgs)
+    $null = $src
+    $eArgs.Cancel = $true   # don't terminate; let us handle it
     $Script:CABQuitRequested = $true
     Write-Host ''
     Write-CABColor Yellow '  ⚠ Ctrl+C — quitting after the current step. Press Ctrl+C again to force-exit.'
