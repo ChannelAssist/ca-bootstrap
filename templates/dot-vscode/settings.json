@@ -1,9 +1,11 @@
-// Per-repo VS Code settings.
+// Workspace-root VS Code settings.
 //
-// These override the user's personal settings only inside this repo.
-// Keep this file small: settings that should apply across every repo
-// belong in the workspace-root .vscode/settings.json (written by
-// ca-bootstrap into the workspace root).
+// ca-bootstrap copies this into <workspace>/.vscode/settings.json so
+// the defaults below apply across every cloned ChannelAssist repo when
+// the multi-root workspace is opened. The same file is also a starter
+// per-repo template — copy it into a repo's own .vscode/ folder when
+// you need settings that diverge from the workspace defaults (per-repo
+// settings override workspace settings in VS Code's resolution order).
 {
   // Format on save with the language's default formatter. Override
   // per-language with `[language-id]` blocks if needed.

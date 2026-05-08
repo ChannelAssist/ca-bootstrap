@@ -1,9 +1,14 @@
-// Per-repo debugger launch configurations.
+// Workspace-root debugger launch configurations.
 //
-// VS Code's "Run and Debug" sidebar reads this file. Each repo should
-// keep only the configurations its language stack actually uses —
-// listing every possible launcher here pollutes the picker UI.
+// ca-bootstrap copies this into <workspace>/.vscode/launch.json so
+// VS Code's "Run and Debug" picker offers these launchers across the
+// whole multi-root workspace. The same file also serves as a starter
+// per-repo template — copy it into a repo's own .vscode/ folder when
+// the repo's language stack needs launchers different from (or in
+// addition to) the workspace ones.
 //
+// Each repo should keep only the configurations its language stack
+// actually uses — listing every possible launcher pollutes the picker.
 // Common starters for ChannelAssist stacks are commented below.
 {
   "version": "0.2.0",

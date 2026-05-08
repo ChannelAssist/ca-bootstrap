@@ -74,7 +74,7 @@ function Test-CABStep80 {
     if (-not $Context.WorkspacePath) {
         return @{ status = 'fail'; details = 'Workspace not set.' }
     }
-    @{ status = 'pending'; details = 'Four optional extras available.' }
+    @{ status = 'pending'; details = 'Five optional extras available.' }
 }
 
 function Invoke-CABStep80 {
@@ -173,6 +173,7 @@ function Invoke-CABStep80 {
                 }
                 $copied = 0
                 $skipped = 0
+                $failed = 0
                 foreach ($name in 'extensions.json','settings.json','launch.json','tasks.json') {
                     $src = Join-Path $vscodeTemplates $name
                     $dst = Join-Path $vscodeDir $name
@@ -181,12 +182,27 @@ function Invoke-CABStep80 {
                         $skipped++
                         continue
                     }
-                    Copy-Item -Path $src -Destination $dst
-                    Add-CABJournalEntry -Step '80-extras' -Action 'create_file' -Data @{ path = $dst } | Out-Null
-                    $copied++
+                    # -ErrorAction Stop turns Copy-Item's default non-
+                    # terminating errors into catchable exceptions —
+                    # otherwise a partial write (read-only target,
+                    # filesystem full, etc.) would silently slip past
+                    # and we'd journal a create_file action for a file
+                    # that doesn't actually exist on disk, corrupting
+                    # later undo and doctor runs.
+                    try {
+                        Copy-Item -Path $src -Destination $dst -ErrorAction Stop
+                        Add-CABJournalEntry -Step '80-extras' -Action 'create_file' -Data @{ path = $dst } | Out-Null
+                        $copied++
+                    } catch {
+                        Write-CABStatus -Status fail -Message "Could not write $($dst): $($_.Exception.Message)"
+                        $failed++
+                    }
                 }
-                Write-CABStatus -Status ok -Message ".vscode/ defaults: $copied written, $skipped already present"
-                $actions += "vscode-defaults($copied/$($copied + $skipped))"
+                $summary = ".vscode/ defaults: $copied written, $skipped already present"
+                if ($failed -gt 0) { $summary += ", $failed failed" }
+                $writeStatus = if ($failed -gt 0) { 'warn' } else { 'ok' }
+                Write-CABStatus -Status $writeStatus -Message $summary
+                $actions += "vscode-defaults($copied/$($copied + $skipped + $failed))"
             }
         } else {
             Write-CABStatus -Status skip -Message '.vscode/ defaults skipped.'

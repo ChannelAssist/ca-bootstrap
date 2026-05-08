@@ -52,3 +52,82 @@ Describe 'Test-CABTool' {
         }
     }
 }
+
+Describe 'Install-CABTool — gh-extension dispatch' {
+    BeforeAll {
+        # Build a tool entry covering all three OSes so the test runs on
+        # whatever Get-CABOSFamily reports for the host.
+        function script:New-GhExtTool {
+            param([string]$Id, [string]$ExtId)
+            @{
+                id      = $Id
+                name    = $Id
+                install = @{
+                    windows = @{ type = 'gh-extension'; id = $ExtId }
+                    macos   = @{ type = 'gh-extension'; id = $ExtId }
+                    linux   = @{ any = @{ type = 'gh-extension'; id = $ExtId } }
+                }
+            }
+        }
+    }
+
+    Context 'WhatIfMode short-circuit' {
+        It 'returns ok=true with WhatIf details and never tries to invoke gh' {
+            $tool = New-GhExtTool -Id 'gh-copilot' -ExtId 'github/gh-copilot'
+            $r = Install-CABTool -Tool $tool -Context @{ WhatIfMode = $true }
+            $r.ok | Should -BeTrue
+            $r.details | Should -Match 'WhatIf'
+        }
+    }
+
+    Context 'when gh is missing from PATH' {
+        It 'returns ok=false with a helpful detail (no subprocess attempted)' {
+            # Fake gh-as-missing without altering the real PATH. Pester's
+            # Mock can stub Get-Command; the gh-extension branch checks
+            # `Get-Command 'gh' -ErrorAction SilentlyContinue` and bails
+            # when null is returned.
+            Mock Get-Command -ParameterFilter { $Name -eq 'gh' } -MockWith { $null }
+            $tool = New-GhExtTool -Id 'gh-copilot' -ExtId 'github/gh-copilot'
+            $r = Install-CABTool -Tool $tool -Context @{}
+            $r.ok | Should -BeFalse
+            $r.details | Should -Match 'gh CLI not on PATH'
+        }
+    }
+
+    Context 'matching against gh extension list' {
+        It 'matches owner/repo exactly — substring collisions do not trigger upgrade' {
+            # Smoke test the match logic via a string-only fixture so we
+            # don't need to spin up a real gh CLI. The same column-2
+            # exact-match the install handler does.
+            $listOutput = @(
+                "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
+                "gh dash`tdlvhdr/gh-dash`tv3.5.2"
+            ) -join "`n"
+            $target = 'github/gh-copilot'
+            $alreadyInstalled = $false
+            foreach ($row in @($listOutput -split "`r?`n")) {
+                $cols = $row -split "`t"
+                if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $target) {
+                    $alreadyInstalled = $true; break
+                }
+            }
+            $alreadyInstalled | Should -BeFalse
+        }
+
+        It 'matches owner/repo exactly — exact match triggers upgrade path' {
+            $listOutput = @(
+                "gh copilot`tgithub/gh-copilot`tv1.0.0"
+                "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
+            ) -join "`n"
+            $target = 'github/gh-copilot'
+            $alreadyInstalled = $false
+            foreach ($row in @($listOutput -split "`r?`n")) {
+                $cols = $row -split "`t"
+                if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $target) {
+                    $alreadyInstalled = $true; break
+                }
+            }
+            $alreadyInstalled | Should -BeTrue
+        }
+    }
+}

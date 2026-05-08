@@ -127,7 +127,7 @@ function Group-CABUndoEntry {
     param([array]$Entries, [switch]$IncludeTools)
     $byCategory = [ordered]@{}
     $byCategory['identity']     = @($Entries | Where-Object { $_.action -eq 'configure_git_identity' })
-    $byCategory['workspace']    = @($Entries | Where-Object { $_.action -eq 'create_workspace_file' })
+    $byCategory['workspace']    = @($Entries | Where-Object { $_.action -in 'create_workspace_file','create_file' })
     $byCategory['plugin']       = @($Entries | Where-Object { $_.action -eq 'install_ca_claude_plugin' })
     $byCategory['repos']        = @($Entries | Where-Object { $_.action -eq 'clone_repo' })
     $byCategory['folders']      = @($Entries | Where-Object { $_.action -eq 'create_folder' })
@@ -161,6 +161,7 @@ function Invoke-CABUndoEntry {
         'clone_repo'             { return Invoke-CABUndoCloneRepo -Entry $Entry -Force:$Force }
         'create_folder'          { return Invoke-CABUndoCreateFolder -Entry $Entry -IncludeFolders:$IncludeFolders -Force:$Force }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
+        'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }
         'install_ca_claude_plugin' { return Invoke-CABUndoPluginLink -Entry $Entry }
         'gh_auth_login'          { return Invoke-CABUndoGhAuth }
         'install_tool'           { return Invoke-CABUndoToolInstall -Entry $Entry -IncludeTools:$IncludeTools }
@@ -263,6 +264,18 @@ function Invoke-CABUndoCreateFolder {
 }
 
 function Invoke-CABUndoWorkspaceFile {
+    param([hashtable]$Entry)
+    $path = [string]$Entry.path
+    if (-not (Test-Path $path)) { return @{ status = 'noop'; details = 'already absent' } }
+    Remove-Item -Path $path -Force
+    return @{ status = 'ok'; details = "Removed $path" }
+}
+
+function Invoke-CABUndoCreateFile {
+    # Reverses a create_file action — currently produced by step 80's
+    # workspace-root .vscode/ defaults writer. Symmetric to
+    # Invoke-CABUndoWorkspaceFile (single file delete; no recursive
+    # rmdir, since the file was created without owning its parent).
     param([hashtable]$Entry)
     $path = [string]$Entry.path
     if (-not (Test-Path $path)) { return @{ status = 'noop'; details = 'already absent' } }
