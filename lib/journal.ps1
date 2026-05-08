@@ -483,7 +483,12 @@ function Repair-CABJournal {
         actions              = New-Object System.Collections.Generic.List[hashtable]
     }
 
-    # Workspace folder.
+    # Workspace folder. Emit both create_folder (so undo can mkdir-undo
+    # if the user later asks with --include-folders) and select_workspace
+    # (so the new doctor read order finds the reconstructed workspace
+    # without falling back to the legacy filter). Two entries, two
+    # different jobs — see steps/40-workspace.ps1 for the same split on
+    # live runs.
     if (Test-Path $WorkspacePath) {
         $session.actions.Add([ordered]@{
             id                = $sessionId
@@ -493,6 +498,17 @@ function Repair-CABJournal {
             undone            = $false
             path              = $WorkspacePath
             is_workspace_root = $true
+            reconstructed     = $true
+        })
+        $session.actions.Add([ordered]@{
+            id                = $sessionId
+            step              = '40-workspace'
+            action            = 'select_workspace'
+            reversible        = $false
+            undone            = $false
+            path              = $WorkspacePath
+            is_workspace_root = $true
+            created           = $false
             reconstructed     = $true
         })
     }
