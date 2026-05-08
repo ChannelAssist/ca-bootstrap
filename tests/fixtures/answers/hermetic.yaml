@@ -8,9 +8,12 @@ git_identity:
   configure: false
 clone:
   groups:
+    tools: skip
     docs: skip
     ca-platform: skip
     cm-product: skip
+    ca-training: skip
+    experiments: skip
 extras:
   vscode_workspace_file: false
   ca_claude_plugin: false

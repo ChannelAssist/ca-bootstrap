@@ -324,7 +324,23 @@ fi
 # 7. GitHub release
 # ---------------------------------------------------------------------------
 
-PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "^$TAG$" | head -1 || true)
+# Pick the previous tag for changelog generation. Two filters matter:
+#
+#   1. `--merged origin/main` — exclude tags that point at orphaned
+#      commits (e.g. archive tags from work that was later squashed
+#      and dropped via PR). Without this, a `--sort=-v:refname` walk
+#      can pick a higher-numbered orphan tag and produce a misleading
+#      "Changes since vX.Y.Z" header pointing at unreachable history.
+#
+#   2. `grep -v "^$TAG$"` — drop the tag we're about to create (it
+#      was just pushed in step 6 above; without this we'd pick
+#      ourselves as our own predecessor and emit empty notes).
+#
+# `--sort=-v:refname` picks the highest semver among the survivors.
+PREV_TAG=$(git tag --merged origin/main --sort=-v:refname \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' \
+    | grep -v "^$TAG$" \
+    | head -1 || true)
 
 if [ -n "$NOTES_FILE" ] && [ -f "$NOTES_FILE" ]; then
     NOTES_BODY=$(cat "$NOTES_FILE")

@@ -32,7 +32,7 @@ Describe 'ConvertTo-CABGitdirPattern' {
 
 Describe 'ConvertTo-CABAbsolutePath' {
     It 'rejects relative input' {
-        { ConvertTo-CABAbsolutePath -Path 'docs/keystone' -Source 'test' } | Should -Throw '*current directory*'
+        { ConvertTo-CABAbsolutePath -Path 'ca-docs/keystone' -Source 'test' } | Should -Throw '*current directory*'
     }
     It 'rejects empty input' {
         { ConvertTo-CABAbsolutePath -Path '' -Source 'test' } | Should -Throw

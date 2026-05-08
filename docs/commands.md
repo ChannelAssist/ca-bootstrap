@@ -27,6 +27,8 @@ If `<command>` is omitted, `setup` runs.
 | `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
 | `make release VERSION=X.Y.Z` | Promote `dev` → `main` (ff), tag GPG-signed, push, create GH release. Requires the version constant on `dev` to already equal X.Y.Z — bump it via a PR to `dev` first. |
 | `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
+| `make release-full VERSION=X.Y.Z` | One-shot: auto-bump dev's version (admin-merged PR, no review), then run `make release`. Skips review on the bump itself; for hotfixes / single-maintainer flows. |
+| `make release-full-dry-run VERSION=X.Y.Z` | Validate the bump+merge plan without mutating. Cascades DRY_RUN to `scripts/release.sh` only when dev's version already matches X.Y.Z (otherwise short-circuits — release.sh can't validate against a version that wasn't actually bumped). |
 | `make manifest-drift` | Show drift between `manifest/repos.yaml` and the live ChannelAssist org (read-only). |
 | `make manifest-edit` | Interactive editor: list every org repo with `[x]`/`[ ]`, add/remove via prompts. |
 
@@ -382,8 +384,8 @@ ca-bootstrap manifest-edit
       • ChannelAssist/team-pulse        (archived; per policy, archived repos don't belong in the manifest)
 
   Repos in 28-style listing:
-    [x]  ChannelAssist/.github                       docs/org-profile-public (main)
-    [x]  ChannelAssist/.github-private               docs/org-profile-private (main)
+    [x]  ChannelAssist/.github                       ca-docs/org-profile-public (main)
+    [x]  ChannelAssist/.github-private               ca-docs/org-profile-private (main)
     [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  ca-training/Generative-AI-for-beginners-dotnet (main, opt-in)
     [ ]  ChannelAssist/cm-new-thing  (private)       → suggested group: cm-product
     [-]  ChannelAssist/cm-ledger-service             cm-product/cm-ledger-service (main) [auto-queued for removal]

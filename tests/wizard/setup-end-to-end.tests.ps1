@@ -40,7 +40,7 @@ Describe 'Wizard end-to-end (Layer 3)' {
         $LASTEXITCODE | Should -Be 0 -Because "wizard exited 0; output was:`n$output"
 
         Test-Path $script:tempWs -PathType Container | Should -BeTrue -Because 'workspace must be created'
-        foreach ($sub in 'docs','ca-platform','cm-product') {
+        foreach ($sub in 'ca-tools','ca-docs','ca-platform','cm-product') {
             Test-Path (Join-Path $script:tempWs $sub) -PathType Container | Should -BeTrue -Because "subfolder $sub must be created"
         }
 
