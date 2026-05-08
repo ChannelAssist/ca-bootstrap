@@ -17,7 +17,7 @@ name: Release
 # also work but force per-repo rotation.
 #
 # Recommended setup: create a dedicated machine user (e.g.
-# `channelassist-release-bot`), give it Admin on every repo that releases
+# `ca-release-bot`), give it Admin on every repo that releases
 # this way, then store ITS credentials in the org secrets below. Reasons:
 #   - Bus factor: nobody's personal seat blocks releases when they leave or
 #     rotate their PAT.
