@@ -51,9 +51,14 @@ Describe 'Invoke-CABStep80 end-to-end — workspace .vscode/ defaults' {
         $script:workspace = Join-Path ([System.IO.Path]::GetTempPath()) ("cab-step80-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $script:workspace -Force | Out-Null
 
-        # Reset journal state file so each test starts clean.
+        # Reset journal state files so each test starts clean. Includes
+        # the transcript: on Windows Start-CABSession Move-Items the
+        # last-run.log into runs/, which fails if a stale handle from a
+        # prior crash is still holding the file.
         Remove-Item -Path (Join-Path $script:tmpState 'journal.yaml') -ErrorAction SilentlyContinue
         Remove-Item -Path (Join-Path $script:tmpState 'session.lock') -ErrorAction SilentlyContinue
+        Remove-Item -Path (Join-Path $script:tmpState 'session.lock.d') -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path (Join-Path $script:tmpState 'last-run.log') -Force -ErrorAction SilentlyContinue
 
         # Drive Read-CABConfirm via the unattended-mode path: pre-stuff
         # answers in $Script:CABootstrapAnswers and flip the unattended
@@ -71,7 +76,11 @@ Describe 'Invoke-CABStep80 end-to-end — workspace .vscode/ defaults' {
         Start-CABSession -Command 'setup' -Version 'test' -WorkspacePath $script:workspace | Out-Null
     }
     AfterEach {
-        # Release the lock and clean up the workspace.
+        # Stop the transcript first — Start-CABSession opened it via
+        # Start-Transcript and on Windows the file handle stays open,
+        # which makes the *next* test's Start-CABSession fail when it
+        # tries to Move-Item the still-locked log.
+        try { Stop-Transcript -ErrorAction SilentlyContinue | Out-Null } catch {}
         Unlock-CABSession -ErrorAction SilentlyContinue
         if ($script:workspace -and (Test-Path $script:workspace)) {
             Remove-Item -Path $script:workspace -Recurse -Force -ErrorAction SilentlyContinue
