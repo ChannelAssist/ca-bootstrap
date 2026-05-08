@@ -94,40 +94,116 @@ Describe 'Install-CABTool — gh-extension dispatch' {
         }
     }
 
-    Context 'matching against gh extension list' {
-        It 'matches owner/repo exactly — substring collisions do not trigger upgrade' {
-            # Smoke test the match logic via a string-only fixture so we
-            # don't need to spin up a real gh CLI. The same column-2
-            # exact-match the install handler does.
-            $listOutput = @(
-                "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
-                "gh dash`tdlvhdr/gh-dash`tv3.5.2"
-            ) -join "`n"
-            $target = 'github/gh-copilot'
-            $alreadyInstalled = $false
-            foreach ($row in @($listOutput -split "`r?`n")) {
-                $cols = $row -split "`t"
-                if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $target) {
-                    $alreadyInstalled = $true; break
+    Context 'end-to-end dispatch (gh shimmed)' {
+        BeforeAll {
+            # Shim gh by defining a function in global scope. PowerShell's
+            # function table takes precedence over PATH, so `& gh ...` in
+            # Install-CABTool hits this handler instead of the real CLI.
+            # Tracks invocations on $script:ghCalls so each It can assert
+            # which subcommand actually ran.
+            $script:ghListOutput = ''
+            $script:ghCalls      = @()
+            function global:gh {
+                $script:ghCalls += @{ argv = ($args -join ' ') }
+                $joined = ($args -join ' ')
+                if ($joined -match '^extension list') {
+                    Write-Output $script:ghListOutput
+                    $global:LASTEXITCODE = 0
+                    return
                 }
+                $global:LASTEXITCODE = 0
             }
-            $alreadyInstalled | Should -BeFalse
+        }
+        AfterAll {
+            Remove-Item -Path Function:gh -Force -ErrorAction SilentlyContinue
+        }
+        BeforeEach {
+            $script:ghCalls      = @()
+            $script:ghListOutput = ''
         }
 
-        It 'matches owner/repo exactly — exact match triggers upgrade path' {
-            $listOutput = @(
+        It 'invokes upgrade with the local name when the target is already installed' {
+            $script:ghListOutput = @(
                 "gh copilot`tgithub/gh-copilot`tv1.0.0"
-                "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
+                "gh dash`tdlvhdr/gh-dash`tv3.5.2"
             ) -join "`n"
-            $target = 'github/gh-copilot'
-            $alreadyInstalled = $false
-            foreach ($row in @($listOutput -split "`r?`n")) {
-                $cols = $row -split "`t"
-                if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $target) {
-                    $alreadyInstalled = $true; break
+            $tool = @{
+                id = 'gh-copilot'; name = 'X'
+                install = @{
+                    windows = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    macos   = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    linux   = @{ any = @{ type = 'gh-extension'; id = 'github/gh-copilot' } }
                 }
             }
-            $alreadyInstalled | Should -BeTrue
+            $r = Install-CABTool -Tool $tool -Context @{}
+            $r.ok | Should -BeTrue
+            $upgrades = @($script:ghCalls | Where-Object { $_.argv -match '^extension upgrade' })
+            $upgrades.Count | Should -Be 1
+            # local name from column 1's "gh <name>" should be 'copilot'.
+            $upgrades[0].argv | Should -Match 'extension upgrade copilot'
+            # Should NOT have called extension install.
+            @($script:ghCalls | Where-Object { $_.argv -match '^extension install' }).Count | Should -Be 0
+        }
+
+        It 'invokes install with the full owner/repo when the target is missing' {
+            $script:ghListOutput = "gh dash`tdlvhdr/gh-dash`tv3.5.2"
+            $tool = @{
+                id = 'gh-copilot'; name = 'X'
+                install = @{
+                    windows = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    macos   = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    linux   = @{ any = @{ type = 'gh-extension'; id = 'github/gh-copilot' } }
+                }
+            }
+            $r = Install-CABTool -Tool $tool -Context @{}
+            $r.ok | Should -BeTrue
+            $installs = @($script:ghCalls | Where-Object { $_.argv -match '^extension install' })
+            $installs.Count | Should -Be 1
+            $installs[0].argv | Should -Match 'extension install github/gh-copilot'
+            @($script:ghCalls | Where-Object { $_.argv -match '^extension upgrade' }).Count | Should -Be 0
+        }
+
+        It 'does not match a forked extension whose short name collides with the target' {
+            # Two extensions installed: a different fork that happens to
+            # share the "gh-copilot" short name, and our actual target.
+            # Exact column-2 match must pick our row, not the fork.
+            $script:ghListOutput = @(
+                "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
+                "gh copilot`tgithub/gh-copilot`tv1.0.0"
+            ) -join "`n"
+            $tool = @{
+                id = 'gh-copilot'; name = 'X'
+                install = @{
+                    windows = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    macos   = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    linux   = @{ any = @{ type = 'gh-extension'; id = 'github/gh-copilot' } }
+                }
+            }
+            Install-CABTool -Tool $tool -Context @{} | Out-Null
+            $upgrades = @($script:ghCalls | Where-Object { $_.argv -match '^extension upgrade' })
+            $upgrades.Count | Should -Be 1
+            # Must use the local name from OUR matched row (`copilot`),
+            # not from the fork's row (`fakecopilot`).
+            $upgrades[0].argv | Should -Match 'extension upgrade copilot$'
+            $upgrades[0].argv | Should -Not -Match 'fakecopilot'
+        }
+
+        It 'treats a substring collision (different owner/repo) as missing — installs, not upgrades' {
+            # The fork has a similar short name but a different owner/repo.
+            # The substring "gh-copilot" appears in the fork's repo name
+            # but column-2 exact-match must reject it.
+            $script:ghListOutput = "gh fakecopilot`tsome-fork/gh-copilot-helper`tv2.0.0"
+            $tool = @{
+                id = 'gh-copilot'; name = 'X'
+                install = @{
+                    windows = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    macos   = @{ type = 'gh-extension'; id = 'github/gh-copilot' }
+                    linux   = @{ any = @{ type = 'gh-extension'; id = 'github/gh-copilot' } }
+                }
+            }
+            Install-CABTool -Tool $tool -Context @{} | Out-Null
+            @($script:ghCalls | Where-Object { $_.argv -match '^extension install' }).Count | Should -Be 1
+            @($script:ghCalls | Where-Object { $_.argv -match '^extension upgrade' }).Count | Should -Be 0
         }
     }
 }

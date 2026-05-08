@@ -189,7 +189,18 @@ function Invoke-CABStep80 {
                 foreach ($name in 'extensions.json','settings.json','launch.json','tasks.json') {
                     $src = Join-Path $vscodeTemplates $name
                     $dst = Join-Path $vscodeDir $name
-                    if (-not (Test-Path $src)) { continue }
+                    # Treat a missing template as a real failure rather
+                    # than a silent skip. Otherwise an incomplete shipped
+                    # `templates/dot-vscode/` (packaging error, partial
+                    # checkout, dropped file in a future refactor) would
+                    # produce a quiet "vscode-defaults: 3 written" with
+                    # no warning and the user's .vscode/ ends up missing
+                    # one of the four configs.
+                    if (-not (Test-Path $src)) {
+                        Write-CABStatus -Status warn -Message "Template missing: $src — skipped"
+                        $failed++
+                        continue
+                    }
                     if (Test-Path $dst) {
                         $skipped++
                         continue
