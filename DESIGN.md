@@ -152,6 +152,7 @@ Action journal           ✓  ~/.ca-bootstrap/journal.yaml is consistent
 ```
 
 **Behavior**:
+
 - Read-only. Never installs, clones, or modifies config.
 - Reads the [action journal](#8-action-journal) so it knows what *should* be present.
 - Compares journal to disk to detect drift (e.g., a repo was deleted manually).
@@ -173,6 +174,7 @@ Fixes problems doctor found. Two modes:
 ```
 
 **Behavior**:
+
 - Runs doctor first (silently).
 - For each ✗ or ⚠ finding (or just the targeted one):
   - Shows the finding.
@@ -229,6 +231,7 @@ Proceed?
 ```
 
 **Behavior**:
+
 - Always interactive by default. Unattended mode requires `--force` plus the answer file.
 - For each reversible action:
   - Show what will be undone.
@@ -254,6 +257,7 @@ Proceed?
 **Flags**: `--target <id>`, `--include-tools`, `--include-folders`, `--force`, `-Unattended`, `-WhatIf`.
 
 **Safety rules** (always enforced):
+
 - Never delete a directory that has uncommitted git changes without `--force`.
 - Never delete a directory that contains files unknown to ca-bootstrap's journal without `--force`.
 - Never remove a workspace folder unless it's empty (or `--force` is set).
@@ -403,6 +407,8 @@ Step 7/8 — Git identity for ChannelAssist
 Step 8/8 — Optional extras
   • Create VS Code multi-root workspace file at ChannelAssist.code-workspace? [Y/n]: Y
     ✓ Wrote ChannelAssistDev\ChannelAssist.code-workspace (14 folders)
+  • Write workspace-root .vscode/ defaults (extensions/settings/launch/tasks)? [Y/n]: Y
+    ✓ .vscode/ defaults: 4 written, 0 already present
   • Link ca-claude-plugin into ~/.claude/plugins so Claude Code can load it? [y/N]: Y
     ✓ Linked: %USERPROFILE%\.claude\plugins\ca-claude-plugin →
       ChannelAssistDev\ca-platform\ca-claude-plugin
@@ -415,7 +421,8 @@ Step 8/8 — Optional extras
       .github/prompts/ via cm-platform-infra `make agents-sync`.
   • Install WSL2 + Ubuntu 22.04 (requires reboot)? [y/N]: N
 
-  (Claude Code itself was already installed by step 2 from manifest/tools.yaml.)
+  (Claude Code, the GitHub Copilot CLI, and the gh-copilot extension were already
+  installed by step 2 from manifest/tools.yaml.)
 
 Done in 14m 22s.
 
@@ -718,6 +725,31 @@ required:
         debian: { type: apt,   id: gh, repo_setup: "scripts/install-gh-debian.sh" }
         rhel:   { type: dnf,   id: gh }
 
+  - id: pwsh
+    name: PowerShell 7+
+    description: Cross-platform PowerShell; required to run ca-bootstrap itself
+    # First-time install handled by bootstrap.sh / bootstrap.ps1 (chicken/egg —
+    # the manifest can't install its own host). The entry below is the
+    # doctor-level fallback if pwsh later goes missing.
+    check: { cmd: "pwsh --version", version_regex: "PowerShell (\\d+\\.\\d+\\.\\d+)", min_version: "7.0.0" }
+    install:
+      windows: { type: winget, id: Microsoft.PowerShell }
+      macos:   { type: brew,   id: powershell, cask: true }
+      linux:
+        debian: { type: apt,   id: powershell }
+        rhel:   { type: dnf,   id: powershell }
+
+  - id: make
+    name: GNU Make
+    description: Build automation; many ChannelAssist repos drive tasks via Makefile
+    check: { cmd: "make --version", version_regex: "GNU Make (\\d+\\.\\d+)", min_version: "3.81" }
+    install:
+      windows: { type: winget, id: GnuWin32.Make }
+      macos:   { type: brew,   id: make }
+      linux:
+        debian: { type: apt,   id: make }
+        rhel:   { type: dnf,   id: make }
+
 optional:
   - id: dotnet-10
     name: .NET SDK 10
@@ -779,7 +811,8 @@ optional:
     requires: vscode
     install_method: code-cli
     extensions:
-      - GitHub.copilot
+      - GitHub.copilot          # inline completions
+      - GitHub.copilot-chat     # @<agent> / /<prompt> entry points (consumes ca-copilot-plugin)
       - ms-dotnettools.csharp
       - ms-azuretools.vscode-docker
       - ms-python.python
@@ -794,6 +827,20 @@ optional:
     requires: node-20
     check: { cmd: "claude --version" }
     install: { windows: { type: npm, id: "@anthropic-ai/claude-code", global: true }, macos: { type: npm, id: "@anthropic-ai/claude-code", global: true }, linux: { type: npm, id: "@anthropic-ai/claude-code", global: true } }
+
+  - id: copilot-cli
+    name: GitHub Copilot CLI
+    description: Standalone Copilot agent in the terminal (`copilot` binary). Distinct from `gh copilot`.
+    requires: node-20            # officially Node 22+; npm engines warning surfaces if older
+    check: { cmd: "copilot --version" }
+    install: { windows: { type: npm, id: "@github/copilot", global: true }, macos: { type: npm, id: "@github/copilot", global: true }, linux: { type: npm, id: "@github/copilot", global: true } }
+
+  - id: gh-copilot
+    name: gh copilot extension
+    description: Adds `gh copilot suggest` / `gh copilot explain` to the GitHub CLI
+    requires: gh
+    check: { cmd: "gh copilot --version" }
+    install: { windows: { type: gh-extension, id: github/gh-copilot }, macos: { type: gh-extension, id: github/gh-copilot }, linux: { type: gh-extension, id: github/gh-copilot } }
 
   - id: wsl
     name: WSL2 + Ubuntu 22.04
@@ -833,6 +880,7 @@ All three functions return structured result objects so the orchestrator can ren
 **Detects**: nothing.
 
 **Asks**:
+
 - "Continue?" → quit if no.
 
 **Side effects**: writes session header to transcript.
@@ -844,6 +892,7 @@ All three functions return structured result objects so the orchestrator can ren
 **Detects**: every entry in `tools.yaml` via its `check.cmd`. Compares output against `version_regex` and `min_version`.
 
 **Asks**:
+
 - For each missing tool: "Install [name]? [Y/n]" (defaults vary by `heavy`/`opt_in` flags).
 - For tool groups: "Install all? [Y/n/select]".
 
@@ -858,6 +907,7 @@ All three functions return structured result objects so the orchestrator can ren
 **Detects**: `gh auth status` exit code.
 
 **Asks**:
+
 - If not logged in: "Run `gh auth login`? [Y/n]".
 - Default protocol: HTTPS (works on every platform without SSH key setup).
 
@@ -872,9 +922,11 @@ All three functions return structured result objects so the orchestrator can ren
 **Default**: `~/Documents/Projects/ChannelAssistDev` (Windows uses `%USERPROFILE%`).
 
 **Asks**:
+
 - "Use the default? [Y/c/n]" — `c` for custom path, `n` quits.
 
 **Validates**:
+
 - Path is writable.
 - Path doesn't already contain a `ChannelAssistDev` from a prior run that conflicts.
 
@@ -887,6 +939,7 @@ All three functions return structured result objects so the orchestrator can ren
 **Reads**: `manifest/folders.yaml`.
 
 **Asks**:
+
 - "Create these folders? [Y/n]" with the tree shown.
 
 **Side effects**: `New-Item -ItemType Directory` for each entry.
@@ -900,10 +953,12 @@ All three functions return structured result objects so the orchestrator can ren
 **Reads**: `manifest/repos.yaml`.
 
 **Pre-checks**:
+
 - `gh auth status` — must be authed.
 - `gh api user/memberships/orgs/ChannelAssist` — discovers team membership for `requires_membership` filter.
 
 **Asks**:
+
 - For each group: "Clone all N repos? [Y/n/select]".
 - For `opt_in: true` repos: "Clone [repo] (≈X GB)? [y/N]" (note the lowercase y / capital N — the default is no).
 
@@ -920,18 +975,23 @@ All three functions return structured result objects so the orchestrator can ren
 **Detects**: current global `user.name` and `user.email`.
 
 **Asks**:
+
 - "Configure ChannelAssist-specific identity for this workspace? [Y/n]".
 - Name (default: global value).
 - Email (default: deduce from gh CLI's logged-in user; otherwise prompt).
 
 **Side effects**:
+
 - Writes `<workspace>/.gitconfig`:
+
   ```ini
   [user]
       name = First Last
       email = first.last@channelassist.com
   ```
+
 - Adds to user-global `~/.gitconfig`:
+
   ```ini
   [includeIf "gitdir:<workspace>/"]
       path = <workspace>/.gitconfig
@@ -941,17 +1001,22 @@ All three functions return structured result objects so the orchestrator can ren
 
 ### 7.8 Step 80 — `extras.ps1`
 
-**Purpose**: optional extras that aren't core to "have a working dev environment".
+**Purpose**: optional extras that aren't core to "have a working dev environment". CLI-style tools (Claude Code, the GitHub Copilot CLI, the gh-copilot extension) live in `manifest/tools.yaml` and are installed by step 20 — this step is reserved for workspace-level configuration that needs the workspace path or an already-cloned repo.
 
-**Reads**: built-in list (not in tools.yaml because they're per-developer choices, not project requirements).
+**Reads**:
 
-**Offers**:
-- Claude Code (`npm i -g @anthropic-ai/claude-code`).
-- ca-claude-plugin install + activation.
-- WSL2 + Ubuntu 22.04 (Windows only).
-- VS Code multi-root workspace file at `<workspace>/ChannelAssist.code-workspace`.
+- `templates/dot-vscode/` (the source for the workspace-root `.vscode/` defaults; named `dot-vscode` so VS Code doesn't pick the templates up as live config when contributors are working inside ca-bootstrap).
+- `manifest/folders.yaml` (to enumerate workspace groups when listing cloned repos for the `.code-workspace` file).
 
-**Side effects**: per option, shells out to the right command.
+**Offers** (each independently confirmable):
+
+1. VS Code multi-root workspace file at `<workspace>/ChannelAssist.code-workspace`.
+2. Workspace-root `.vscode/{extensions,settings,launch,tasks}.json` defaults — copied from `templates/dot-vscode/`. Files that already exist are left alone (never silently overwritten); each newly written file is journaled as `create_file` so `undo` can reverse it.
+3. ca-claude-plugin activation pointer (symlink under `~/.claude/plugins/`).
+4. ca-copilot-plugin info — verify the repo is cloned and explain the `.github/agents/` + `.github/prompts/` sync flow.
+5. WSL2 + Ubuntu 22.04 (Windows only).
+
+**Side effects**: per option, shells out to the right command or copies template files.
 
 **Idempotency**: each option detects existing state and offers to skip / re-install / upgrade.
 
@@ -1102,6 +1167,7 @@ Trade-off: requires gh CLI to be installed first (handled in step 20). SSH-key p
 Many ChannelAssist developers have personal git config pointing at a personal email. We don't want to overwrite that. Instead we use git's `includeIf` directive:
 
 **~/.gitconfig** (global, modified):
+
 ```ini
 [user]
     name = Jane Doe
@@ -1112,6 +1178,7 @@ Many ChannelAssist developers have personal git config pointing at a personal em
 ```
 
 **ChannelAssistDev/.gitconfig** (new, written by us):
+
 ```ini
 [user]
     name = Jane Doe
@@ -1266,6 +1333,7 @@ catch                          { Write-Summary -Unexpected $_;    exit 99 }
 `doctor` exit codes use the `2` slot intentionally so CI scripts can `if doctor; then ... else echo "drift"; fi` and act on it.
 
 Every error message includes:
+
 - The step that failed.
 - The exact command that failed.
 - The full output of the failed command.
@@ -1297,6 +1365,7 @@ strategy:
 ```
 
 Each matrix run:
+
 1. Installs PowerShell at the matrix version.
 2. Runs Pester unit tests.
 3. Runs integration tests against a workspace temp dir.
@@ -1396,6 +1465,7 @@ Estimated effort: ~3 days for phases 1-2, ~2 days each for phases 3-7, ~2 days f
 | Journal file could be tampered with to trick `undo` | Journal lives in user-home (`~/.ca-bootstrap/`); only the user has write access. Worst case: user mis-undoes. Not a privilege-escalation vector. |
 
 Optional v1+ enhancements:
+
 - SHA-256 verification of the bootstrap script (printed in README, checked by the bootstrap itself).
 - Cosign-signed releases.
 - Mirror the repo to an internal Azure DevOps for air-gapped onboarding.
@@ -1458,11 +1528,12 @@ The thin shell bootstrap (`bootstrap.sh`) handles the chicken-and-egg problem on
 | `steps/50-folders.ps1` | 80 | Folder creation + removal |
 | `steps/60-repos.ps1` | 300 | Clone + fetch + remove (with safety rules) |
 | `steps/70-git-identity.ps1` | 150 | Per-folder git config + reversal of includeIf |
-| `steps/80-extras.ps1` | 200 | VS Code workspace, Claude Code, WSL2 (each with Test/Invoke/Undo) |
+| `steps/80-extras.ps1` | 280 | VS Code workspace + workspace-root `.vscode/`, ca-claude-plugin link, ca-copilot-plugin info, WSL2 (each with Test/Invoke/Undo) |
 | `manifest/folders.yaml` | 20 | Folder structure |
 | `manifest/repos.yaml` | 80 | Repo list |
 | `manifest/tools.yaml` | 200 | Tool catalog |
 | `manifest/answers.example.yaml` | 50 | Unattended mode template |
+| `templates/dot-vscode/` | 4 files | Workspace `.vscode/` starter set (renamed at copy-time to `.vscode/`) |
 | `docs/commands.md` | 150 | Full command reference |
 | `docs/action-journal.md` | 100 | Journal format, recovery, multi-machine |
 | `docs/install-matrix.md` | 200 | Per-tool per-OS install table |

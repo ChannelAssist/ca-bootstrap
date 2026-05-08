@@ -34,6 +34,42 @@ required:
         debian: { type: apt, id: gh, repo_setup: "scripts/install-gh-debian.sh" }
         rhel:   { type: dnf, id: gh }
 
+  - id: pwsh
+    name: PowerShell 7+
+    description: Cross-platform PowerShell; required to run ca-bootstrap itself
+    # First-time install is handled by the bootstrap.sh / bootstrap.ps1
+    # entrypoint (chicken/egg — the manifest can't install its own host).
+    # The entry below is the doctor-level fallback if pwsh later goes
+    # missing; on Linux it assumes the Microsoft package repo is already
+    # configured (bootstrap.sh adds it on first run).
+    check:
+      cmd: "pwsh --version"
+      version_regex: "PowerShell (\\d+\\.\\d+\\.\\d+)"
+      # Steps declare `#requires -Version 7.0`; aligning min_version
+      # with that floor (rather than the previous 7.4.0) so the tool
+      # name "PowerShell 7+" matches what doctor enforces.
+      min_version: "7.0.0"
+    install:
+      windows: { type: winget, id: Microsoft.PowerShell }
+      macos:   { type: brew,   id: powershell, cask: true }
+      linux:
+        debian: { type: apt, id: powershell }
+        rhel:   { type: dnf, id: powershell }
+
+  - id: make
+    name: GNU Make
+    description: Build automation; many ChannelAssist repos drive tasks via Makefile
+    check:
+      cmd: "make --version"
+      version_regex: "GNU Make (\\d+\\.\\d+)"
+      min_version: "3.81"
+    install:
+      windows: { type: winget, id: GnuWin32.Make }
+      macos:   { type: brew,   id: make }
+      linux:
+        debian: { type: apt, id: make }
+        rhel:   { type: dnf, id: make }
+
 optional:
   - id: dotnet-10
     name: .NET SDK 10
@@ -127,6 +163,31 @@ optional:
       windows: { type: npm, id: "@anthropic-ai/claude-code", global: true }
       macos:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
       linux:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
+
+  - id: copilot-cli
+    name: GitHub Copilot CLI
+    description: Standalone Copilot agent in the terminal (`copilot` binary). Distinct from `gh copilot`.
+    # Officially Node 22+, but our manifest's node-20 entry only enforces
+    # ≥20. If the user is on Node 20, the npm install will fail with a
+    # clear engines warning — they can rerun after upgrading Node.
+    requires: [node-20]
+    check:
+      cmd: "copilot --version"
+    install:
+      windows: { type: npm, id: "@github/copilot", global: true }
+      macos:   { type: npm, id: "@github/copilot", global: true }
+      linux:   { type: npm, id: "@github/copilot", global: true }
+
+  - id: gh-copilot
+    name: gh copilot extension
+    description: Adds `gh copilot suggest` / `gh copilot explain` to the GitHub CLI
+    requires: [gh]
+    check:
+      cmd: "gh copilot --version"
+    install:
+      windows: { type: gh-extension, id: github/gh-copilot }
+      macos:   { type: gh-extension, id: github/gh-copilot }
+      linux:   { type: gh-extension, id: github/gh-copilot }
 
   - id: wsl
     name: WSL2 + Ubuntu 22.04

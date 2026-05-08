@@ -26,6 +26,8 @@ prerequisites:
   selections:                        # 'install' | 'skip' | 'verify-only'
     git: install
     gh: install
+    pwsh: verify-only                # already installed by bootstrap entrypoint
+    make: install
     dotnet-10: install
     node-20: install
     python-312: install
@@ -33,6 +35,8 @@ prerequisites:
     vscode: install
     vscode-extensions: install
     claude-code: install
+    copilot-cli: skip                # opt in: standalone GitHub Copilot CLI
+    gh-copilot: install
     wsl: skip                        # Windows-only; opt in explicitly
 
 github_auth:
@@ -58,6 +62,7 @@ clone:
 
 extras:
   vscode_workspace_file: true
+  vscode_defaults: true              # write workspace-root .vscode/{extensions,settings,launch,tasks}.json
   ca_claude_plugin: true
   ca_copilot_plugin: true            # show ca-copilot-plugin usage notes (informational only — no per-developer install state)
   wsl_ubuntu_2204: false             # ignored on non-Windows

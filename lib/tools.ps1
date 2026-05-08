@@ -293,6 +293,58 @@ function Install-CABTool {
                 & npm install $globalFlag $id 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE
             }
+            'gh-extension' {
+                # `gh extension install OWNER/REPO` is idempotent in spirit
+                # but exits non-zero when the extension is already present.
+                # Probe `gh extension list` first so the wizard doesn't
+                # report "failed" on an already-installed extension.
+                if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
+                    # Emit the trailing newline for the "→ $type install: $id"
+                    # prefix Write-Host'ed above (with -NoNewline) so the
+                    # post-return console output isn't crammed onto the
+                    # same line.
+                    Write-Host ''
+                    return @{ ok = $false; details = 'gh CLI not on PATH; install gh first' }
+                }
+                $shortName = ($id -split '/')[-1]
+                # `gh extension list` emits one tab-separated row per
+                # installed extension; the second column is owner/repo.
+                # Match exactly on that column so a forked extension
+                # (e.g. some-fork/gh-copilot-helper) and substring
+                # collisions elsewhere in the output don't trick us into
+                # `upgrade` when the target isn't actually installed.
+                $listOutput = & gh extension list 2>&1
+                $alreadyInstalled = $false
+                # Capture the local name that gh actually assigned to
+                # *our* row (column 1's "gh <name>"). If two extensions
+                # from different forks happen to share a short name, we
+                # need to ask gh to upgrade the specific one, not the
+                # ambiguous short name — gh's own list output is the
+                # authoritative source for each install's local name.
+                $matchedLocalName = $null
+                if ($LASTEXITCODE -eq 0) {
+                    foreach ($row in @($listOutput -split "`r?`n")) {
+                        $cols = $row -split "`t"
+                        if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $id) {
+                            $alreadyInstalled = $true
+                            $col1Tokens = $cols[0].Trim() -split '\s+'
+                            if ($col1Tokens.Count -ge 2) {
+                                $matchedLocalName = $col1Tokens[1]
+                            }
+                            break
+                        }
+                    }
+                }
+                if ($alreadyInstalled) {
+                    $upgradeName = if ($matchedLocalName) { $matchedLocalName } else { $shortName }
+                    Write-Host " (already installed; upgrading)" -NoNewline
+                    & gh extension upgrade $upgradeName 2>&1 | Out-Host
+                    $cmdResult = $LASTEXITCODE
+                } else {
+                    & gh extension install $id 2>&1 | Out-Host
+                    $cmdResult = $LASTEXITCODE
+                }
+            }
             'script' {
                 $tmpScript = New-TemporaryFile
                 try {

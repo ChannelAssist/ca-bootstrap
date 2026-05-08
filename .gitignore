@@ -7,6 +7,13 @@
 .vscode/
 .idea/
 
+# Claude Code per-developer state (team-shared config under .claude/ stays tracked:
+# settings.json, agents/, commands/, hooks/ — only the per-dev files are ignored)
+.claude/settings.local.json
+.claude/.credentials.json
+.claude/scheduled_tasks.lock
+.claude/.cache/
+
 # PowerShell module artifacts
 *.psproj
 *.psd1.bak
