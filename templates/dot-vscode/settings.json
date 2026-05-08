@@ -1,0 +1,47 @@
+// Per-repo VS Code settings.
+//
+// These override the user's personal settings only inside this repo.
+// Keep this file small: settings that should apply across every repo
+// belong in the workspace-root .vscode/settings.json (written by
+// ca-bootstrap into the workspace root).
+{
+  // Format on save with the language's default formatter. Override
+  // per-language with `[language-id]` blocks if needed.
+  "editor.formatOnSave": true,
+  "editor.rulers": [100, 120],
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": true,
+
+  // Files: ensure a trailing newline, strip trailing whitespace,
+  // normalize to LF (Windows clones still get CRLF on disk via
+  // core.autocrlf, but the editor writes LF).
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.trimFinalNewlines": true,
+
+  // Hide common build artefacts from the explorer / quick-open.
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/__pycache__": true
+  },
+  "search.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.next": true,
+    "**/wiki": true
+  }
+
+  // Per-language overrides (uncomment as needed):
+  //
+  // "[csharp]":     { "editor.defaultFormatter": "ms-dotnettools.csharp" },
+  // "[python]":     { "editor.defaultFormatter": "ms-python.python", "editor.tabSize": 4 },
+  // "[typescript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" }
+}

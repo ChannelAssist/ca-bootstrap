@@ -121,6 +121,7 @@ Listed in the order steps typically produce them.
 ```
 
 **Undone by**: `Remove-Item -Recurse <path>` after verifying:
+
 - The directory still contains the cloned `.git` directory with origin matching `repo`.
 - No uncommitted changes (unless `--force`).
 - No untracked files unknown to ca-bootstrap (unless `--force`).
@@ -141,6 +142,7 @@ Listed in the order steps typically produce them.
 ```
 
 **Undone by**:
+
 1. Remove the `[includeIf "gitdir:<workspace>/"]` block from `~/.gitconfig`.
 2. Delete `<workspace>/.gitconfig`.
 
@@ -221,6 +223,21 @@ Listed in the order steps typically produce them.
   reversible: true
   undone: false
 ```
+
+**Undone by**: delete the file.
+
+### `create_file`
+
+```yaml
+- id: ...
+  step: 80-extras
+  action: create_file
+  path: C:\…\ChannelAssistDev\.vscode\extensions.json
+  reversible: true
+  undone: false
+```
+
+**Used by**: step 80's workspace-root `.vscode/` defaults (one entry per file written). Step 80 only writes a file when it does not already exist, so each `create_file` entry represents a path ca-bootstrap is responsible for.
 
 **Undone by**: delete the file.
 

@@ -29,31 +29,37 @@ The common thread: **the unit tests cover library helpers in isolation, but no t
 For each fixed-or-likely bug class, the test layer that catches it:
 
 ### 3.1 Path-separator handling
+
 - **Class**: backslash in a context where forward-slash is required (or vice versa)
 - **Bugs caught**: includeIf path; gitdir pattern; manifest-defined repo `into:` paths on Windows
 - **Test layer**: integration on Windows runner. After setup, assert `git config --list --global` exits 0 (proves the gitconfig is parseable). After identity step, assert `git config -f $workspace/.gitconfig user.email` returns the expected email (proves the workspace .gitconfig is also parseable).
 
 ### 3.2 Output stream / pipeline behaviour
+
 - **Class**: Write-Host vs Write-Output; pipeline auto-unwrap; `,$x` double-wrap
 - **Bugs caught**: `doctor --json` empty when captured into `$output`; `Get-CABJournalEntries` returning empty hashtables when called from inside a function
 - **Test layer**: subprocess integration. Run `pwsh ./ca-bootstrap.ps1 doctor --json | jq -e .checks`, assert exit 0 and length > 0. Repeat for every command that has a non-default output mode.
 
 ### 3.3 Process model differences
+
 - **Class**: subprocess that drops into an interactive shell or otherwise blocks the parent
 - **Bugs caught**: `wsl --install` (without `--no-launch`); any `gh auth login` flow that opens a browser without `--web`
 - **Test layer**: integration with timeout. Each subprocess invocation must complete within N seconds; if it hangs, the test fails. WSL test runs with a stub binary that simulates `wsl --install` without actually installing.
 
 ### 3.4 PowerShell type coercion
+
 - **Class**: `$true -eq 'quit'` returns true; `[ordered]` vs `[hashtable]`; numeric coercion in array contexts
 - **Bugs caught**: welcome step's confirm logic; journal entry copy via Generic.List<hashtable>
 - **Test layer**: unit tests. Specific assertions for each known coercion gotcha. Add a "PowerShell foot-guns" suite that documents what we've hit and asserts the workaround still works.
 
 ### 3.5 State persistence and idempotency
+
 - **Class**: re-running setup duplicates work; transcript file held open prevents AfterEach cleanup; journal accumulates entries that drift from disk
 - **Bugs caught**: Pester Windows tests pre-fix; potential journal drift after manual file deletion
 - **Test layer**: integration. Run setup, then setup again — assert second run records zero new clone/folder entries. Run setup, delete a repo manually, run doctor — assert drift detection. Run undo, then setup — assert clean rebuild.
 
 ### 3.6 Bootstrap-script behaviour
+
 - **Class**: git pull on cache fails silently; pwsh install fails on a distro that needs MS repos first
 - **Bugs caught**: v1.0.0 cache pinning when global .gitconfig was malformed
 - **Test layer**: integration of the bootstrap layer itself. Use a hermetic `$CA_BOOTSTRAP_CACHE` that the test sets up with deliberately corrupted state, run the bootstrap entry point, assert it self-heals.
@@ -103,34 +109,41 @@ For each fixed-or-likely bug class, the test layer that catches it:
 ### 5.1 New unit tests (Layer 1)
 
 **`tests/lib/path-norm.tests.ps1`** — new file
+
 - `ConvertTo-CABGitdirPattern` produces forward slashes on every OS
 - Workspace .gitconfig path written by step 70 contains no `\` after normalization
 - Pester runs on Windows, macOS, Linux as part of the matrix
 
 **`tests/lib/output-streams.tests.ps1`** — new file
+
 - `Write-CABColor` honours `$env:NO_COLOR`
 - `Read-CABConfirm` returns the right type for each input: 'y' → `[bool]$true`; 'n' → `[bool]$false`; 'q' → `[string]'quit'`; '' → `$Default`
 - `Read-CABChoice` matches case-insensitively
 - `Get-CABJournalEntries` returns hashtables whose `.path` property is non-empty after a round-trip through ConvertTo-Yaml + ConvertFrom-Yaml
 
 **`tests/lib/tools-dispatch.tests.ps1`** — new file
+
 - `Get-CABInstallEntry` resolves the right entry for each OS family (mock `Get-CABOSFamily`)
 - `Install-CABTool -Context @{ WhatIfMode = $true }` never actually runs the install command — verify by mocking `winget`/`brew`/`apt` and asserting they were not called
+- `gh-extension` install type: when `gh extension list` already lists the target, `Install-CABTool` calls `gh extension upgrade <name>` instead of `gh extension install <owner>/<name>` (mock both, assert which one ran). When `gh` is not on PATH, returns `ok=$false` with a "gh CLI not on PATH" detail rather than spawning anything.
 
 ### 5.2 Step integration tests (Layer 2)
 
 **`tests/steps/40-workspace.itests.ps1`** — new file
+
 - BeforeEach: create a temp dir, point CA_BOOTSTRAP_WORKSPACE at it
 - Test: workspace is created with the right path
 - Test: re-running Invoke is idempotent (no second journal entry)
 - AfterEach: remove the temp dir
 
 **`tests/steps/50-folders.itests.ps1`** — new file
+
 - All four folders created from manifest/folders.yaml
 - Re-run: zero new journal entries
 - Manually delete one folder, re-run: only that folder is recreated
 
 **`tests/steps/70-git-identity.itests.ps1`** — new file (CRITICAL — catches the v1.0.2 bug)
+
 - After Invoke, run `git config --list --global --file <fake-global-gitconfig>` and assert exit 0
 - Assert the includeIf path uses forward slashes regardless of OS
 - Assert `git config -f <workspace>/.gitconfig user.email` returns the expected email
@@ -138,12 +151,17 @@ For each fixed-or-likely bug class, the test layer that catches it:
 - Test on Windows (path with spaces): `C:\Users\Test User\ChannelAssistDev\` should round-trip cleanly
 
 **`tests/steps/80-extras.itests.ps1`** — new file
+
 - VS Code workspace file is valid JSON listing all cloned repo dirs
+- Workspace-root `.vscode/` defaults: all four files copied from `templates/dot-vscode/` when none exist; pre-existing files are left untouched (write a sentinel into `<workspace>/.vscode/settings.json`, run Invoke, assert sentinel survives)
+- Each newly-written `.vscode/*.json` produces a `create_file` journal entry whose `path` matches the destination — and `Undo` deletes it
+- `WhatIf` mode reports the would-be copies without touching disk
 - WSL install command line includes `--no-launch` (mock `wsl` binary, capture args, assert)
 
 ### 5.3 Wizard subprocess tests (Layer 3)
 
 **`tests/wizard/setup.itests.ps1`** — new file
+
 - Hermetic answers.yaml: workspace = temp; install_missing = false; clone groups = none; configure_git_identity = true; extras: only vscode_workspace_file = true
 - Spawn `pwsh ./ca-bootstrap.ps1 setup -Unattended -ConfigFile <path>`
 - Assert exit code = 0
@@ -153,23 +171,27 @@ For each fixed-or-likely bug class, the test layer that catches it:
 - Assert workspace `.gitconfig` exists with [user] block
 
 **`tests/wizard/doctor.itests.ps1`** — new file
+
 - `pwsh ./ca-bootstrap.ps1 doctor` exit code matches presence/absence of issues
 - `pwsh ./ca-bootstrap.ps1 doctor -Json | ConvertFrom-Json` produces a payload with `.checks` and `.schema_version`
 - Assert no extra non-JSON output on stdout in `-Json` mode
 
 **`tests/wizard/repair-undo.itests.ps1`** — new file
+
 - Run setup, delete a folder, run repair --target folders, assert folder is back
 - Run setup, run undo --force, assert workspace gone, assert global gitconfig has no leftover includeIf
 
 ### 5.4 Bootstrap-script tests (Layer 4)
 
 **`tests/bootstrap/cache-recovery.tests.ps1`** — new file
+
 - Set up a fixture cache dir whose `.git` is intentionally corrupted
 - Run bootstrap.ps1 with $REPO_URL pointed at a local-fs fixture clone
 - Assert the script detects the corruption, re-clones, and proceeds
 - Same test in `tests/bootstrap/cache-recovery.itests.sh` for bootstrap.sh
 
 **`tests/bootstrap/bad-gitconfig.tests.ps1`** — new file (CRITICAL — catches the v1.0.2 bug)
+
 - Set up a fake $HOME with a malformed ~/.gitconfig (line: `path = C:\Users\foo\bar`)
 - Run bootstrap.ps1, assert it self-heals (notices the bad config, refreshes cache, completes)
 
@@ -178,30 +200,36 @@ For each fixed-or-likely bug class, the test layer that catches it:
 Each fixed bug gets at least one test that asserts the **property the fix preserves**, not just the spelling of the fix. Named for the version that fixed it. Each test's docstring links to the fix commit.
 
 **v1.0.1: wsl --install blocks the wizard** (commit `363553a`)
+
 - `regression-v1.0.1-wsl-blocks-property.itests.ps1` — **load-bearing**: spawn the wizard with a `wsl` stub on PATH that simulates the original blocking behaviour (reads from stdin and waits 30 s). Assert the wizard exits within 5 s. This catches the bug regardless of which mechanism the fix uses.
 - `regression-v1.0.1-wsl-no-launch-flag.itests.ps1` — auxiliary: assert step 80's command line includes `--no-launch`. Documents the current implementation choice but doesn't lock it in.
 
 **v1.0.2: Windows backslash in git config value** (commit `d40dea1`, `steps/70-git-identity.ps1` hunk)
+
 - `regression-v1.0.2-gitconfig-backslash-grep.itests.ps1` — runs on **every OS** (the bug is OS-conditional but the test isn't). After step 70, grep both `~/.gitconfig` and `<workspace>/.gitconfig` for backslashes in any line starting with `path =` or `[includeIf "gitdir:`. Assert zero matches. This catches the bug class even on macOS/Linux runners.
 - `regression-v1.0.2-gitconfig-parseable.itests.ps1` — Windows-only: with `$env:USERPROFILE` pointed at a fixture HOME, run step 70, then run `git config --list --global` (no `-f`). Assert exit 0. This catches the user-visible failure mode (every subsequent git command erroring with "bad config line N").
 
 **v1.0.2: cache-update fails silently on bad gitconfig** (commit `d40dea1`, `bootstrap.ps1`/`bootstrap.sh` hunks)
+
 - `regression-v1.0.2-cache-recovery.itests.ps1` — set up a fixture cache dir, point `$REPO_URL` at a local-fs fixture clone, deliberately corrupt the cache, run `bootstrap.ps1`, assert it self-heals (clones fresh) AND completes setup.
 - `regression-v1.0.2-bootstrap-no-silent-failure.itests.ps1` — **load-bearing**: stub `git` (PATH override) with a wrapper that always exits 1. Run `bootstrap.ps1`, assert exit code is non-zero AND stderr contains a recognizable diagnostic message. This catches the original failure pattern (silently ignoring a non-zero exit) regardless of how the recovery is implemented.
 - `regression-v1.0.2-end-to-end.itests.ps1` — set up a fake `~/.gitconfig` with a malformed `path = C:\foo\bar` line, point `$HOME` (or `$env:USERPROFILE`) at a fixture, run `bootstrap.ps1` end-to-end. Assert it self-heals and completes setup. **This is the highest-value regression test in the suite** because it covers the realistic chain (bug 2 produces the conditions that trigger bug 3) the user actually hit.
 
 **v1.0.3: workspace path leaks relative** (commit `e83e9cc`)
+
 - `regression-v1.0.3-relative-workspace-rejected.itests.ps1` — set `$env:USERPROFILE` to `.` (or to an empty string), run step 40 standalone. Assert it fails with status `fail` and a message containing "Refusing to proceed". Asserts `$Context.WorkspacePath` is **never** assigned anything non-rooted.
 - `regression-v1.0.3-clones-only-absolute.itests.ps1` — set `$Context.WorkspacePath` to a relative-looking path (`./bogus`) and call step 60's Invoke directly. Assert no clone is attempted; status is `fail`.
 
 ## 6. CI matrix expansion
 
 The current `.github/workflows/ci.yml` runs:
+
 - `pester` (unit) on Win/Mac/Linux
 - `doctor --json` smoke on Win/Mac/Linux
 - `shellcheck` on Linux
 
 Add:
+
 - `step-integration` (Layer 2) on Win/Mac/Linux — new job, runs Pester against `tests/steps/`
 - `wizard-integration` (Layer 3) on Win/Mac/Linux — new job, spawns subprocess, checks state
 - `bootstrap-integration` (Layer 4) on Win/Mac/Linux — new job

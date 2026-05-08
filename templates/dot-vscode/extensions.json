@@ -1,0 +1,28 @@
+// Per-repo recommended extensions.
+//
+// VS Code prompts contributors to install these the first time they
+// open the folder. Keep this list aligned with what is actually used
+// inside this repo — adding the entire ca-bootstrap superset here
+// causes noisy install prompts in single-language repos.
+//
+// The `unwantedRecommendations` list suppresses suggestions that
+// other workspace levels (e.g. ChannelAssist.code-workspace) might
+// otherwise propagate.
+{
+  "recommendations": [
+    // Always-on for ChannelAssist work
+    "GitHub.copilot",
+    "GitHub.copilot-chat",
+    "anthropic.claude-code",
+    "eamodio.gitlens"
+
+    // Add per-language extensions below. Examples:
+    // ".NET / C#":                "ms-dotnettools.csharp"
+    // "Python":                   "ms-python.python"
+    // "Node / TypeScript":        "dbaeumer.vscode-eslint"
+    // "Astro / Starlight":        "astro-build.astro-vscode"
+    // "Tailwind":                 "bradlc.vscode-tailwindcss"
+    // "Docker":                   "ms-azuretools.vscode-docker"
+  ],
+  "unwantedRecommendations": []
+}

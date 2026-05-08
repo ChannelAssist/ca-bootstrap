@@ -1,16 +1,20 @@
 ﻿#requires -Version 7.0
 # steps/80-extras.ps1 — optional finishing touches.
 #
-# Four offers (each independently confirmable):
+# Five offers (each independently confirmable):
 #   1. VS Code multi-root workspace file at <workspace>/ChannelAssist.code-workspace
-#   2. ca-claude-plugin activation pointer (creates a symlink under
+#   2. Workspace-root .vscode/ defaults (extensions/settings/launch/tasks.json)
+#      copied from the templates/dot-vscode/ folder shipped in this repo
+#      (named `dot-vscode` so VS Code doesn't pick the templates up as
+#      live config when contributors are working inside ca-bootstrap)
+#   3. ca-claude-plugin activation pointer (creates a symlink under
 #      ~/.claude/plugins/ pointing at the cloned repo, if present)
-#   3. ca-copilot-plugin info — verify the repo is cloned and explain how the
+#   4. ca-copilot-plugin info — verify the repo is cloned and explain how the
 #      custom agents and prompts activate in consumer repos via the sync flow
 #      (Copilot resolves agents per-repo from .github/agents/ and per-repo
 #      prompts from .github/prompts/, so there is no per-developer "install"
 #      symlink — the bootstrap's role is to clone the repo and surface usage)
-#   4. WSL2 + Ubuntu 22.04 install (Windows-only)
+#   5. WSL2 + Ubuntu 22.04 install (Windows-only)
 #
 # Claude Code itself is handled by step 20 (it's in manifest/tools.yaml).
 # GitHub Copilot (the VS Code extension pair) is also in step 20 via
@@ -134,7 +138,62 @@ function Invoke-CABStep80 {
         Write-CABStatus -Status skip -Message 'VS Code workspace file skipped.'
     }
 
-    # ---------- 2. ca-claude-plugin activation pointer ----------
+    # ---------- 2. Workspace-root .vscode/ defaults ----------
+    # Copies templates/dot-vscode/{extensions,settings,launch,tasks}.json
+    # into <workspace>/.vscode/. The source folder is named `dot-vscode`
+    # (not `.vscode`) so VS Code doesn't pick up the templates as live
+    # config when working in this repo, and so the folder stays visible
+    # in tools that hide dotfiles. Default behavior is "create if missing,
+    # skip if present" — we never silently overwrite a user-tuned file.
+    $vscodeDir       = Join-Path $Context.WorkspacePath '.vscode'
+    $vscodeTemplates = Join-Path $Context.RepoRoot 'templates/dot-vscode'
+    if (-not (Test-Path $vscodeTemplates)) {
+        Write-CABStatus -Status warn -Message "Templates folder missing at $vscodeTemplates — skipping .vscode/ defaults."
+    } else {
+        $existingFiles = if (Test-Path $vscodeDir) {
+            @(Get-ChildItem -Path $vscodeDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -in 'extensions.json','settings.json','launch.json','tasks.json' })
+        } else { @() }
+        $hint = if ($existingFiles.Count -gt 0) {
+            " ($($existingFiles.Count) of 4 already exist; existing files will be left alone)"
+        } else { '' }
+        $writeVscode = Read-CABConfirm `
+            -Question "Write workspace-root .vscode/ defaults (extensions/settings/launch/tasks)$($hint)?" `
+            -Default $true `
+            -AnswerKey 'extras.vscode_defaults'
+        if (Test-CABQuit $writeVscode) {
+            return @{ status = 'quit'; details = 'User quit during extras step.' }
+        }
+        if (Test-CABYes $writeVscode) {
+            if ($Context.WhatIfMode) {
+                Write-CABStatus -Status info -Message "WhatIf: would copy templates/dot-vscode/* into $vscodeDir (skipping any pre-existing files)"
+            } else {
+                if (-not (Test-Path $vscodeDir)) {
+                    [void](New-Item -ItemType Directory -Path $vscodeDir -Force)
+                    Add-CABJournalEntry -Step '80-extras' -Action 'create_folder' -Data @{ path = $vscodeDir } | Out-Null
+                }
+                $copied = 0
+                $skipped = 0
+                foreach ($name in 'extensions.json','settings.json','launch.json','tasks.json') {
+                    $src = Join-Path $vscodeTemplates $name
+                    $dst = Join-Path $vscodeDir $name
+                    if (-not (Test-Path $src)) { continue }
+                    if (Test-Path $dst) {
+                        $skipped++
+                        continue
+                    }
+                    Copy-Item -Path $src -Destination $dst
+                    Add-CABJournalEntry -Step '80-extras' -Action 'create_file' -Data @{ path = $dst } | Out-Null
+                    $copied++
+                }
+                Write-CABStatus -Status ok -Message ".vscode/ defaults: $copied written, $skipped already present"
+                $actions += "vscode-defaults($copied/$($copied + $skipped))"
+            }
+        } else {
+            Write-CABStatus -Status skip -Message '.vscode/ defaults skipped.'
+        }
+    }
+
+    # ---------- 3. ca-claude-plugin activation pointer ----------
     $pluginRepoPath = Join-Path $Context.WorkspacePath 'ca-platform/ca-claude-plugin'
     if (Test-Path $pluginRepoPath) {
         $pluginsDir   = Get-CABClaudePluginsDir
@@ -183,7 +242,7 @@ function Invoke-CABStep80 {
         Write-CABStatus -Status info -Message 'ca-claude-plugin not cloned (skip its repo group to enable).'
     }
 
-    # ---------- 3. ca-copilot-plugin info (clone + usage explainer) ----------
+    # ---------- 4. ca-copilot-plugin info (clone + usage explainer) ----------
     $copilotPluginPath = Join-Path $Context.WorkspacePath 'ca-platform/ca-copilot-plugin'
     if (Test-Path $copilotPluginPath) {
         $showCopilot = Read-CABConfirm `
@@ -218,7 +277,7 @@ function Invoke-CABStep80 {
         Write-CABStatus -Status info -Message 'ca-copilot-plugin not cloned (skip its repo group to enable).'
     }
 
-    # ---------- 4. WSL2 + Ubuntu 22.04 (Windows-only) ----------
+    # ---------- 5. WSL2 + Ubuntu 22.04 (Windows-only) ----------
     if ($IsWindows) {
         # Pre-compute the wsl-already-has-Ubuntu check on its own line.
         # Inlining `2>$null` inside the if-condition triggered

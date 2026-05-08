@@ -293,6 +293,25 @@ function Install-CABTool {
                 & npm install $globalFlag $id 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE
             }
+            'gh-extension' {
+                # `gh extension install OWNER/REPO` is idempotent in spirit
+                # but exits non-zero when the extension is already present.
+                # Probe `gh extension list` first so the wizard doesn't
+                # report "failed" on an already-installed extension.
+                if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
+                    return @{ ok = $false; details = 'gh CLI not on PATH; install gh first' }
+                }
+                $shortName = ($id -split '/')[-1]
+                $existing = & gh extension list 2>&1
+                if ($LASTEXITCODE -eq 0 -and ($existing -match [regex]::Escape($id) -or $existing -match [regex]::Escape($shortName))) {
+                    Write-Host " (already installed; upgrading)" -NoNewline
+                    & gh extension upgrade $shortName 2>&1 | Out-Host
+                    $cmdResult = $LASTEXITCODE
+                } else {
+                    & gh extension install $id 2>&1 | Out-Host
+                    $cmdResult = $LASTEXITCODE
+                }
+            }
             'script' {
                 $tmpScript = New-TemporaryFile
                 try {

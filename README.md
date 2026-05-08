@@ -84,15 +84,15 @@ pwsh ./ca-bootstrap.ps1 setup
 
 1. **Welcome** — explains what's about to happen and lets you back out
 2. **Check prerequisites** — detects which tools are installed at which versions
-3. **Install missing tools** — git, GitHub CLI, .NET SDK 10, Node.js 20 LTS, Python 3.12, Docker, VS Code, VS Code extensions
+3. **Install missing tools** — git, GitHub CLI, PowerShell 7+, GNU Make, .NET SDK 10, Node.js 20 LTS, Python 3.12, Docker, VS Code, VS Code extensions, Claude Code, GitHub Copilot CLI, gh-copilot extension
 4. **Authenticate** — runs `gh auth login` so private repos can clone
 5. **Pick a workspace location** — defaults to `~/Documents/Projects/ChannelAssistDev/` (Windows: `%USERPROFILE%\Documents\Projects\ChannelAssistDev\`). On a headless box where `~/Documents/` doesn't exist, the default falls back to `~/Projects/ChannelAssistDev/`.
 6. **Create the folder structure** — `docs/`, `ca-platform/`, `cm-product/`, `ado-legacy/`
 7. **Clone repositories** — group by group, individually selectable, respects your team membership
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
-9. **Optional extras** — VS Code multi-root workspace file, ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
+9. **Optional extras** — VS Code multi-root workspace file, workspace-root `.vscode/` defaults (extensions/settings/launch/tasks), ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
 
-   *(Claude Code itself and the GitHub Copilot VS Code extensions are installed earlier as part of step 3, "Install missing tools" — they live in `manifest/tools.yaml`, not in this Optional extras step.)*
+   *(Claude Code itself, the GitHub Copilot CLI, the gh-copilot extension, and the GitHub Copilot VS Code extensions are installed earlier as part of step 3, "Install missing tools" — they live in `manifest/tools.yaml`, not in this Optional extras step.)*
 
 Every step is **interactive and optional**. Defaults are sensible. You can quit any time. Re-running is safe and acts as a "verify my setup" check.
 
@@ -106,11 +106,16 @@ See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable l
 |---|---|---|---|
 | git | winget Git.Git | brew git | apt/dnf git |
 | GitHub CLI | winget GitHub.cli | brew gh | apt/dnf gh |
+| PowerShell 7+ | winget Microsoft.PowerShell | brew --cask powershell | apt/dnf powershell (MS repo) |
+| GNU Make | winget GnuWin32.Make | brew make | apt/dnf make |
 | .NET SDK 10 | winget Microsoft.DotNet.SDK.10 | brew dotnet@10 | dotnet-install.sh |
 | Node.js 20 | winget OpenJS.NodeJS.LTS | brew node@20 | nvm |
 | Python 3.12 | winget Python.Python.3.12 | brew python@3.12 | apt/dnf python3.12 |
 | Docker Desktop | winget Docker.DockerDesktop | brew Docker | apt docker-ce |
 | VS Code | winget Microsoft.VisualStudioCode | brew --cask visual-studio-code | apt code |
+| Claude Code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
+| GitHub Copilot CLI | npm i -g @github/copilot | npm i -g @github/copilot | npm i -g @github/copilot |
+| gh-copilot extension | gh extension install github/gh-copilot | gh extension install github/gh-copilot | gh extension install github/gh-copilot |
 | WSL2 + Ubuntu | wsl --install (optional) | n/a | n/a |
 
 All installs are **optional and confirmable**. If you already have a tool at the right version, the script detects it and skips.
@@ -194,6 +199,8 @@ ca-bootstrap/
 ├── docs/                      # extended documentation
 │   ├── commands.md            # full reference for setup/doctor/repair/undo
 │   └── action-journal.md      # how state is tracked for undo
+├── templates/                 # files copied into the developer's workspace
+│   └── dot-vscode/            # → `<workspace>/.vscode/` (extensions/settings/launch/tasks)
 ├── wiki/                      # GitHub Wiki working tree (gitignored; sync with `make wiki-update`)
 ├── scripts/                   # release.sh, wiki-sync.sh, etc.
 └── tests/                     # Pester tests for lib/, steps/, commands/
@@ -211,6 +218,7 @@ Most changes are YAML edits, no code required:
 | Add a tool / change install method | [`manifest/tools.yaml`](manifest/tools.yaml) |
 | Add a folder to the workspace skeleton | [`manifest/folders.yaml`](manifest/folders.yaml) |
 | Adjust default unattended answers | [`manifest/answers.example.yaml`](manifest/answers.example.yaml) |
+| Change the workspace `.vscode/` defaults | [`templates/dot-vscode/`](templates/dot-vscode/) (renamed at copy-time to `.vscode/`) |
 
 For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
 

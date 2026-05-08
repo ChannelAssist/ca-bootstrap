@@ -175,7 +175,7 @@ You **must** specify either `--all` or `--target` — there is no default to pre
 | Target | Effect |
 |---|---|
 | `--all` | Fix every ✗ and ⚠ |
-| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `dotnet-10`, `node-20`) |
+| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `pwsh`, `make`, `dotnet-10`, `node-20`, `claude-code`, `copilot-cli`, `gh-copilot`) |
 | `--target repos` | Re-clone or fetch missing/broken repos |
 | `--target repos:<slug>` | One specific repo (e.g. `repos:cm-shared-libs`) |
 | `--target identity` | Re-write per-folder git identity |
@@ -410,8 +410,8 @@ Lists every manifest entry by index. Multi-line YAML entries (e.g. the `channel-
 
 Archived-on-GitHub repos are treated specially:
 
-* **Already in manifest + archived** → auto-queued for removal at startup (maintainer can un-queue via "quit without saving").
-* **Not in manifest + archived** → silently invisible to the editor. They're not add-candidates; if you ever want to revive one, unarchive on GitHub first.
+- **Already in manifest + archived** → auto-queued for removal at startup (maintainer can un-queue via "quit without saving").
+- **Not in manifest + archived** → silently invisible to the editor. They're not add-candidates; if you ever want to revive one, unarchive on GitHub first.
 
 ### Release integration
 
