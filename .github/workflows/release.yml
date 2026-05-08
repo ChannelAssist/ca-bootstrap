@@ -11,18 +11,41 @@ name: Release
 #   2. CONFIRM=yes — skip the "Type 'yes' to proceed" gate. The workflow's
 #      manual dispatch (with the inputs below) is itself the gate.
 #
-# Required secrets (Settings → Secrets and variables → Actions):
-#   RELEASE_PAT       — fine-grained PAT scoped to this repo with:
+# Required secrets — recommended at the ORG level (Settings → Secrets and
+# variables → Actions on the ChannelAssist org), not per-repo, so every repo
+# that adopts this release workflow shares one identity. Per-repo secrets
+# also work but force per-repo rotation.
+#
+# Recommended setup: create a dedicated machine user (e.g.
+# `channelassist-release-bot`), give it Admin on every repo that releases
+# this way, then store ITS credentials in the org secrets below. Reasons:
+#   - Bus factor: nobody's personal seat blocks releases when they leave or
+#     rotate their PAT.
+#   - Audit clarity: `github.actor` records who clicked "Run workflow",
+#     while the push / ruleset toggle / release create show the bot
+#     consistently — it's clear which work is automated vs human.
+#   - Tag signatures: every release tag carries the bot's signature.
+#     Publish the bot's public key (e.g. as .github/RELEASE_KEY.asc) so
+#     downstream consumers can verify with one fingerprint forever.
+#
+#   RELEASE_PAT       — fine-grained PAT owned by the release bot, scoped to
+#                       all release-eligible repos in the org, with:
 #                         * Contents: read & write   (push to main, push tags)
 #                         * Administration: read & write
 #                         * Repository rules: read & write
 #                       (the last two let release.sh disable + restore the
 #                        main-protection ruleset for the ff-promotion).
 #                       The default GITHUB_TOKEN cannot mutate rulesets, so a
-#                       PAT is required.
-#   GPG_PRIVATE_KEY   — ASCII-armored private key (gpg --armor --export-secret-keys).
+#                       PAT is required. Avoid storing a personal PAT here.
+#   GPG_PRIVATE_KEY   — ASCII-armored private key generated for the release
+#                       bot (gpg --armor --export-secret-keys BOT_KEY_ID).
 #                       The tag is signed with this key.
 #   GPG_PASSPHRASE    — passphrase for the key above.
+#
+# Bot Admin requirement: the disable-restore play on `main-protection`
+# needs Repository administration: write at the *repo* level. Org
+# membership alone isn't enough — the bot must be a collaborator with
+# Admin on each repo that uses this workflow.
 #
 # Pre-flight (do these before clicking "Run workflow"):
 #   1. Open a PR to dev that bumps $Script:CABootstrapVersion in
