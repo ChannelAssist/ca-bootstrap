@@ -111,24 +111,57 @@ Describe 'doctor — workspace resolution from journal (regression v1.5.x)' {
     }
 
     It 'ignores undone select_workspace entries' {
-        # Two sessions so the entry IDs (whole-second timestamps) don't
-        # collide — Set-CABEntryUndone matches by id and would mark
-        # both entries as undone if they shared a timestamp.
+        # New-CABEntryId guarantees per-entry id uniqueness via a
+        # monotonic counter, so two back-to-back entries can be
+        # distinguished by Set-CABEntryUndone — no Start-Sleep needed.
         Start-CABSession -Command 'setup' -Version '1.5.0-test'
         $stale = Add-CABJournalEntry -Step '40-workspace' -Action 'select_workspace' -Reversible $false `
             -Data @{ path = '/tmp/ws-stale'; is_workspace_root = $true; created = $true }
-        Save-CABJournal
-        Reset-CABTestSession
-
-        Start-Sleep -Seconds 1
-        Start-CABSession -Command 'setup' -Version '1.5.0-test'
-        Add-CABJournalEntry -Step '40-workspace' -Action 'select_workspace' -Reversible $false `
-            -Data @{ path = '/tmp/ws-live'; is_workspace_root = $true; created = $false } | Out-Null
+        $live = Add-CABJournalEntry -Step '40-workspace' -Action 'select_workspace' -Reversible $false `
+            -Data @{ path = '/tmp/ws-live'; is_workspace_root = $true; created = $false }
+        $stale.id | Should -Not -Be $live.id `
+            -Because 'sequential Add-CABJournalEntry calls must produce distinct ids; otherwise marking one undone marks them both.'
         Set-CABEntryUndone -EntryId $stale.id | Out-Null
         Save-CABJournal
 
         Reset-CABTestSession
         Resolve-CABDoctorWorkspaceFromJournal | Should -Be '/tmp/ws-live'
+    }
+
+    It 'New-CABEntryId returns unique ids for back-to-back calls in the same second' {
+        # Belt-and-suspenders: drive the helper directly to assert the
+        # contract. PR #40 added this helper to fix a Copilot review
+        # finding — without the monotonic counter, whole-second
+        # timestamps collide between create_folder + select_workspace
+        # in step 40 (and across all reconstructed entries in
+        # Repair-CABJournal), and Set-CABEntryUndone marks all colliding
+        # entries undone at once. Reviewed in Copilot review on PR #40.
+        Start-CABSession -Command 'setup' -Version '1.5.0-test'
+        $ids = 1..50 | ForEach-Object { New-CABEntryId }
+        ($ids | Sort-Object -Unique).Count | Should -Be 50
+    }
+
+    It 'Repair-CABJournal emits unique ids across all reconstructed entries' {
+        # Repair previously reused $sessionId for every reconstructed
+        # entry, which Copilot flagged on PR #40: marking any one
+        # entry undone would mark them all undone. Verify each
+        # synthesized entry now has a distinct id.
+        $tempWs = Join-Path ([System.IO.Path]::GetTempPath()) "cab-repair-ws-$(Get-Random)"
+        try {
+            [void](New-Item -ItemType Directory -Path $tempWs -Force)
+            foreach ($sub in 'docs','ca-platform','cm-product') {
+                [void](New-Item -ItemType Directory -Path (Join-Path $tempWs $sub) -Force)
+            }
+            Repair-CABJournal -WorkspacePath $tempWs -Version 'test' | Out-Null
+            $reconstructed = @(Get-CABJournalEntry -SessionCommand 'repair' |
+                Where-Object { $_.reconstructed })
+            $reconstructed.Count | Should -BeGreaterThan 1
+            $entryIds = @($reconstructed | ForEach-Object { $_.id })
+            ($entryIds | Sort-Object -Unique).Count | Should -Be $entryIds.Count `
+                -Because 'every reconstructed entry must carry its own id so undo can target them individually.'
+        } finally {
+            if (Test-Path $tempWs) { Remove-Item -Recurse -Force $tempWs -ErrorAction SilentlyContinue }
+        }
     }
 }
 
