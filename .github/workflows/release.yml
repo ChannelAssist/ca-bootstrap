@@ -1,0 +1,230 @@
+name: Release
+
+# Cut a ca-bootstrap release from the GitHub UI ("Run workflow").
+#
+# This is the CI mirror of `make release VERSION=X.Y.Z`. It runs the same
+# `scripts/release.sh` you'd run locally, with two adjustments for the
+# headless environment:
+#   1. SKIP_MANIFEST_EDIT=1 — the interactive manifest review (Read-CABChoice)
+#      can't run without a TTY. Run `make manifest-edit` locally, merge any
+#      drift to dev via PR, and *then* dispatch this workflow.
+#   2. CONFIRM=yes — skip the "Type 'yes' to proceed" gate. The workflow's
+#      manual dispatch (with the inputs below) is itself the gate.
+#
+# Required secrets — recommended at the ORG level (Settings → Secrets and
+# variables → Actions on the ChannelAssist org), not per-repo, so every repo
+# that adopts this release workflow shares one identity. Per-repo secrets
+# also work but force per-repo rotation.
+#
+# Recommended setup: create a dedicated machine user (e.g.
+# `ca-release-bot`), give it Admin on every repo that releases
+# this way, then store ITS credentials in the org secrets below. Reasons:
+#   - Bus factor: nobody's personal seat blocks releases when they leave or
+#     rotate their PAT.
+#   - Audit clarity: `github.actor` records who clicked "Run workflow",
+#     while the push / ruleset toggle / release create show the bot
+#     consistently — it's clear which work is automated vs human.
+#   - Tag signatures: every release tag carries the bot's signature.
+#     Publish the bot's public key (e.g. as .github/RELEASE_KEY.asc) so
+#     downstream consumers can verify with one fingerprint forever.
+#
+#   RELEASE_PAT       — fine-grained PAT owned by the release bot, scoped to
+#                       all release-eligible repos in the org, with:
+#                         * Contents: read & write   (push to main, push tags)
+#                         * Administration: read & write
+#                         * Repository rules: read & write
+#                       (the last two let release.sh disable + restore the
+#                        main-protection ruleset for the ff-promotion).
+#                       The default GITHUB_TOKEN cannot mutate rulesets, so a
+#                       PAT is required. Avoid storing a personal PAT here.
+#   GPG_PRIVATE_KEY   — ASCII-armored private key generated for the release
+#                       bot (gpg --armor --export-secret-keys BOT_KEY_ID).
+#                       The tag is signed with this key.
+#   GPG_PASSPHRASE    — passphrase for the key above.
+#
+# Bot Admin requirement: the disable-restore play on `main-protection`
+# needs Repository administration: write at the *repo* level. Org
+# membership alone isn't enough — the bot must be a collaborator with
+# Admin on each repo that uses this workflow.
+#
+# Pre-flight (do these before clicking "Run workflow"):
+#   1. Open a PR to dev that bumps $Script:CABootstrapVersion in
+#      ca-bootstrap.ps1 to the new VERSION. Merge it.
+#   2. Optional but recommended: `make manifest-edit` locally; if it changes
+#      manifest/repos.yaml, PR-merge that to dev before releasing.
+#   3. Verify CI is green on dev.
+#   4. Click "Run workflow", fill in VERSION, hit Run.
+#
+# The `release-full` (one-shot bump+merge+release) flow lives in
+# scripts/release-full.sh and is intentionally NOT exposed here — that
+# script auto-merges the version-bump PR using admin powers, which is a
+# heavier privilege than this workflow needs.
+#
+# Security: every place that uses workflow inputs feeds them through env: —
+# never interpolated directly into a `run:` block. Even though dispatch is
+# limited to actors with workflow:write, the env-var pattern keeps a typo'd
+# input from becoming a shell injection.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semver to release (e.g. 1.5.0). Must already match $Script:CABootstrapVersion on dev.'
+        required: true
+        type: string
+      dry_run:
+        description: 'Dry-run only — validate everything but do not push, tag, or publish.'
+        required: false
+        type: boolean
+        default: false
+      skip_smoke:
+        description: 'Skip `make smoke` (use only for hotfixes where the smoke test is broken or irrelevant).'
+        required: false
+        type: boolean
+        default: false
+      skip_tests:
+        description: 'Skip Pester (use only for hotfixes where the tests are broken or irrelevant).'
+        required: false
+        type: boolean
+        default: false
+
+# Releases mutate main + tags + the main-protection ruleset. Two
+# concurrent runs would race on the disable-restore window. Serialize.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Cut release
+    runs-on: ubuntu-latest
+    permissions:
+      # Belt-and-braces. The actual push uses RELEASE_PAT, but the runner
+      # still needs contents:write so actions/checkout can write a clean tree.
+      contents: write
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # release.sh does its own git push using gh-auth, but the
+          # checkout token must be able to write commits locally.
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Verify dispatch ref is dev
+        # Releases are cut from dev (release.sh ff-promotes origin/dev →
+        # origin/main). Running this against any other branch produces a
+        # release based on stale main, not dev. Fail fast with a clear
+        # message rather than letting release.sh discover it later.
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/dev" ]; then
+              echo "::error::Release workflow must be dispatched from the 'dev' branch (got ${GITHUB_REF}). In the GitHub UI: switch the ref dropdown to 'dev' before clicking Run workflow."
+              exit 1
+          fi
+
+      - name: Validate VERSION input is semver
+        # Sanity-check the input *before* it's used anywhere downstream.
+        # release.sh re-validates, but failing here gives a clearer error
+        # in the GH Actions UI.
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: |
+          stripped="${VERSION_INPUT#v}"
+          if ! [[ "$stripped" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+              echo "::error::version='${VERSION_INPUT}' is not semver (expected X.Y.Z or X.Y.Z-suffix)"
+              exit 1
+          fi
+
+      - name: Set up PowerShell modules
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable Pester | Where-Object Version -gt 5.0.0)) {
+              Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser
+          }
+          Install-Module powershell-yaml -Force -SkipPublisherCheck -Scope CurrentUser
+
+      - name: Install release.sh dependencies (jq, gh, diff)
+        # ubuntu-latest already has gh + jq + diff; this step is a fast
+        # sanity check so a missing tool fails here instead of mid-release.
+        run: |
+          for dep in gh jq diff; do
+              command -v "$dep" >/dev/null 2>&1 \
+                  || { echo "::error::$dep missing on runner"; exit 1; }
+          done
+
+      - name: Import GPG key
+        # crazy-max/ghaction-import-gpg imports the key into the runner's
+        # gpg-agent and configures git for signed tags + commits using
+        # that key's fingerprint. release.sh does `git tag -s` which then
+        # picks up this configuration automatically.
+        uses: crazy-max/ghaction-import-gpg@v6
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+          git_user_signingkey: true
+          git_tag_gpgsign: true
+
+      - name: Configure git identity (ChannelAssist Release Bot)
+        # The GPG import step sets user.name/email to the key's UID. This
+        # step is a fallback for environments where the key's UID is empty
+        # — without a configured identity, `git tag` and `git push` fail.
+        run: |
+          if [ -z "$(git config --global --get user.name)" ]; then
+              git config --global user.name 'ChannelAssist Release Bot'
+          fi
+          if [ -z "$(git config --global --get user.email)" ]; then
+              git config --global user.email 'release@channelassist.com'
+          fi
+
+      - name: Run release script
+        env:
+          # gh CLI auth — release.sh's gh api calls (rulesets, release
+          # create) all flow through this token. Default GITHUB_TOKEN
+          # can't mutate rulesets, so RELEASE_PAT is required.
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          # release.sh inputs. The Makefile target reads the same env
+          # vars, so calling it directly behaves identically to
+          # `make release VERSION=X.Y.Z`.
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          SKIP_SMOKE: ${{ inputs.skip_smoke && '1' || '' }}
+          SKIP_TESTS: ${{ inputs.skip_tests && '1' || '' }}
+          # Always-set in CI:
+          SKIP_MANIFEST_EDIT: '1'   # interactive PowerShell, won't work headless
+          CONFIRM: 'yes'            # the workflow_dispatch IS the confirmation
+        run: |
+          chmod +x scripts/release.sh
+          ./scripts/release.sh
+
+      - name: Summarize release
+        if: success() && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          VERSION: ${{ inputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          TAG="v${VERSION#v}"
+          URL=$(gh release view "$TAG" --json url -q .url)
+          {
+              printf '## Release %s cut successfully :rocket:\n\n' "$TAG"
+              printf -- '- **Tag:** %s\n' "$TAG"
+              printf -- '- **Release:** %s\n' "$URL"
+              printf -- '- **One-liners pinned to %s:**\n' "$TAG"
+              printf '  ```powershell\n'
+              printf '  iwr -useb https://raw.githubusercontent.com/%s/%s/bootstrap.ps1 | iex\n' "$REPO" "$TAG"
+              printf '  ```\n'
+              printf '  ```bash\n'
+              printf '  curl -fsSL https://raw.githubusercontent.com/%s/%s/bootstrap.sh | bash\n' "$REPO" "$TAG"
+              printf '  ```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize dry-run
+        if: success() && inputs.dry_run
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          {
+              printf '## Dry-run for v%s :white_check_mark:\n\n' "${VERSION#v}"
+              printf 'All gates passed. Nothing was pushed, tagged, or published.\n'
+              printf 'Re-run without **dry_run** checked to actually cut the release.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
