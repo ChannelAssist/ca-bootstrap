@@ -145,10 +145,22 @@ function Invoke-CABStep80 {
     # config when working in this repo, and so the folder stays visible
     # in tools that hide dotfiles. Default behavior is "create if missing,
     # skip if present" — we never silently overwrite a user-tuned file.
-    $vscodeDir       = Join-Path $Context.WorkspacePath '.vscode'
-    $vscodeTemplates = Join-Path $Context.RepoRoot 'templates/dot-vscode'
-    if (-not (Test-Path $vscodeTemplates)) {
-        Write-CABStatus -Status warn -Message "Templates folder missing at $vscodeTemplates — skipping .vscode/ defaults."
+    $vscodeDir = Join-Path $Context.WorkspacePath '.vscode'
+    # Defensive: $Context.RepoRoot is set by the orchestrator, but if a
+    # caller invokes Invoke-CABStep80 directly with an incomplete Context
+    # (e.g. test harnesses), Join-Path against $null silently returns the
+    # relative literal and Test-Path resolves it against cwd. Skip rather
+    # than copy from a wrong source.
+    $vscodeTemplates = if ($Context.RepoRoot) {
+        Join-Path $Context.RepoRoot 'templates/dot-vscode'
+    } else { $null }
+    if (-not $vscodeTemplates -or -not (Test-Path $vscodeTemplates)) {
+        $missingMsg = if (-not $Context.RepoRoot) {
+            'Context.RepoRoot not set — skipping .vscode/ defaults.'
+        } else {
+            "Templates folder missing at $vscodeTemplates — skipping .vscode/ defaults."
+        }
+        Write-CABStatus -Status warn -Message $missingMsg
     } else {
         $existingFiles = if (Test-Path $vscodeDir) {
             @(Get-ChildItem -Path $vscodeDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -in 'extensions.json','settings.json','launch.json','tasks.json' })

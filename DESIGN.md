@@ -731,7 +731,7 @@ required:
     # First-time install handled by bootstrap.sh / bootstrap.ps1 (chicken/egg —
     # the manifest can't install its own host). The entry below is the
     # doctor-level fallback if pwsh later goes missing.
-    check: { cmd: "pwsh --version", version_regex: "PowerShell (\\d+\\.\\d+\\.\\d+)", min_version: "7.4.0" }
+    check: { cmd: "pwsh --version", version_regex: "PowerShell (\\d+\\.\\d+\\.\\d+)", min_version: "7.0.0" }
     install:
       windows: { type: winget, id: Microsoft.PowerShell }
       macos:   { type: brew,   id: powershell, cask: true }

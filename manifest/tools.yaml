@@ -45,7 +45,10 @@ required:
     check:
       cmd: "pwsh --version"
       version_regex: "PowerShell (\\d+\\.\\d+\\.\\d+)"
-      min_version: "7.4.0"
+      # Steps declare `#requires -Version 7.0`; aligning min_version
+      # with that floor (rather than the previous 7.4.0) so the tool
+      # name "PowerShell 7+" matches what doctor enforces.
+      min_version: "7.0.0"
     install:
       windows: { type: winget, id: Microsoft.PowerShell }
       macos:   { type: brew,   id: powershell, cask: true }

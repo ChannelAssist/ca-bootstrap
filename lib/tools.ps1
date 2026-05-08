@@ -315,18 +315,30 @@ function Install-CABTool {
                 # `upgrade` when the target isn't actually installed.
                 $listOutput = & gh extension list 2>&1
                 $alreadyInstalled = $false
+                # Capture the local name that gh actually assigned to
+                # *our* row (column 1's "gh <name>"). If two extensions
+                # from different forks happen to share a short name, we
+                # need to ask gh to upgrade the specific one, not the
+                # ambiguous short name — gh's own list output is the
+                # authoritative source for each install's local name.
+                $matchedLocalName = $null
                 if ($LASTEXITCODE -eq 0) {
                     foreach ($row in @($listOutput -split "`r?`n")) {
                         $cols = $row -split "`t"
                         if (@($cols).Count -ge 2 -and $cols[1].Trim() -ieq $id) {
                             $alreadyInstalled = $true
+                            $col1Tokens = $cols[0].Trim() -split '\s+'
+                            if ($col1Tokens.Count -ge 2) {
+                                $matchedLocalName = $col1Tokens[1]
+                            }
                             break
                         }
                     }
                 }
                 if ($alreadyInstalled) {
+                    $upgradeName = if ($matchedLocalName) { $matchedLocalName } else { $shortName }
                     Write-Host " (already installed; upgrading)" -NoNewline
-                    & gh extension upgrade $shortName 2>&1 | Out-Host
+                    & gh extension upgrade $upgradeName 2>&1 | Out-Host
                     $cmdResult = $LASTEXITCODE
                 } else {
                     & gh extension install $id 2>&1 | Out-Host
