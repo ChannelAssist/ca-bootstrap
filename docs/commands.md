@@ -22,6 +22,11 @@ If `<command>` is omitted, `setup` runs.
 | `make repair ARGS='--all'` | `pwsh ./ca-bootstrap.ps1 repair -All` |
 | `make repair ARGS='--target dotnet-10'` | `pwsh ./ca-bootstrap.ps1 repair -Target dotnet-10` |
 | `make undo ARGS='--force'` | `pwsh ./ca-bootstrap.ps1 undo -Force` |
+| `make nuke` | Full purge: undo every journaled action + remove `~/.ca-bootstrap/`. Confirm-gated (interactive `YES` prompt). `INCLUDE_TOOLS=1` also uninstalls system tools (destructive across the machine). `CONFIRM=1` skips the prompt. `DRY_RUN=1` prints the plan only. See [the dedicated section](#nuke) below. |
+| `make tool-list` | Print every tool ID from `manifest/tools.yaml`. Use these IDs with `tool-install` / `tool-update` / `tool-remove`. |
+| `make tool-install TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 repair --target <id>`. Idempotent — no-op if the installed version is already at/above the manifest minimum. |
+| `make tool-update TOOL=<id>` | Alias for `tool-install` (repair is version-aware: installs if missing, upgrades if below manifest min, no-op otherwise). |
+| `make tool-remove TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 undo --target tool.<id> -IncludeTools -Force`. Implicitly destructive — uninstall the named tool. Still prompts once per tool ("Other projects may depend on it") — that confirmation is deliberately not bypassable. |
 | `make test` | Full Pester suite. |
 | `make smoke` | End-to-end smoke test against a /tmp workspace. |
 | `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
@@ -427,6 +432,97 @@ Skip via `SKIP_MANIFEST_EDIT=1` for hands-off / CI releases (e.g. hotfix tags th
 |-----:|---------|
 | 0 | User saved (with or without changes) or quit without saving |
 | 1 | Operational failure (gh missing/unauthenticated, manifest absent) |
+
+---
+
+## `nuke`
+
+Full-purge wrapper around `undo` + state-dir removal. Reverses every journaled action (workspace folders, cloned repos, git includeIf, plugin link), then removes the entire ca-bootstrap state directory (`~/.ca-bootstrap/` by default). System tools are NOT uninstalled by default — those are typically shared with other projects on the machine, so it's an opt-in.
+
+There is no PowerShell `nuke` subcommand: this lives entirely in `scripts/nuke.sh`, invoked via `make nuke`. The actual destructive operations are performed by the existing `undo` and standard `rm -rf` — `nuke` is just the friendlier surface that wires them together with a confirmation gate.
+
+### Synopsis
+
+```bash
+make nuke                    # interactive YES prompt; preserves system tools
+make nuke INCLUDE_TOOLS=1    # also uninstall .NET 10 / Node / Python / Docker / VS Code / Claude Code / Copilot CLI
+make nuke CONFIRM=1          # skip the prompt (for scripting / CI)
+make nuke DRY_RUN=1           # print the plan; no mutations
+```
+
+### What gets removed
+
+| Always | With `INCLUDE_TOOLS=1` |
+|---|---|
+| Workspace top-level folders (per the journal) | Manifest tools (.NET 10, Node 20, Python 3.12, Docker, VS Code, Claude Code, Copilot CLI, …) |
+| Cloned repos under those folders | |
+| `[includeIf]` block in `~/.gitconfig` | |
+| `<workspace>/.gitconfig` (per-folder identity) | |
+| Claude plugin symlink at `~/.claude/plugins/ca-claude-plugin` | |
+| Everything under `~/.ca-bootstrap/` (journal, runs/, last-run.log, cache, lock dir) | |
+
+### Confirmation prompt
+
+The script prefers `/dev/tty` for the prompt so a piped stdin (`echo y \| make nuke`) can't accidentally confirm. Falls back to stdin if `/dev/tty` isn't open for read+write (CI sandboxes, containers without a controlling terminal). The expected reply is `YES` (uppercase, exact match) — anything else aborts with exit 1.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success (or `DRY_RUN=1` plan validated) |
+| 1 | User declined the confirmation prompt, or `CA_BOOTSTRAP_STATE` failed the safety guard (empty / `/` / `$HOME` / not ending in `.ca-bootstrap` / fewer than 3 path components) |
+| 7 | Inner `undo` hit a mid-operation failure — the state dir is left in place so you can retry. (`commands/undo.ps1` only emits 0 / 1 / 7 today; if a new exit code is added there, the script propagates it here.) |
+
+### Safety notes
+
+- **`INCLUDE_TOOLS=1` is destructive across other projects.** Uninstalling .NET 10 or Node 20 affects every project on the machine that depends on them, not just ChannelAssist. Skip the flag unless you genuinely want those gone.
+- **`STATE_DIR` is validated before the rm.** The script refuses if `CA_BOOTSTRAP_STATE` is empty, equals `/`, equals `$HOME`, isn't an absolute path, or doesn't end in `.ca-bootstrap`. This is a guardrail against a misconfigured environment turning a confirmed YES into an `rm -rf $HOME` disaster.
+- **`undo` exit codes are propagated.** "Nothing to undo" is exit 0 — that's fine and the script continues. A non-zero exit (user quit mid-undo, mid-operation breakage, safety refusal) is real, and the script bails BEFORE the state-dir removal so the next invocation can retry. Pre-fix, we silently swallowed the code, which masked a flag-binding bug for an entire review cycle.
+
+### Tests
+
+Hermetic Pester coverage at `tests/lib/nuke.tests.ps1`. Each case sets `CA_BOOTSTRAP_STATE` to a temp dir so the rm step never targets the real `~/.ca-bootstrap/`. Covers DRY_RUN, INCLUDE_TOOLS warning text, abort-on-not-YES, full removal under CONFIRM=1, and idempotent re-invocation against an already-clean state.
+
+---
+
+## Per-tool wrappers
+
+`tool-install` / `tool-update` / `tool-remove` are thin Makefile shims around `repair --target <id>` and `undo --target tool.<id> -IncludeTools -Force`. They exist so users don't have to remember the ARGS gymnastics for the common single-tool flow.
+
+### Listing tool IDs
+
+```bash
+make tool-list
+```
+
+Output is partitioned by `required:` / `optional:` (matching the section headers the Makefile prints) — these mirror the corresponding keys in `manifest/tools.yaml`. Whatever appears here is a valid `TOOL=` value for the install / update / remove targets.
+
+### Install or upgrade
+
+```bash
+make tool-install TOOL=dotnet-10
+make tool-install TOOL=copilot-cli
+```
+
+Idempotent: if the installed version meets the manifest minimum, this is a no-op; otherwise it installs (missing) or upgrades (too old) via the platform-appropriate method (winget on Windows, Homebrew on macOS, apt on Debian/Ubuntu, etc.) declared in `manifest/tools.yaml`.
+
+### Update
+
+```bash
+make tool-update TOOL=node-20
+```
+
+Alias for `tool-install`. Repair already implements the "install or upgrade" semantics; we expose `update` as a separate verb because that's the word users reach for when they want a fresh version.
+
+### Remove
+
+```bash
+make tool-remove TOOL=docker
+```
+
+Uninstalls a single tool. Implicitly passes `-Force -IncludeTools` to `undo` because the per-tool intent is unambiguous: if you typed `tool-remove TOOL=docker`, you mean it. Note that `undo` still emits a per-tool confirmation prompt ("Other projects may depend on it") that is deliberately NOT bypassed by `-Force` — answer `y` once to proceed with the actual uninstall.
+
+If `TOOL` is omitted, all three targets exit 2 with a friendly error pointing at `make tool-list`.
 
 ---
 
