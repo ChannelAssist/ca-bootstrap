@@ -26,7 +26,7 @@ If `<command>` is omitted, `setup` runs.
 | `make tool-list` | Print every tool ID from `manifest/tools.yaml`. Use these IDs with `tool-install` / `tool-update` / `tool-remove`. |
 | `make tool-install TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 repair --target <id>`. Idempotent — no-op if the installed version is already at/above the manifest minimum. |
 | `make tool-update TOOL=<id>` | Alias for `tool-install` (repair is version-aware: installs if missing, upgrades if below manifest min, no-op otherwise). |
-| `make tool-remove TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 undo --target tool.<id> --include-tools --force`. Implicitly destructive — uninstall the named tool. |
+| `make tool-remove TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 undo --target tool.<id> -IncludeTools -Force`. Implicitly destructive — uninstall the named tool. Still prompts once per tool ("Other projects may depend on it") — that confirmation is deliberately not bypassable. |
 | `make test` | Full Pester suite. |
 | `make smoke` | End-to-end smoke test against a /tmp workspace. |
 | `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
@@ -470,9 +470,8 @@ The script prefers `/dev/tty` for the prompt so a piped stdin (`echo y \| make n
 | Code | Meaning |
 |---|---|
 | 0 | Success (or `DRY_RUN=1` plan validated) |
-| 1 | User declined the confirmation prompt, or `CA_BOOTSTRAP_STATE` failed the safety guard (empty / `/` / `$HOME` / not ending in `.ca-bootstrap`) |
-| 7 | Inner `undo` hit a mid-operation failure — the state dir is left in place so you can retry |
-| 8 | Inner `undo` refused for safety (e.g., a tracked dir contained uncommitted git changes) — re-run with `INCLUDE_TOOLS=1` only after you've understood the refusal |
+| 1 | User declined the confirmation prompt, or `CA_BOOTSTRAP_STATE` failed the safety guard (empty / `/` / `$HOME` / not ending in `.ca-bootstrap` / fewer than 3 path components) |
+| 7 | Inner `undo` hit a mid-operation failure — the state dir is left in place so you can retry. (`commands/undo.ps1` only emits 0 / 1 / 7 today; if a new exit code is added there, the script propagates it here.) |
 
 ### Safety notes
 
@@ -488,7 +487,7 @@ Hermetic Pester coverage at `tests/lib/nuke.tests.ps1`. Each case sets `CA_BOOTS
 
 ## Per-tool wrappers
 
-`tool-install` / `tool-update` / `tool-remove` are thin Makefile shims around `repair --target <id>` and `undo --target tool.<id> --include-tools --force`. They exist so users don't have to remember the ARGS gymnastics for the common single-tool flow.
+`tool-install` / `tool-update` / `tool-remove` are thin Makefile shims around `repair --target <id>` and `undo --target tool.<id> -IncludeTools -Force`. They exist so users don't have to remember the ARGS gymnastics for the common single-tool flow.
 
 ### Listing tool IDs
 
@@ -521,7 +520,7 @@ Alias for `tool-install`. Repair already implements the "install or upgrade" sem
 make tool-remove TOOL=docker
 ```
 
-Uninstalls a single tool. Implicitly passes `--force --include-tools` to `undo` because the per-tool intent is unambiguous: if you typed `tool-remove TOOL=docker`, you mean it.
+Uninstalls a single tool. Implicitly passes `-Force -IncludeTools` to `undo` because the per-tool intent is unambiguous: if you typed `tool-remove TOOL=docker`, you mean it. Note that `undo` still emits a per-tool confirmation prompt ("Other projects may depend on it") that is deliberately NOT bypassed by `-Force` — answer `y` once to proceed with the actual uninstall.
 
 If `TOOL` is omitted, all three targets exit 2 with a friendly error pointing at `make tool-list`.
 

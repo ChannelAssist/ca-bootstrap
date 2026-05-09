@@ -27,9 +27,11 @@
 # Exit codes:
 #   0   success (or DRY_RUN completed)
 #   1   user declined confirmation, OR refused unsafe STATE_DIR
-#   N   propagated from the inner `undo` invocation when it returns
-#       non-zero (e.g., 7 mid-operation failure). The state-dir removal
-#       step is skipped in that case so the next nuke can retry.
+#   7   propagated from the inner `undo` invocation when a destructive
+#       op fails mid-flight (commands/undo.ps1 returns 7 in that case).
+#       The state-dir removal step is skipped so the next nuke can
+#       retry. `undo` itself only ever emits 0 / 1 / 7 today; if a new
+#       exit code is added there, propagate it here too.
 
 set -euo pipefail
 
@@ -57,6 +59,27 @@ warn() { printf "${Y}⚠${X} %s\n"       "$*"; }
 
 PWSH="${PWSH:-pwsh}"
 command -v "$PWSH" >/dev/null 2>&1 || err "$PWSH not found on PATH"
+
+# If the user is on Windows and inherited CA_BOOTSTRAP_STATE from a
+# PowerShell session (Windows-form path: `C:\Users\foo\.ca-bootstrap`),
+# the safety guards below would refuse it for failing the absolute-path
+# check (`/*` doesn't match a drive-letter prefix). Translate via
+# cygpath when it's available — Git Bash and MSYS ship it; native
+# WSL invocations don't need it because PowerShell-on-WSL emits
+# POSIX paths already. If cygpath isn't on PATH, we let the safety
+# guards fire so the user gets a clear error rather than a silent
+# wrong-path nuke.
+case "$STATE_DIR" in
+    [A-Za-z]:\\*|[A-Za-z]:/*)
+        if command -v cygpath >/dev/null 2>&1; then
+            translated=$(cygpath -u -- "$STATE_DIR" 2>/dev/null || true)
+            if [ -n "$translated" ]; then
+                info "Translating Windows-form CA_BOOTSTRAP_STATE='$STATE_DIR' to POSIX '$translated' via cygpath."
+                STATE_DIR="$translated"
+            fi
+        fi
+        ;;
+esac
 
 # Validate STATE_DIR before we go anywhere near a confirmation prompt.
 # A misconfigured CA_BOOTSTRAP_STATE (set to / or $HOME by accident, or
