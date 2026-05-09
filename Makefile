@@ -80,6 +80,40 @@ repair: ## Run repair. Pass ARGS, e.g. `make repair ARGS='--all'` or `make repai
 undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--force'`
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo $(ARGS)
 
+# ---------------------------------------------------------------------------
+# Nuke + per-tool wrappers — friendlier surfaces around `undo` and `repair`
+# so users don't have to remember the ARGS gymnastics. Logic stays in the
+# PowerShell commands; these are just thin Makefile shims.
+# ---------------------------------------------------------------------------
+
+.PHONY: nuke
+nuke: ## Full purge: undo every journaled action + remove ~/.ca-bootstrap/. Confirm-gated. INCLUDE_TOOLS=1 also uninstalls system tools (destructive). CONFIRM=1 skips prompt. DRY_RUN=1 prints the plan only.
+	@chmod +x scripts/nuke.sh
+	@INCLUDE_TOOLS=$(INCLUDE_TOOLS) CONFIRM=$(CONFIRM) DRY_RUN=$(DRY_RUN) PWSH=$(PWSH) ./scripts/nuke.sh
+
+.PHONY: tool-list
+tool-list: ## List every tool ID in manifest/tools.yaml (use these IDs with tool-install/tool-update/tool-remove).
+	@$(PWSH) -NoLogo -Command "\
+		. ./lib/yaml.ps1; \
+		\$$m = ConvertFrom-Yaml (Get-Content -Raw manifest/tools.yaml); \
+		Write-Host 'Required:'; \
+		@(\$$m.required) | ForEach-Object { Write-Host \"  \$$(\$$_.id)\" }; \
+		Write-Host 'Optional:'; \
+		@(\$$m.optional) | ForEach-Object { Write-Host \"  \$$(\$$_.id)\" }"
+
+.PHONY: tool-install
+tool-install: ## Install or upgrade a single tool by ID, e.g. `make tool-install TOOL=dotnet-10`. Idempotent — no-op if at/above manifest min.
+	@if [ -z "$(TOOL)" ]; then printf "$(RED)TOOL is required, e.g. make tool-install TOOL=dotnet-10. Use 'make tool-list' to see IDs.$(RESET)\n"; exit 2; fi
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 repair --target $(TOOL)
+
+.PHONY: tool-update
+tool-update: tool-install ## Alias for tool-install (repair is version-aware: upgrades if below manifest min, no-op otherwise).
+
+.PHONY: tool-remove
+tool-remove: ## Uninstall a single tool by ID, e.g. `make tool-remove TOOL=dotnet-10`. Implicitly destructive (passes --force --include-tools to undo).
+	@if [ -z "$(TOOL)" ]; then printf "$(RED)TOOL is required, e.g. make tool-remove TOOL=dotnet-10. Use 'make tool-list' to see IDs.$(RESET)\n"; exit 2; fi
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo --target tool.$(TOOL) --include-tools --force
+
 .PHONY: manifest-drift
 manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAssist org (exit 8 = drift found)
 	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-drift $(ARGS); rc=$$?; \
