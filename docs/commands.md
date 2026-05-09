@@ -470,13 +470,15 @@ The script prefers `/dev/tty` for the prompt so a piped stdin (`echo y \| make n
 | Code | Meaning |
 |---|---|
 | 0 | Success (or `DRY_RUN=1` plan validated) |
-| 1 | User declined confirmation, or `--include-tools` undo refused for safety |
+| 1 | User declined the confirmation prompt, or `CA_BOOTSTRAP_STATE` failed the safety guard (empty / `/` / `$HOME` / not ending in `.ca-bootstrap`) |
+| 7 | Inner `undo` hit a mid-operation failure — the state dir is left in place so you can retry |
+| 8 | Inner `undo` refused for safety (e.g., a tracked dir contained uncommitted git changes) — re-run with `INCLUDE_TOOLS=1` only after you've understood the refusal |
 
 ### Safety notes
 
 - **`INCLUDE_TOOLS=1` is destructive across other projects.** Uninstalling .NET 10 or Node 20 affects every project on the machine that depends on them, not just ChannelAssist. Skip the flag unless you genuinely want those gone.
-- **The state directory is removed unconditionally** (no `--force` required). The script considers `~/.ca-bootstrap/` purely ca-bootstrap-owned and safe to wipe. If you've manually placed unrelated files there, move them first.
-- **`undo` exit codes are tolerated.** A fresh checkout with no journaled actions makes `undo` exit non-zero ("nothing to undo"); the script logs a warning and continues to the state-dir removal step. The end-of-run state is "clean slate" either way.
+- **`STATE_DIR` is validated before the rm.** The script refuses if `CA_BOOTSTRAP_STATE` is empty, equals `/`, equals `$HOME`, isn't an absolute path, or doesn't end in `.ca-bootstrap`. This is a guardrail against a misconfigured environment turning a confirmed YES into an `rm -rf $HOME` disaster.
+- **`undo` exit codes are propagated.** "Nothing to undo" is exit 0 — that's fine and the script continues. A non-zero exit (user quit mid-undo, mid-operation breakage, safety refusal) is real, and the script bails BEFORE the state-dir removal so the next invocation can retry. Pre-fix, we silently swallowed the code, which masked a flag-binding bug for an entire review cycle.
 
 ### Tests
 
@@ -494,7 +496,7 @@ Hermetic Pester coverage at `tests/lib/nuke.tests.ps1`. Each case sets `CA_BOOTS
 make tool-list
 ```
 
-Output is partitioned by `required:` / `optional:` from `manifest/tools.yaml`. Whatever appears here is a valid `TOOL=` value for the install / update / remove targets.
+Output is partitioned by `required:` / `optional:` (matching the section headers the Makefile prints) — these mirror the corresponding keys in `manifest/tools.yaml`. Whatever appears here is a valid `TOOL=` value for the install / update / remove targets.
 
 ### Install or upgrade
 
@@ -503,7 +505,7 @@ make tool-install TOOL=dotnet-10
 make tool-install TOOL=copilot-cli
 ```
 
-Idempotent: if the installed version meets the manifest minimum, this is a no-op; otherwise it installs (missing) or upgrades (too old) via the platform-appropriate method (winget on Windows, Homebrew on macOS, apt on Debian/Ubuntu, etc.) declared in `tools.yaml`.
+Idempotent: if the installed version meets the manifest minimum, this is a no-op; otherwise it installs (missing) or upgrades (too old) via the platform-appropriate method (winget on Windows, Homebrew on macOS, apt on Debian/Ubuntu, etc.) declared in `manifest/tools.yaml`.
 
 ### Update
 

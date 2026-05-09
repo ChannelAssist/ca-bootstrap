@@ -15,16 +15,25 @@ BeforeAll {
 
 Describe 'scripts/nuke.sh' {
     BeforeEach {
-        $script:tempState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-nuke-$(Get-Random).d"
+        # Path must end in '.ca-bootstrap' so it satisfies the script's
+        # safety guard (which refuses anything else, by design — see
+        # "CA_BOOTSTRAP_STATE='...' does not end in '/.ca-bootstrap'").
+        # We nest the dir under a unique random parent so concurrent
+        # test runs don't collide.
+        $script:tempParent = Join-Path ([System.IO.Path]::GetTempPath()) "cab-nuke-$(Get-Random)"
+        $script:tempState  = Join-Path $script:tempParent '.ca-bootstrap'
         [void](New-Item -ItemType Directory -Path $script:tempState -Force)
-        # Drop a marker file so the rm -rf step actually has something
-        # to remove. Without it the script's "already clean" branch would
-        # short-circuit and we couldn't assert the deletion happened.
-        Set-Content -Path (Join-Path $script:tempState 'journal.yaml') -Value 'schema_version: 1' -Encoding utf8NoBOM
+        # Seed a real journal so undo doesn't hit "no reversible
+        # actions" before we get a chance to assert anything. Empty
+        # sessions list is enough to keep the script happy without
+        # actually reversing on-disk state.
+        Set-Content -Path (Join-Path $script:tempState 'journal.yaml') `
+            -Value "schema_version: 1`nsessions: []`nhost: { os: macos, user: test, hostname: test }" `
+            -Encoding utf8NoBOM
     }
     AfterEach {
-        if ($script:tempState -and (Test-Path $script:tempState)) {
-            Remove-Item -Recurse -Force $script:tempState -ErrorAction SilentlyContinue
+        if ($script:tempParent -and (Test-Path $script:tempParent)) {
+            Remove-Item -Recurse -Force $script:tempParent -ErrorAction SilentlyContinue
         }
     }
 
@@ -45,7 +54,7 @@ Describe 'scripts/nuke.sh' {
         }
     }
 
-    It 'INCLUDE_TOOLS=1 surfaces the destructive-tools warning + adds --include-tools to undo' {
+    It 'INCLUDE_TOOLS=1 surfaces the destructive-tools warning + adds -IncludeTools to undo' {
         $env:CA_BOOTSTRAP_STATE = $script:tempState
         $env:DRY_RUN = '1'
         $env:CONFIRM = '1'
@@ -55,12 +64,69 @@ Describe 'scripts/nuke.sh' {
             $LASTEXITCODE | Should -Be 0
             $output | Should -Match 'Uninstall manifest tools'
             $output | Should -Match 'WARNING'
-            $output | Should -Match '--include-tools'
+            # We pass -IncludeTools (PascalCase, single dash) — PowerShell
+            # rejects the hyphenated --include-tools form. PR #42 review
+            # caught this regressing here; assertion is intentionally
+            # specific so a future contributor who switches back to
+            # hyphenated style sees a fast failure.
+            $output | Should -Match '-IncludeTools'
+            $output | Should -Not -Match '--include-tools'
         } finally {
             Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
             Remove-Item Env:DRY_RUN -ErrorAction SilentlyContinue
             Remove-Item Env:CONFIRM -ErrorAction SilentlyContinue
             Remove-Item Env:INCLUDE_TOOLS -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'undo invocation does not trip the -Unattended-requires-ConfigFile error' {
+        # PR #42 review caught a flag-binding regression: -Unattended
+        # without -ConfigFile makes ca-bootstrap.ps1 exit 1 immediately
+        # before any reversal happens. The "CONFIRM=1 actually removes
+        # the state dir" test masked it because the rm -rf still ran.
+        # Assert explicitly against the error string so a re-introduction
+        # fails this test even if other behavior happens to look correct.
+        $env:CA_BOOTSTRAP_STATE = $script:tempState
+        $env:CONFIRM = '1'
+        try {
+            $output = & bash $script:nukeScript 2>&1 | Out-String
+            $output | Should -Not -Match '-Unattended requires -ConfigFile'
+            $output | Should -Not -Match 'A parameter cannot be found that matches parameter name'
+        } finally {
+            Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
+            Remove-Item Env:CONFIRM -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'refuses unsafe STATE_DIR paths' {
+        # Each case must abort with exit 1 and NOT touch the filesystem.
+        # We invoke via `bash -c` with explicit env-var assignment so
+        # the test can pass a TRULY EMPTY CA_BOOTSTRAP_STATE through to
+        # the script. Going through PowerShell's $env:CA_BOOTSTRAP_STATE
+        # = '' would unset the variable instead, which makes the
+        # script's "${CA_BOOTSTRAP_STATE-default}" fall back to
+        # $HOME/.ca-bootstrap — i.e., nuke the user's REAL state
+        # directory. (Yes, this happened during PR #42 development.
+        # The script was hardened with `-` instead of `:-` so an
+        # empty value stays empty, but we still need to reach it
+        # without PowerShell laundering it into "unset".)
+        $cases = @(
+            @{ Path = ''        ; Match = 'CA_BOOTSTRAP_STATE is empty' }
+            @{ Path = '/'       ; Match = 'refuse to nuke the root filesystem' }
+            @{ Path = $HOME     ; Match = 'refuse to nuke the home directory' }
+            @{ Path = '/tmp/not-a-state-dir' ; Match = "does not end in '.ca-bootstrap'" }
+            @{ Path = 'relative/path/.ca-bootstrap' ; Match = 'is not absolute' }
+            @{ Path = '/.ca-bootstrap' ; Match = 'too few path components' }
+        )
+        foreach ($case in $cases) {
+            # Single-quoted heredoc so $foo inside the bash command stays
+            # literal until bash sees it. The CA_BOOTSTRAP_STATE
+            # assignment is in the same shell invocation, so it's
+            # guaranteed to reach nuke.sh as the value the test wrote.
+            $bashCmd = "CONFIRM=1 CA_BOOTSTRAP_STATE='$($case.Path -replace ""'"", ""'\\''"")' '$script:nukeScript'"
+            $output = & bash -c $bashCmd 2>&1 | Out-String
+            $LASTEXITCODE | Should -Be 1 -Because "STATE_DIR='$($case.Path)' must be refused. Output:`n$output"
+            $output | Should -Match $case.Match
         }
     }
 

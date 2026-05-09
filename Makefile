@@ -94,11 +94,12 @@ nuke: ## Full purge: undo every journaled action + remove ~/.ca-bootstrap/. Conf
 .PHONY: tool-list
 tool-list: ## List every tool ID in manifest/tools.yaml (use these IDs with tool-install/tool-update/tool-remove).
 	@$(PWSH) -NoLogo -Command "\
+		. ./lib/ui.ps1; \
 		. ./lib/yaml.ps1; \
-		\$$m = ConvertFrom-Yaml (Get-Content -Raw manifest/tools.yaml); \
-		Write-Host 'Required:'; \
+		\$$m = Read-CABManifest -Path manifest/tools.yaml -Quiet; \
+		Write-Host 'required:'; \
 		@(\$$m.required) | ForEach-Object { Write-Host \"  \$$(\$$_.id)\" }; \
-		Write-Host 'Optional:'; \
+		Write-Host 'optional:'; \
 		@(\$$m.optional) | ForEach-Object { Write-Host \"  \$$(\$$_.id)\" }"
 
 .PHONY: tool-install
@@ -110,9 +111,9 @@ tool-install: ## Install or upgrade a single tool by ID, e.g. `make tool-install
 tool-update: tool-install ## Alias for tool-install (repair is version-aware: upgrades if below manifest min, no-op otherwise).
 
 .PHONY: tool-remove
-tool-remove: ## Uninstall a single tool by ID, e.g. `make tool-remove TOOL=dotnet-10`. Implicitly destructive (passes --force --include-tools to undo).
+tool-remove: ## Uninstall a single tool by ID, e.g. `make tool-remove TOOL=dotnet-10`. Implicitly destructive (passes -Force -IncludeTools to undo).
 	@if [ -z "$(TOOL)" ]; then printf "$(RED)TOOL is required, e.g. make tool-remove TOOL=dotnet-10. Use 'make tool-list' to see IDs.$(RESET)\n"; exit 2; fi
-	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo --target tool.$(TOOL) --include-tools --force
+	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo --target tool.$(TOOL) -IncludeTools -Force
 
 .PHONY: manifest-drift
 manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAssist org (exit 8 = drift found)
