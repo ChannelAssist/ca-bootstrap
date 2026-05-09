@@ -75,6 +75,25 @@ Listed in the order steps typically produce them.
 
 **Undone by**: `Remove-Item -Path <path>` if the directory is empty (no files, no other entries).
 
+For workspace-root folders the entry also carries `is_workspace_root: true`. That field is what `undo --target workspace` keys off of, and it stays in `create_folder` only when step 40 actually mkdirs — for the per-run "which workspace did setup pick" record (emitted whether the folder was created or already existed), see [`select_workspace`](#select_workspace) below.
+
+### `select_workspace`
+
+```yaml
+- id: ...
+  step: 40-workspace
+  action: select_workspace
+  path: C:\…\ChannelAssistDev
+  is_workspace_root: true
+  created: false                  # true on the run that mkdir'd the folder
+  reversible: false
+  undone: false
+```
+
+Emitted by step 40 on **every** setup run — both when the workspace folder is created and when an existing one is selected. `doctor` reads the most-recent `select_workspace` entry to discover which workspace the user last chose; without it, doctor used to fall back to the most-recent workspace-root `create_folder` and surface a stale earlier choice when the user re-ran setup against an existing path.
+
+**Undone by**: nothing. The action is `reversible: false` and has no per-action reverser — selecting an existing folder has no side effect to undo, and the actual `mkdir` (when it happened) is reversed via the sibling `create_folder` entry. `undo --target workspace` selects entries by the `is_workspace_root` data field regardless of action, so removal is still driven by `create_folder`.
+
 ### `install_tool`
 
 ```yaml

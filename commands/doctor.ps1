@@ -30,7 +30,18 @@ function Invoke-CABDoctorCheck {
     # back the previous default and reports a stale "missing" workspace
     # even when setup just finished writing to the new one. Take [-1] so
     # doctor reflects the workspace the most recent setup chose.
-    $workspaceEntries = @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace')
+    #
+    # Prefer select_workspace over create_folder. select_workspace is
+    # emitted on every setup run (created or existing); create_folder is
+    # only emitted when 40-workspace actually mkdirs — so a setup against
+    # an existing path used to leave no record at all and doctor would
+    # surface a stale earlier choice. The create_folder fallback is kept
+    # for journals written before the select_workspace action existed.
+    $workspaceEntries = @(Get-CABJournalEntry -Action 'select_workspace' -Step '40-workspace')
+    if ($workspaceEntries.Count -eq 0) {
+        $workspaceEntries = @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace' |
+            Where-Object { $_.is_workspace_root })
+    }
     if ($workspaceEntries.Count -gt 0) {
         $workspace = [string]$workspaceEntries[-1].path
     } elseif ($env:CA_BOOTSTRAP_WORKSPACE) {

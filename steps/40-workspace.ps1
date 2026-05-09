@@ -155,6 +155,17 @@ function Invoke-CABStep40 {
         $created = $false
     }
 
+    # Always record the workspace selection, even when the folder already
+    # existed. Doctor reads this to discover which workspace the most-
+    # recent setup chose. Without it, doctor's "find the most-recent
+    # 40-workspace create_folder" lookup returned a stale entry from an
+    # earlier run whenever the user re-ran setup against an existing
+    # path. select_workspace is intentionally non-reversible and carries
+    # no undo handler — undo --target workspace already keys off the
+    # is_workspace_root data field, not the action name.
+    Add-CABJournalEntry -Step '40-workspace' -Action 'select_workspace' -Reversible $false `
+        -Data @{ path = $workspace; is_workspace_root = $true; created = $created } | Out-Null
+
     $Context.WorkspacePath = $workspace
     if ($created) {
         return @{ status = 'ok'; details = "Created workspace at $workspace" }

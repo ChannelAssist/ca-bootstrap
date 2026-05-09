@@ -17,6 +17,12 @@ $Script:CABootstrapJournalPath = Join-Path $Script:CABootstrapStateDir 'journal.
 $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
 $Script:CABootstrapSessionId   = $null
 $Script:CABJournalState        = $null   # full in-memory representation of the journal
+# Monotonic per-process counter that disambiguates entry ids when two
+# Add-CABJournalEntry / Repair-CABJournal calls land in the same wall-
+# clock instant. Set-CABEntryUndone matches by id string, so two entries
+# sharing an id would be marked undone together — see the format
+# documented on New-CABEntryId below.
+$Script:CABEntryIdSequence     = 0
 
 # ---------------------------------------------------------------------------
 # Path accessors
@@ -67,6 +73,22 @@ function Reset-CABJournalState {
     $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
     $Script:CABootstrapSessionId   = $null
     $Script:CABJournalState        = $null
+    $Script:CABEntryIdSequence     = 0
+}
+
+# New-CABEntryId — produce a journal entry id that is guaranteed unique
+# within a process. Format: `yyyy-MM-ddTHH:mm:ss.fffZ-N` where N is a
+# monotonically incrementing per-process counter (reset by
+# Reset-CABJournalState). Sub-second precision keeps human ordering
+# meaningful; the counter guarantees correctness even when the OS clock
+# has coarse resolution (legacy Windows DateTime can land on the same
+# tick for back-to-back calls). Set-CABEntryUndone is a string-equality
+# match, so backward compatibility is preserved — old whole-second ids
+# in existing journals continue to undo correctly.
+function New-CABEntryId {
+    $Script:CABEntryIdSequence++
+    $now = (Get-Date -AsUTC).ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+    return "$now-$Script:CABEntryIdSequence"
 }
 
 # ---------------------------------------------------------------------------
@@ -364,7 +386,7 @@ function Add-CABJournalEntry {
     if (-not $session) { throw 'No active session — call Start-CABSession first.' }
 
     $entry = [ordered]@{
-        id         = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
+        id         = New-CABEntryId
         step       = $Step
         action     = $Action
         reversible = $Reversible
@@ -483,16 +505,32 @@ function Repair-CABJournal {
         actions              = New-Object System.Collections.Generic.List[hashtable]
     }
 
-    # Workspace folder.
+    # Workspace folder. Emit both create_folder (so undo can mkdir-undo
+    # if the user later asks with --include-folders) and select_workspace
+    # (so the new doctor read order finds the reconstructed workspace
+    # without falling back to the legacy filter). Two entries, two
+    # different jobs — see steps/40-workspace.ps1 for the same split on
+    # live runs.
     if (Test-Path $WorkspacePath) {
         $session.actions.Add([ordered]@{
-            id                = $sessionId
+            id                = New-CABEntryId
             step              = '40-workspace'
             action            = 'create_folder'
             reversible        = $true
             undone            = $false
             path              = $WorkspacePath
             is_workspace_root = $true
+            reconstructed     = $true
+        })
+        $session.actions.Add([ordered]@{
+            id                = New-CABEntryId
+            step              = '40-workspace'
+            action            = 'select_workspace'
+            reversible        = $false
+            undone            = $false
+            path              = $WorkspacePath
+            is_workspace_root = $true
+            created           = $false
             reconstructed     = $true
         })
     }
@@ -502,7 +540,7 @@ function Repair-CABJournal {
         $full = Join-Path $WorkspacePath $sub
         if (Test-Path $full) {
             $session.actions.Add([ordered]@{
-                id            = $sessionId
+                id            = New-CABEntryId
                 step          = '50-folders'
                 action        = 'create_folder'
                 reversible    = $true
@@ -522,7 +560,7 @@ function Repair-CABJournal {
                 $origin = & git -C $_.FullName remote get-url origin 2>$null
                 $repoSlug = if ($origin) { $origin -replace '^https?://github\.com/','' -replace '^git@github\.com:','' -replace '\.git$','' } else { 'unknown' }
                 $session.actions.Add([ordered]@{
-                    id            = $sessionId
+                    id            = New-CABEntryId
                     step          = '60-repos'
                     action        = 'clone_repo'
                     reversible    = $true
@@ -542,7 +580,7 @@ function Repair-CABJournal {
         $needle = "gitdir:$($WorkspacePath.Replace('\','/').TrimEnd('/'))/"
         if ($content -like "*$needle*") {
             $session.actions.Add([ordered]@{
-                id                       = $sessionId
+                id                       = New-CABEntryId
                 step                     = '70-git-identity'
                 action                   = 'configure_git_identity'
                 reversible               = $true
