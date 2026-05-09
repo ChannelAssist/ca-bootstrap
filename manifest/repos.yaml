@@ -58,8 +58,8 @@ groups:
   - name: ca-training
     description: ChannelAssist training material and learning resources
     repos:
-      - { repo: ChannelAssist/nlp-learning-paths,                into: ca-training/nlp-learning-paths,                branch: main, opt_in: true }
-      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main, opt_in: true }
+      - { repo: ChannelAssist/nlp-learning-paths,                into: ca-training/nlp-learning-paths,                branch: main }
+      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main }
 
   - name: experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
