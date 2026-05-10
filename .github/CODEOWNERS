@@ -1,0 +1,3 @@
+# Default owners — required by main-protection / dev-protection rulesets
+# Per the audit-proposed SDLC §5.7.6: teams listed here MUST have repo push access.
+* @ChannelAssist/ai-platform-team
