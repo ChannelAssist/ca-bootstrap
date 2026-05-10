@@ -655,8 +655,8 @@ groups:
     description: ChannelAssist platform-wide services
     repos:
       - { repo: ChannelAssist/ca-ai-agents, into: ca-platform/ca-ai-agents, branch: master }
-      - { repo: ChannelAssist/ca-claude-plugin, into: ca-platform/ca-claude-plugin, branch: main }
-      - { repo: ChannelAssist/ca-copilot-plugin, into: ca-platform/ca-copilot-plugin, branch: main }
+      - { repo: ChannelAssist/ca-claude-plugin, into: ca-platform/ca-claude-plugin, branch: dev }
+      - { repo: ChannelAssist/ca-copilot-plugin, into: ca-platform/ca-copilot-plugin, branch: dev }
       - { repo: ChannelAssist/ca-data-dictionnary-generator, into: ca-platform/ca-data-dictionnary-generator, branch: master }
       - { repo: ChannelAssist/ca-privacy-gate, into: ca-platform/ca-privacy-gate, branch: main }
 
