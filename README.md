@@ -2,7 +2,7 @@
 
 One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
 
-> **Status: v1.0.0** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
+> **Status: v1.7.2** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
 
 ---
 
