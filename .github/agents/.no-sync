@@ -1,0 +1,3 @@
+# Excluded from sync-agents.sh sync-all per AB#39636 + audit recommendation.
+# This repo is one of 8 ineligible-sync targets identified by Task 3 dry-run.
+# Removal requires ADR amendment (would re-enable broad sync).
