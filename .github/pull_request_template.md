@@ -6,7 +6,7 @@ of these automatically (Conventional Commits, AB# reference, signed
 commits, label taxonomy); the rest are reviewer judgement.
 
 Source of truth: cm-platform-infra/templates/pull_request_template.md
-(propagated via `make pr-template-sync-all`).
+Propagated via `make pr-template-sync-all` (run from cm-platform-infra).
 -->
 
 ## Summary
@@ -18,7 +18,7 @@ Source of truth: cm-platform-infra/templates/pull_request_template.md
 
 - Refs: AB#<azure-devops-id>  <!-- Required by SDLC §5.7.6 step 4 and enforced by the `ADO ↔ GitHub Bridge / Require AB#` check. Use AB#38056 (AI Platform umbrella) only if no specific child work item exists. -->
 - Related issue(s): #<github-issue-number>
-- ADR (if architecture-affecting): docs/adr/ADR-XXXX-...
+- ADR (if architecture-affecting): link to the relevant ADR in this repo (commonly under `docs/adr/` or `docs/decisions/`) or in `cm-platform-infra/docs/adr/` for org-wide decisions
 
 ## Change type
 
@@ -39,7 +39,9 @@ Source of truth: cm-platform-infra/templates/pull_request_template.md
 ## Test plan
 
 <!-- Bullet list of how a reviewer (human or Copilot) verifies this works.
-     Be specific — `npm test` is not a test plan. -->
+     Be specific — "tests pass" is not a test plan. Use the repo's standard
+     test command (e.g., `pytest`, `pnpm test`, `dotnet test`, `make test`)
+     and call out which suites cover the change. -->
 
 - [ ]
 
@@ -49,11 +51,11 @@ Source of truth: cm-platform-infra/templates/pull_request_template.md
 - [ ] Branch named `feature/<desc>-AB#<id>` or `bugfix/<desc>-AB#<id>` (SDLC §5.7)
 - [ ] Title matches Conventional Commits format, under 72 chars (SDLC §5.7.1)
 - [ ] Commits **signed** (`git commit -S`) and **bisected** (one logical change per commit, SDLC §5.7.5)
-- [ ] Canonical-taxonomy labels applied (run `make labels-sync` first if missing); `ai-assisted` if any AI tooling was used (SDLC §8.7)
+- [ ] Canonical-taxonomy labels applied (apply via the org-wide `make labels-sync REPO=ChannelAssist/<this-repo>` from `cm-platform-infra`, or via the repo's local `make labels-sync` target if it has one); add `ai-assisted` if any AI tooling was used (SDLC §8.7)
 - [ ] Draft status only if work-in-progress — convert to **Ready for review** only when all commits are final
 
 ### CI gate (SDLC §5.7.6 step 7)
-- [ ] All required status checks **green** before requesting review (build, test, lint, commitlint, secret scan, AB# reference, security scan, dependency review). CI failure blocks merge regardless of approval.
+- [ ] All required status checks **green** before requesting review (build, test, lint, commitlint, secret scan, AB# reference, security scan, dependency review — exact set varies per repo). CI failure blocks merge regardless of approval.
 
 ### Reviewers (SDLC §5.7.6 "Reviewer Assignment" + "Automated Code Review")
 - [ ] At least one reviewer assigned (CODEOWNERS auto-assigns when applicable)
@@ -69,7 +71,7 @@ Source of truth: cm-platform-infra/templates/pull_request_template.md
 <!-- Most steps are automated; this is here as a reminder for the merger. -->
 - Feature branch will be auto-deleted on merge (configured per repo)
 - ADO bridge will transition the linked work item (verify in the bridge's "Sync ADO work item state" job)
-- GitHub Projects v2 board card will auto-move to terminal state (SS8.11 / ADR-0021)
+- GitHub Projects v2 board card will auto-move to its terminal state — the bridge is governed by SDLC SS8.11 (see the bridge ADR in `cm-platform-infra/docs/adr/` for the canonical implementation)
 
 ## AI assistance (SDLC §8.7)
 
