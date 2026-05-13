@@ -1,0 +1,40 @@
+# dependabot.yml — ChannelAssist github-actions-only canonical
+#
+# Applies to repos with no .NET / Node / Python projects to track —
+# typically plugins, templates, docs, and infra-config repos whose only
+# updatable dependency is workflow action versions.
+#
+# Weekly cadence per SDLC §6.4. Targets `dev` (ADR-0023); security
+# advisories propagate to `main` independently regardless of
+# `target-branch`. The catch-all group bundles all action-bump version
+# updates into a single weekly PR so each workflow file diff lands
+# together rather than as a chain of PRs.
+#
+# Canonical source: cm-platform-infra/templates/dependabot/github-actions-only.yml.
+# Sync mechanism: cm-platform-infra/scripts/sync-dependabot.sh.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Toronto"
+    target-branch: "dev"
+    open-pull-requests-limit: 5
+    # Labels: only canonical taxonomy entries from labels.yaml. Dependabot
+    # PRs are automated dependency bumps, not AI-generated code — the
+    # `ai-assisted` label (whose taxonomy definition is "Contains AI-generated
+    # code") would be misleading here.
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      github-actions-all:
+        applies-to: version-updates
+        patterns:
+          - "*"
