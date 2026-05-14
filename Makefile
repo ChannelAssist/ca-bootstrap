@@ -91,6 +91,13 @@ nuke: ## Full purge: undo every journaled action + remove ~/.ca-bootstrap/. Conf
 	@chmod +x scripts/nuke.sh
 	@INCLUDE_TOOLS=$(INCLUDE_TOOLS) CONFIRM=$(CONFIRM) DRY_RUN=$(DRY_RUN) PWSH=$(PWSH) ./scripts/nuke.sh
 
+.PHONY: install-commit-hooks
+install-commit-hooks: ## Install commitlint commit-msg hooks in every ChannelAssist clone with a commitlint config. WORKSPACE=path overrides default. WHATIF=1 to dry-run. FORCE=1 to overwrite foreign hooks.
+	@$(PWSH) -NoLogo -File scripts/install-commit-hooks.ps1 \
+		$(if $(WORKSPACE),-WorkspacePath '$(WORKSPACE)') \
+		$(if $(WHATIF),-WhatIf) \
+		$(if $(FORCE),-Force)
+
 .PHONY: tool-list
 tool-list: ## List every tool ID in manifest/tools.yaml (use these IDs with tool-install/tool-update/tool-remove).
 	@$(PWSH) -NoLogo -Command "\
