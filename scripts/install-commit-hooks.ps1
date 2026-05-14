@@ -5,31 +5,33 @@ Install commitlint commit-msg hooks in cloned ChannelAssist repos.
 
 .DESCRIPTION
 Walks the workspace, finds every clone that has a commitlint config
-(`commitlint.config.{js,mjs,cjs,ts}` or a `commitlint` key in
-package.json), and installs `.git/hooks/commit-msg` that runs
-`npx commitlint --edit "$1"`.
+(`commitlint.config.{js,mjs,cjs,ts}`, `.commitlintrc[.{js,mjs,cjs,ts,
+json,yml,yaml}]`, or a `commitlint` key in package.json), and installs
+`.git/hooks/commit-msg` that runs `npx --no-install commitlint --edit "$1"`.
 
 The hook lets `git commit` reject a non-conforming message LOCALLY,
 catching e.g. a 78-char header before CI does. This is the "eat the
 canonical's own dog food" item from the meta-bug followup in the
-2026-05-12 Daily Report (commitlint canonical PR #41, where the
-PR codifying the 72-char rule had a 78-char commit header).
+2026-05-12 Daily Report (commitlint canonical PR #41, where the PR
+codifying the 72-char rule had a 78-char commit header).
 
-Idempotent — re-running on an already-hooked repo is a no-op (the
-existing hook is preserved if it already invokes commitlint).
+Idempotent — re-running on an already-hooked repo refreshes the body
+in place. Foreign commit-msg hooks are preserved unless `-Force`,
+EXCEPT when the foreign hook already invokes commitlint (treated as
+"good enough" — preserved with a different log line).
+
+Both flat and 2-level workspace layouts are supported: each top-level
+directory under `-WorkspacePath` is treated as a repo if it has a
+`.git/` directly, otherwise the script descends one more level.
 
 .PARAMETER WorkspacePath
 The directory to scan. Defaults to ~/ChannelAssist on macOS/Linux,
 $env:USERPROFILE\ChannelAssist on Windows, matching the wizard's
 default workspace.
 
-.PARAMETER WhatIf
-Show what would change without modifying anything.
-
 .PARAMETER Force
-Overwrite existing commit-msg hooks even if they don't invoke
-commitlint. Default behavior preserves existing hooks (best-effort
-non-destructive merge — see notes in the code).
+Overwrite existing foreign commit-msg hooks even if they don't invoke
+commitlint. Default behavior preserves them.
 
 .EXAMPLE
 ./scripts/install-commit-hooks.ps1
@@ -41,9 +43,10 @@ non-destructive merge — see notes in the code).
 ./scripts/install-commit-hooks.ps1 -Force
 
 .NOTES
-Requires Node.js + npx on PATH. The wizard's step 20 (prereqs) and
-step 80 (extras) ensure Node is installed; this script only sets up
-the hooks and assumes Node is already present.
+Requires Node.js + npx on PATH. The wizard's step 20 (prereqs) ensures
+Node is installed; this script only sets up the hooks and assumes Node
+is already present. If npx isn't on PATH the installed hook itself
+no-ops gracefully (the hook body skips with a warning and exits 0).
 #>
 
 [CmdletBinding(SupportsShouldProcess)]
@@ -53,6 +56,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Dot-source the helper functions (Test-CAB*, Get-CAB*). Same pattern
+# as the wizard steps, so the helpers can be unit-tested independently
+# (see tests/lib/commit-hooks.tests.ps1).
+$repoRoot = (Resolve-Path "$PSScriptRoot/..").Path
+. (Join-Path $repoRoot 'lib/commit-hooks.ps1')
 
 if (-not $WorkspacePath) {
     $WorkspacePath = if ($IsWindows) {
@@ -67,69 +76,11 @@ if (-not (Test-Path $WorkspacePath)) {
     exit 1
 }
 
-$HOOK_BODY = @'
-#!/usr/bin/env sh
-# Installed by ca-bootstrap/scripts/install-commit-hooks.ps1
-# Runs commitlint locally so a non-conforming header (e.g. >72 chars)
-# is rejected at `git commit` time, not at PR CI time.
-# Skips if npx isn't on PATH (graceful — keep the commit flow working
-# even on a partial dev-env setup).
-if ! command -v npx >/dev/null 2>&1; then
-  echo "[commit-msg] npx not on PATH; skipping commitlint check." >&2
-  exit 0
-fi
-exec npx --no-install commitlint --edit "$1"
-'@
-
-function Test-HasCommitlintConfig {
-    param([string]$RepoDir)
-    foreach ($name in @(
-        'commitlint.config.js',
-        'commitlint.config.mjs',
-        'commitlint.config.cjs',
-        'commitlint.config.ts',
-        '.commitlintrc',
-        '.commitlintrc.js',
-        '.commitlintrc.json',
-        '.commitlintrc.yml',
-        '.commitlintrc.yaml'
-    )) {
-        if (Test-Path (Join-Path $RepoDir $name)) { return $true }
-    }
-    # Also check package.json for a `commitlint` key
-    $pkg = Join-Path $RepoDir 'package.json'
-    if (Test-Path $pkg) {
-        try {
-            $obj = Get-Content $pkg -Raw | ConvertFrom-Json
-            if ($obj.PSObject.Properties.Name -contains 'commitlint') { return $true }
-        } catch {
-            # Malformed package.json — ignore, don't crash the sweep
-        }
-    }
-    return $false
-}
-
-function Test-HookIsOurs {
-    param([string]$HookPath)
-    if (-not (Test-Path $HookPath)) { return $false }
-    $first200 = (Get-Content $HookPath -Raw -ErrorAction SilentlyContinue) -replace '`r',''
-    if ([string]::IsNullOrEmpty($first200)) { return $false }
-    # Marker line identifies our installed hook.
-    return $first200 -match 'Installed by ca-bootstrap/scripts/install-commit-hooks\.ps1'
-}
-
-function Test-HookInvokesCommitlint {
-    param([string]$HookPath)
-    if (-not (Test-Path $HookPath)) { return $false }
-    $content = Get-Content $HookPath -Raw -ErrorAction SilentlyContinue
-    if ([string]::IsNullOrEmpty($content)) { return $false }
-    return $content -match 'commitlint'
-}
+$hookBody = Get-CABCommitMsgHookBody
 
 $stats = [ordered]@{
     Scanned   = 0
     NoConfig  = 0
-    NoGit     = 0
     Installed = 0
     Updated   = 0
     Skipped   = 0
@@ -139,51 +90,52 @@ $stats = [ordered]@{
 Write-Host "Scanning $WorkspacePath for ChannelAssist clones with commitlint configured..." -ForegroundColor Cyan
 Write-Host ""
 
-# Two levels deep: <workspace>/<group>/<repo>
-Get-ChildItem -Path $WorkspacePath -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-    $groupDir = $_.FullName
-    Get-ChildItem -Path $groupDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-        $repoDir = $_.FullName
-        $stats.Scanned++
+foreach ($repoDir in (Get-CABCommitlintRepos -WorkspacePath $WorkspacePath)) {
+    $stats.Scanned++
 
-        if (-not (Test-Path (Join-Path $repoDir '.git'))) {
-            $stats.NoGit++
-            return
-        }
-        if (-not (Test-HasCommitlintConfig -RepoDir $repoDir)) {
-            $stats.NoConfig++
-            return
-        }
+    if (-not (Test-CABHasCommitlintConfig -RepoDir $repoDir)) {
+        $stats.NoConfig++
+        continue
+    }
 
-        $hooksDir = Join-Path $repoDir '.git/hooks'
-        $hookPath = Join-Path $hooksDir 'commit-msg'
-        $rel = Resolve-Path -Relative $repoDir -ErrorAction SilentlyContinue
-        if (-not $rel) { $rel = $repoDir }
+    $hooksDir = Join-Path $repoDir '.git/hooks'
+    $hookPath = Join-Path $hooksDir 'commit-msg'
+    $rel = Get-CABRelativePath -Path $repoDir -BasePath $WorkspacePath
 
-        $action = $null
-        if (Test-HookIsOurs -HookPath $hookPath) {
-            # Our hook already installed; refresh its body in case content changed.
-            $action = if ((Get-Content $hookPath -Raw) -ne $HOOK_BODY) { 'Updated' } else { 'Skipped' }
-        } elseif (Test-Path $hookPath) {
-            # Foreign hook exists — preserve it unless -Force.
-            if ($Force) {
-                $action = 'Updated'
-            } else {
-                Write-Host "  [preserve] $rel — existing commit-msg hook not ours; use -Force to overwrite" -ForegroundColor Yellow
-                $stats.Preserved++
-                return
-            }
+    # Decide what we WOULD do; stats reflect the plan (so -WhatIf
+    # reports counts the same as a real run would).
+    $action = $null
+    if (Test-CABHookIsOurs -HookPath $hookPath) {
+        # Our hook already installed; refresh body in case it changed.
+        $existing = Get-Content $hookPath -Raw -ErrorAction SilentlyContinue
+        $action = if ($existing -ne $hookBody) { 'Updated' } else { 'Skipped' }
+    } elseif (Test-CABHookInvokesCommitlint -HookPath $hookPath) {
+        # Foreign hook but already runs commitlint somehow — preserve.
+        Write-Host "  [preserve] $rel — existing commit-msg hook already runs commitlint" -ForegroundColor DarkGreen
+        $stats.Preserved++
+        continue
+    } elseif (Test-Path $hookPath) {
+        # Foreign hook with no commitlint involvement.
+        if ($Force) {
+            $action = 'Updated'
         } else {
-            $action = 'Installed'
+            Write-Host "  [preserve] $rel — existing commit-msg hook not ours; use -Force to overwrite" -ForegroundColor Yellow
+            $stats.Preserved++
+            continue
         }
+    } else {
+        $action = 'Installed'
+    }
 
-        if ($PSCmdlet.ShouldProcess($hookPath, $action.ToLower())) {
-            New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
-            Set-Content -Path $hookPath -Value $HOOK_BODY -NoNewline
-            if (-not $IsWindows) { chmod +x $hookPath }
-            Write-Host "  [$($action.ToLower())] $rel" -ForegroundColor Green
-            $stats."$action"++
-        }
+    # Plan tally first, regardless of whether we end up writing — so
+    # -WhatIf produces accurate counts.
+    $stats."$action"++
+
+    if ($PSCmdlet.ShouldProcess($hookPath, $action.ToLower())) {
+        New-Item -ItemType Directory -Force -Path $hooksDir | Out-Null
+        Set-Content -Path $hookPath -Value $hookBody
+        if (-not $IsWindows) { chmod +x $hookPath }
+        Write-Host "  [$($action.ToLower())] $rel" -ForegroundColor Green
     }
 }
 
