@@ -84,6 +84,62 @@ optional:
       linux:
         any: { type: script, url: "https://dot.net/v1/dotnet-install.sh", args: "--channel 10.0" }
 
+  - id: az
+    name: Azure CLI
+    description: Azure resource provisioning + Entra app reg management; required by cm-currency-service staging deploy scripts
+    needed_by_groups: [cm-product]
+    check:
+      cmd: "az --version"
+      version_regex: "azure-cli\\s+(\\d+\\.\\d+\\.\\d+)"
+      min_version: "2.60.0"
+    install:
+      windows: { type: winget, id: Microsoft.AzureCLI }
+      macos:   { type: brew,   id: azure-cli }
+      linux:
+        debian: { type: script, url: "https://aka.ms/InstallAzureCLIDeb" }
+        rhel:   { type: script, url: "https://aka.ms/InstallAzureCLIRhel" }
+
+  - id: kubectl
+    name: kubectl
+    description: Kubernetes CLI; required for AKS deploys (cm-currency-service staging + future cm-* services on shared AKS)
+    needed_by_groups: [cm-product]
+    check:
+      cmd: "kubectl version --client"
+      version_regex: "Client Version:\\s+v(\\d+\\.\\d+\\.\\d+)"
+      min_version: "1.28.0"
+    install:
+      windows: { type: winget, id: Kubernetes.kubectl }
+      macos:   { type: brew,   id: kubernetes-cli }
+      linux:   { type: snap,   id: kubectl, classic: true }
+
+  - id: helm
+    name: Helm
+    description: Kubernetes chart deploys; required by `make staging-deploy` and any cm-* service Helm chart
+    needed_by_groups: [cm-product]
+    check:
+      cmd: "helm version --short"
+      version_regex: "v(\\d+\\.\\d+\\.\\d+)"
+      min_version: "3.10.0"
+    install:
+      windows: { type: winget, id: Helm.Helm }
+      macos:   { type: brew,   id: helm }
+      linux:   { type: snap,   id: helm, classic: true }
+
+  - id: jq
+    name: jq
+    description: JSON parsing in shell; required by cm-currency-service staging scripts (parses `az` / `kubectl` / `gh` JSON output)
+    needed_by_groups: [cm-product]
+    check:
+      cmd: "jq --version"
+      version_regex: "jq-(\\d+\\.\\d+)"
+      min_version: "1.6"
+    install:
+      windows: { type: winget, id: jqlang.jq }
+      macos:   { type: brew,   id: jq }
+      linux:
+        debian: { type: apt, id: jq }
+        rhel:   { type: dnf, id: jq }
+
   - id: node-20
     name: Node.js 20 LTS
     description: Required for Keystone (Astro Starlight) and ca-data-dictionnary-generator frontend
