@@ -165,6 +165,29 @@ ca-bootstrap is a multi-command CLI. The bootstrap one-liner runs the default `s
 
 See [`docs/commands.md`](docs/commands.md) for the full reference.
 
+### One-off helper scripts
+
+Standalone scripts in `scripts/` that aren't part of the wizard but are useful after onboarding:
+
+| Script | Purpose |
+|---|---|
+| [`scripts/install-commit-hooks.ps1`](scripts/install-commit-hooks.ps1) | Install commitlint `commit-msg` hooks in every cloned ChannelAssist repo that has a `commitlint.config.*`. Lets `git commit` reject a non-conforming header (e.g. >72 chars) locally, before CI does. Idempotent; preserves existing foreign hooks unless `-Force`. |
+
+Run directly or via Makefile:
+
+```powershell
+# Direct:
+./scripts/install-commit-hooks.ps1
+./scripts/install-commit-hooks.ps1 -WorkspacePath ~/MyWorkspace -WhatIf
+./scripts/install-commit-hooks.ps1 -Force
+
+# Or via make:
+make install-commit-hooks
+make install-commit-hooks WHATIF=1
+make install-commit-hooks WORKSPACE=~/MyWorkspace
+make install-commit-hooks FORCE=1
+```
+
 ---
 
 ## Layout
