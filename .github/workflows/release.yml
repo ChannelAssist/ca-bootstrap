@@ -104,7 +104,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout (full history + tags)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           # release.sh does its own git push using gh-auth, but the
@@ -157,7 +157,7 @@ jobs:
         # gpg-agent and configures git for signed tags + commits using
         # that key's fingerprint. release.sh does `git tag -s` which then
         # picks up this configuration automatically.
-        uses: crazy-max/ghaction-import-gpg@v6
+        uses: crazy-max/ghaction-import-gpg@v7
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
