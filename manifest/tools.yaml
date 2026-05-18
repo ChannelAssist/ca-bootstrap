@@ -140,6 +140,33 @@ optional:
         debian: { type: apt, id: jq }
         rhel:   { type: dnf, id: jq }
 
+  - id: psql
+    name: psql (PostgreSQL client)
+    description: PostgreSQL client; required by cm-currency-service `make staging-seed-qa` and any other staging op that pipes SQL into the staging Postgres
+    needed_by_groups: [cm-product]
+    check:
+      cmd: "psql --version"
+      version_regex: "psql \\(PostgreSQL\\) (\\d+\\.\\d+)"
+      min_version: "14.0"
+    install:
+      # macOS uses libpq (client-only, no server bits). libpq is keg-only,
+      # so post_install force-links it onto PATH; --overwrite handles a
+      # prior postgresql@N install leaving conflicting symlinks behind.
+      # Windows has no client-only formula in winget, so the full
+      # PostgreSQL package is pulled in for the `psql` binary.
+      #
+      # post_install runs via `bash -lc` (lib/tools.ps1), and on macOS
+      # Homebrew is commonly initialized only via the user's zsh login
+      # files (~/.zprofile / ~/.zshrc), not bash's. PATH-prepend both
+      # canonical brew locations so the link step works regardless of
+      # which shell owns the operator's interactive profile (Apple
+      # Silicon → /opt/homebrew, Intel → /usr/local).
+      windows: { type: winget, id: PostgreSQL.PostgreSQL.16 }
+      macos:   { type: brew,   id: libpq, post_install: ['PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" brew link --force --overwrite libpq'] }
+      linux:
+        debian: { type: apt, id: postgresql-client }
+        rhel:   { type: dnf, id: postgresql }
+
   - id: node-20
     name: Node.js 20 LTS
     description: Required for Keystone (Astro Starlight) and ca-data-dictionnary-generator frontend
