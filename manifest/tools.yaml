@@ -154,8 +154,15 @@ optional:
       # prior postgresql@N install leaving conflicting symlinks behind.
       # Windows has no client-only formula in winget, so the full
       # PostgreSQL package is pulled in for the `psql` binary.
+      #
+      # post_install runs via `bash -lc` (lib/tools.ps1), and on macOS
+      # Homebrew is commonly initialized only via the user's zsh login
+      # files (~/.zprofile / ~/.zshrc), not bash's. PATH-prepend both
+      # canonical brew locations so the link step works regardless of
+      # which shell owns the operator's interactive profile (Apple
+      # Silicon → /opt/homebrew, Intel → /usr/local).
       windows: { type: winget, id: PostgreSQL.PostgreSQL.16 }
-      macos:   { type: brew,   id: libpq, post_install: ["brew link --force --overwrite libpq"] }
+      macos:   { type: brew,   id: libpq, post_install: ['PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" brew link --force --overwrite libpq'] }
       linux:
         debian: { type: apt, id: postgresql-client }
         rhel:   { type: dnf, id: postgresql }
