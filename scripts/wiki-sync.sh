@@ -1,4 +1,23 @@
 #!/usr/bin/env bash
+#
+# ca-bootstrap wiki sync.
+#
+# NOTE: The push function in this script DELIBERATELY DIVERGES from the
+# canonical ChannelAssist wiki-sync push pattern (defined in Keystone
+# ADR 012). This repo uses a retry-with-rebase reconcile loop optimised
+# for concurrent-write conflict resolution — appropriate because the
+# wiki here receives concurrent writes from multiple onboarding flows
+# (human contributors running the bootstrap CLI; CI from spawned repos).
+# The canonical pattern is optimised for fresh-init / detached-HEAD
+# recovery, which is the dominant failure mode for the other 13 repos
+# but not for ca-bootstrap.
+#
+# Both patterns are valid. The divergence is intentional, registered in
+# the ADR's Exceptions Register, and approved as of 2026-05-18.
+#
+# Reference:
+#   https://github.com/ChannelAssist/Keystone/blob/dev/content/docs/adr/012-wiki-sync-push-pattern.md
+#
 # scripts/wiki-sync.sh — mirror ca-bootstrap docs/ tree into the GitHub Wiki.
 #
 # Usage:
