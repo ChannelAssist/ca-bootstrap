@@ -1,5 +1,7 @@
 # ca-bootstrap
 
+[![Ci](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml/badge.svg)](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml)
+
 One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
 
 > **Status: v1.7.2** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
