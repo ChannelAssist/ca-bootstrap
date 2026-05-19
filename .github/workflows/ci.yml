@@ -69,3 +69,56 @@ jobs:
           sudo apt-get install -y shellcheck
           shellcheck -S error bootstrap.sh scripts/wiki-sync.sh
 
+
+  notify-failure:
+    name: Open issue on ci failure
+    needs: [pester, doctor-json, shellcheck]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update tracking issue
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}
+          RUN_EVENT: ${{ github.event_name }}
+        with:
+          script: |
+            const runUrl = process.env.RUN_URL;
+            const sha = process.env.RUN_SHA;
+            const evt = process.env.RUN_EVENT;
+            const title = '[ci] workflow failure detected';
+            const body = [
+              'ci workflow failed.',
+              '',
+              `- Run: ${runUrl}`,
+              `- Commit: \`${sha}\``,
+              `- Trigger: \`${evt}\``,
+              `- At: ${new Date().toISOString()}`,
+              '',
+              'Auto-opened by `.github/workflows/ci.yml`. Close when ci runs green again.'
+            ].join('\n');
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ci-failure'
+            });
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing[0].number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['ci-failure', 'bug', 'ci']
+              });
+            }
