@@ -122,3 +122,59 @@ jobs:
                 labels: ['ci-failure', 'bug', 'ci']
               });
             }
+
+      - name: Notify Teams (if webhook configured)
+        if: env.TEAMS_WEBHOOK_URL != ''
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          cat > /tmp/teams-card.json <<JSON
+          {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": "B60205",
+            "summary": "${{ github.repository }} — ci failed",
+            "title": "[ci] workflow failure detected",
+            "sections": [{
+              "facts": [
+                {"name": "Repo",     "value": "${{ github.repository }}"},
+                {"name": "Workflow", "value": "ci"},
+                {"name": "Commit",   "value": "${{ github.sha }}"},
+                {"name": "Trigger",  "value": "${{ github.event_name }}"}
+              ]
+            }],
+            "potentialAction": [{
+              "@type": "OpenUri",
+              "name": "View run",
+              "targets": [{
+                "os": "default",
+                "uri": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }]
+            }]
+          }
+          JSON
+          curl -sfS -X POST -H "Content-Type: application/json" \
+            --data-binary @/tmp/teams-card.json \
+            "$TEAMS_WEBHOOK_URL" \
+            || echo "Teams webhook post failed (non-fatal)"
+
+      - name: Notify by email (if SMTP configured)
+        if: env.MAIL_USERNAME != '' && env.MAIL_RECIPIENT != ''
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_RECIPIENT: ${{ secrets.MAIL_RECIPIENT }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_HOST || 'smtp.office365.com' }}
+          server_port: ${{ secrets.MAIL_PORT || 587 }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[ci] workflow failure in ${{ github.repository }}"
+          to: ${{ secrets.MAIL_RECIPIENT }}
+          from: ${{ secrets.MAIL_USERNAME }}
+          body: |
+            Workflow ${{ github.workflow }} failed on ${{ github.repository }}.
+
+            Run:     ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Commit:  ${{ github.sha }}
+            Trigger: ${{ github.event_name }}
