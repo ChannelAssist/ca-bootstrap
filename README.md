@@ -175,7 +175,7 @@ Standalone scripts in `scripts/` that aren't part of the wizard but are useful a
 |---|---|
 | [`scripts/install-commit-hooks.ps1`](scripts/install-commit-hooks.ps1) | Install commitlint `commit-msg` hooks in every cloned ChannelAssist repo that has a `commitlint.config.*`. Lets `git commit` reject a non-conforming header (e.g. >72 chars) locally, before CI does. Idempotent; preserves existing foreign hooks unless `-Force`. |
 
-Run directly or via Makefile:
+Run directly or via the developer task runner:
 
 ```powershell
 # Direct:
@@ -183,7 +183,13 @@ Run directly or via Makefile:
 ./scripts/install-commit-hooks.ps1 -WorkspacePath ~/MyWorkspace -WhatIf
 ./scripts/install-commit-hooks.ps1 -Force
 
-# Or via make:
+# Via ./make.ps1 (Windows-native; also works anywhere pwsh runs):
+./make.ps1 install-commit-hooks
+./make.ps1 install-commit-hooks -WhatIf
+./make.ps1 install-commit-hooks -WorkspacePath ~/MyWorkspace
+./make.ps1 install-commit-hooks -Force
+
+# Via make (macOS / Linux):
 make install-commit-hooks
 make install-commit-hooks WHATIF=1
 make install-commit-hooks WORKSPACE=~/MyWorkspace
@@ -201,6 +207,8 @@ ca-bootstrap/
 ├── bootstrap.sh               # *nix entry point (installs pwsh, clones repo, hands off)
 ├── bootstrap.ps1              # Windows entry point
 ├── ca-bootstrap.ps1           # multi-command orchestrator (setup/doctor/repair/undo)
+├── Makefile                   # developer task runner (macOS/Linux; bash + GNU make)
+├── make.ps1                   # developer task runner (Windows-native; pure pwsh 7+)
 ├── lib/                       # shared helpers (UI, platform detection, git ops, journal)
 ├── commands/                  # one file per top-level command
 │   ├── setup.ps1
@@ -226,8 +234,8 @@ ca-bootstrap/
 │   └── action-journal.md      # how state is tracked for undo
 ├── templates/                 # files copied into the developer's workspace
 │   └── dot-vscode/            # → `<workspace>/.vscode/` (extensions/settings/launch/tasks)
-├── wiki/                      # GitHub Wiki working tree (gitignored; sync with `make wiki-update`)
-├── scripts/                   # release.sh, wiki-sync.sh, etc.
+├── wiki/                      # GitHub Wiki working tree (gitignored; sync via wiki-update)
+├── scripts/                   # release/nuke/wiki-sync — each ships as .sh (bash) + .ps1 (pwsh)
 └── tests/                     # Pester tests for lib/, steps/, commands/
 ```
 
@@ -247,6 +255,37 @@ Most changes are YAML edits, no code required:
 
 For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
 
+### Developer commands: `make` (Unix) vs `./make.ps1` (Windows)
+
+The repo ships two equivalent developer task surfaces. Pick by host OS — no Git Bash or WSL required on Windows:
+
+| Surface | Host OS | Notes |
+|---|---|---|
+| [`Makefile`](Makefile) (`make <target>`) | macOS, Linux | Requires GNU make + bash. Uses `ARGS=...` / `VAR=value` style. |
+| [`make.ps1`](make.ps1) (`./make.ps1 <target>`) | Windows (also works on macOS/Linux with `pwsh`) | Pure PowerShell 7+. Typed parameters per target (e.g. `-Tool dotnet-10`). |
+
+Both surfaces invoke the same underlying `ca-bootstrap.ps1` commands and produce identical results. `./make.ps1` mirrors every Makefile target — `setup`, `doctor`, `repair`, `undo`, `nuke`, `tool-*`, `manifest-*`, `wiki-*`, `release`, `release-full`, `clean`, etc. Run `./make.ps1 help` to see the full list.
+
+Parameter style differs because PowerShell prefers typed switches over environment variables:
+
+```powershell
+# Windows (PowerShell)
+./make.ps1 tool-install -Tool dotnet-10
+./make.ps1 repair -All
+./make.ps1 nuke -IncludeTools -Confirm
+./make.ps1 release -Version 1.5.0
+```
+
+```bash
+# macOS / Linux (GNU make)
+make tool-install TOOL=dotnet-10
+make repair ARGS='--all'
+make nuke INCLUDE_TOOLS=1 CONFIRM=1
+make release VERSION=1.5.0
+```
+
+The bash shell scripts under `scripts/` (`release.sh`, `nuke.sh`, `wiki-sync.sh`, `release-full.sh`) and their PowerShell peers (`*.ps1`) are kept in lockstep; if you change behaviour in one, mirror it in the other so both host platforms stay supported.
+
 ### Branch model
 
 Following the ChannelAssist org convention:
@@ -264,25 +303,27 @@ The bootstrap one-liners pin to `main`, so end-users always pull the most recent
 # 1. Open a PR to dev that bumps $Script:CABootstrapVersion in ca-bootstrap.ps1
 #    (and adds a CHANGELOG entry if you keep one).
 # 2. Merge that PR.
-# 3. From the repo root:
-make release VERSION=1.5.0
+# 3. From the repo root, one of:
+make release VERSION=1.5.0            # macOS / Linux
+./make.ps1 release -Version 1.5.0     # Windows (or any host with pwsh)
 ```
 
-`make release` runs in this order: dependency check (`gh`/`jq`/`diff`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1`), smoke + Pester (skip with `SKIP_SMOKE=1` / `SKIP_TESTS=1`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. An `EXIT` trap restores main-protection even if a mid-flight step fails.
+Either entrypoint runs in this order: dependency check (`gh`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1` / `-SkipManifestEdit`), smoke + Pester (skip with `SKIP_SMOKE=1` / `-SkipSmoke` and `SKIP_TESTS=1` / `-SkipTests`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. A trap / `try/finally` restores main-protection even if a mid-flight step fails.
 
-`make release-dry-run VERSION=1.5.0` validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
+`make release-dry-run VERSION=1.5.0` (bash) or `./make.ps1 release-dry-run -Version 1.5.0` (pwsh) validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
 
-#### One-shot variant: `make release-full`
+#### One-shot variant: `release-full`
 
 Skip the manual bump-PR step:
 
 ```bash
-make release-full VERSION=1.5.0
+make release-full VERSION=1.5.0            # macOS / Linux
+./make.ps1 release-full -Version 1.5.0     # Windows
 ```
 
-Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same `make release` chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use `make release` if your team wants the bump PR to go through normal review.
+Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same release chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use the plain `release` target if your team wants the bump PR to go through normal review.
 
-`make release-full-dry-run VERSION=1.5.0` validates the bump+merge plan without mutating. If the bump is genuinely needed (dev's version differs from the target) the dry-run short-circuits before invoking `scripts/release.sh` — it can't simulate "dev would be bumped, then release.sh runs against the new version" without actually bumping. To dry-run the release.sh half too, manually bump dev first then run `make release-dry-run`.
+`release-full-dry-run` validates the bump+merge plan without mutating. If the bump is genuinely needed (dev's version differs from the target) the dry-run short-circuits before invoking the release step — it can't simulate "dev would be bumped, then release runs against the new version" without actually bumping. To dry-run the release half too, manually bump dev first then run `release-dry-run`.
 
 ---
 

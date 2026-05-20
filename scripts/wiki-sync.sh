@@ -124,7 +124,9 @@ cmd_sync() {
 
     color_blue "Stamping footer..."
     {
-        printf '\n---\n*Last synced from `main` at %s UTC. Edit source under `docs/` and run `make wiki-update`.*\n' \
+        # Footer text must match the PowerShell peer (scripts/wiki-sync.ps1)
+        # byte-for-byte — see that file's matching comment.
+        printf '\n---\n*Last synced from `main` at %s UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*\n' \
             "$(date -u +'%Y-%m-%d %H:%M')"
     } > "$WIKI_DIR/_Footer.md"
 
