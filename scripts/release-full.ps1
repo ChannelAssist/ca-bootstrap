@@ -230,7 +230,11 @@ if (-not $skipBumpPr) {
         if ($content -eq $newContent) {
             Stop-WithError "Bump produced no diff — `$Script:CABootstrapVersion may have been at $Version already on dev (the earlier check should have caught this)."
         }
-        Set-Content -Path $orchestratorFile -Value $newContent -NoNewline
+        # ca-bootstrap.ps1 ships with a UTF-8 BOM and the file's existing line
+        # endings — Set-Content default ('Default' on Windows = system encoding,
+        # 'utf8NoBOM' on others) would strip the BOM and normalize EOLs,
+        # producing a noisy unrelated diff. Pin both to preserve byte-for-byte.
+        Set-Content -Path $orchestratorFile -Value $newContent -NoNewline -Encoding utf8BOM
 
         & git diff --quiet HEAD 2>$null
         if ($LASTEXITCODE -eq 0) {
