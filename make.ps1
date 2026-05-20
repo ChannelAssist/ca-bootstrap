@@ -24,6 +24,12 @@ param(
     [Parameter(Position = 0)]
     [string]$Target = 'help',
 
+    # Real switch so `-Help`, `-h`, `-?` work as PowerShell-native flags
+    # — without this, `[CmdletBinding()]` rejects them as unknown params
+    # before the dispatch logic below can see them.
+    [Alias('h', '?')]
+    [switch]$Help,
+
     [Parameter(ValueFromRemainingArguments = $true)]
     [object[]]$RemainingArgs
 )
@@ -522,10 +528,10 @@ function Invoke-Tag {
 # Dispatch
 # ---------------------------------------------------------------------------
 
-# Normalize: accept both 'help' and '--help'/'-h' as the help target. PowerShell
-# never reaches a positional 'help' for --help because [CmdletBinding] eats the
-# unknown switch first; intercept here so `./make.ps1 --help` still works.
-if ($Target -in @('--help', '-h', '/?', '/h')) { $Target = 'help' }
+# Help short-circuit. The `-Help` switch (with aliases `-h` / `-?`) is the
+# PowerShell-native form. Also accept Windows-style positional `/?` / `/h` for
+# users coming from cmd.exe — those don't start with `-` so they land as $Target.
+if ($Help -or $Target -in @('/?', '/h')) { $Target = 'help' }
 
 if (-not $script:TargetDescriptions.Contains($Target)) {
     Write-Bad "Unknown target: $Target"
