@@ -67,18 +67,6 @@ function Stop-WithError {
     exit $Code
 }
 
-function Invoke-NativeCommand {
-    param(
-        [string]$Description,
-        [scriptblock]$Block,
-        [switch]$AllowFailure
-    )
-    & $Block
-    if (-not $AllowFailure -and $LASTEXITCODE -ne 0) {
-        Stop-WithError "$Description failed (exit $LASTEXITCODE)" $LASTEXITCODE
-    }
-}
-
 # ---------------------------------------------------------------------------
 # Trap state — initialized before any failable step that disables the
 # ruleset, so the finally block can read them safely on early exits.
