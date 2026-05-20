@@ -373,7 +373,7 @@ if ($DryRun -and -not $skipBumpPr) {
 # Run release.ps1 as a child process so the finally block in this script
 # still fires for tempdir cleanup. -Confirm skips the second confirmation
 # gate (we already confirmed up top).
-$releaseScript = Join-Path $script:RepoRoot 'scripts\release.ps1'
+$releaseScript = Join-Path $script:RepoRoot 'scripts' 'release.ps1'
 $releaseArgs = @('-Version', $Version, '-Confirm')
 if ($NotesFile)        { $releaseArgs += @('-NotesFile', $NotesFile) }
 if ($SkipSmoke)        { $releaseArgs += '-SkipSmoke' }

@@ -38,7 +38,7 @@ Set-Location $script:Root
 
 $script:Pwsh           = if ($env:PWSH) { $env:PWSH } else { 'pwsh' }
 $script:SmokeState     = Join-Path ([IO.Path]::GetTempPath()) 'cab-smoke-state'
-$script:SmokeWorkspace = Join-Path ([IO.Path]::GetTempPath()) 'cab-smoke-workspace\ChannelAssistDev'
+$script:SmokeWorkspace = Join-Path ([IO.Path]::GetTempPath()) 'cab-smoke-workspace' 'ChannelAssistDev'
 
 # Single source of truth for target descriptions used by the help target.
 # Keep this in lockstep with the function names below.
@@ -246,7 +246,7 @@ function Invoke-Nuke {
         [switch]$Confirm,
         [switch]$DryRun
     )
-    $scriptPath = Join-Path $script:Root 'scripts\nuke.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'nuke.ps1'
     if (-not (Test-Path $scriptPath)) {
         Write-Bad "scripts/nuke.ps1 not found at $scriptPath"
         exit 1
@@ -265,7 +265,7 @@ function Invoke-Installcommithooks {
         [switch]$WhatIf,
         [switch]$Force
     )
-    $scriptPath = Join-Path $script:Root 'scripts\install-commit-hooks.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'install-commit-hooks.ps1'
     $argList = @()
     if ($WorkspacePath) { $argList += @('-WorkspacePath', $WorkspacePath) }
     if ($WhatIf)        { $argList += '-WhatIf' }
@@ -398,19 +398,19 @@ Get-ChildItem -Recurse -Include *.ps1,*.psm1 | ForEach-Object {
 }
 
 function Invoke-Wikiclone {
-    $scriptPath = Join-Path $script:Root 'scripts\wiki-sync.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
     & $script:Pwsh -NoLogo -File $scriptPath clone
     exit $LASTEXITCODE
 }
 
 function Invoke-Wikisync {
-    $scriptPath = Join-Path $script:Root 'scripts\wiki-sync.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
     & $script:Pwsh -NoLogo -File $scriptPath sync
     exit $LASTEXITCODE
 }
 
 function Invoke-Wikipush {
-    $scriptPath = Join-Path $script:Root 'scripts\wiki-sync.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
     & $script:Pwsh -NoLogo -File $scriptPath push
     exit $LASTEXITCODE
 }
@@ -418,7 +418,7 @@ function Invoke-Wikipush {
 function Invoke-Wikiupdate {
     # Call as separate child pwsh runs so each sub-script's exit doesn't
     # tear down our own dispatcher mid-sequence.
-    $scriptPath = Join-Path $script:Root 'scripts\wiki-sync.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
     & $script:Pwsh -NoLogo -File $scriptPath sync
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & $script:Pwsh -NoLogo -File $scriptPath push
@@ -427,7 +427,7 @@ function Invoke-Wikiupdate {
 
 function Invoke-Clean {
     Invoke-Smokeclean
-    $cache = Join-Path $HOME '.ca-bootstrap\cache'
+    $cache = Join-Path $HOME '.ca-bootstrap' 'cache'
     if (Test-Path $cache) { Remove-Item -Recurse -Force $cache }
     Write-Ok 'Cleaned cache and smoke state'
 }
@@ -444,7 +444,7 @@ function Invoke-Release {
         [switch]$DryRun,
         [switch]$Confirm
     )
-    $scriptPath = Join-Path $script:Root 'scripts\release.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'release.ps1'
     $argList = @('-Version', $Version)
     if ($NotesFile)        { $argList += @('-NotesFile', $NotesFile) }
     if ($SkipSmoke)        { $argList += '-SkipSmoke' }
@@ -478,7 +478,7 @@ function Invoke-Releasefull {
         [switch]$DryRun,
         [switch]$Confirm
     )
-    $scriptPath = Join-Path $script:Root 'scripts\release-full.ps1'
+    $scriptPath = Join-Path $script:Root 'scripts' 'release-full.ps1'
     $argList = @('-Version', $Version)
     if ($NotesFile)        { $argList += @('-NotesFile', $NotesFile) }
     if ($SkipSmoke)        { $argList += '-SkipSmoke' }
