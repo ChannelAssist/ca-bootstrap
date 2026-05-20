@@ -25,7 +25,7 @@ groups:
     description: Documentation repos
     repos:
       - { repo: ChannelAssist/Keystone,            into: ca-docs/keystone,             branch: dev }
-      - { repo: ChannelAssist/ca-keystone-runtime, into: ca-docs/ca-keystone-runtime,  branch: dev }
+      - { repo: ChannelAssist/keystone-runtime,    into: ca-docs/keystone-runtime,     branch: dev }
       - { repo: ChannelAssist/.github,             into: ca-docs/org-profile-public,   branch: main }
       - { repo: ChannelAssist/.github-private,     into: ca-docs/org-profile-private,  branch: main, requires_membership: true }
 
@@ -59,10 +59,10 @@ groups:
   - name: ca-training
     description: ChannelAssist training material and learning resources
     repos:
-      - { repo: ChannelAssist/nlp-learning-paths,                into: ca-training/nlp-learning-paths,                branch: main }
       - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main }
 
   - name: experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
     repos:
       - { repo: ChannelAssist/command-center, into: experiments/command-center, branch: dev, opt_in: true }
+
