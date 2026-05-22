@@ -55,10 +55,7 @@ smoke-clean: ## Remove smoke-test temp state
 .PHONY: setup
 setup: ## Run interactive setup wizard
 ifeq ($(OS),Windows_NT)
-	@printf "$(YELLOW)This Makefile uses bash idioms that don't work on Windows native shells.$(RESET)\n"
-	@printf "On Windows, use the PowerShell-native task runner instead:\n\n"
-	@printf "    $(BLUE).\\make.ps1 setup$(RESET)\n\n"
-	@printf "(WSL / Git Bash users: keep using `make setup` — only cmd/pwsh need the redirect.)\n"
+	@$(PWSH) -NoLogo -NoProfile -Command "Write-Host 'This Makefile uses bash idioms that do not work on Windows native shells.' -ForegroundColor Yellow; Write-Host 'On Windows, use the PowerShell-native task runner instead:'; Write-Host ''; Write-Host '    .\\make.ps1 setup' -ForegroundColor Cyan; Write-Host ''; Write-Host '(WSL / Git Bash users: keep using make setup -- only cmd/pwsh need the redirect.)'"
 	@exit 2
 else
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS); ec=$$?; \
