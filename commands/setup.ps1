@@ -147,7 +147,12 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    $failedTools = @($Context.FailedTools)
+    # FailedTools is only populated by step 20 when it enters the install
+    # loop; on the all-clean path the key is never created. `@($null)`
+    # would otherwise produce a 1-element array with $null inside it,
+    # making this branch fire and print a blank "failed tool" line.
+    # Filter to truthy entries so unset / null / empty collapse to @().
+    $failedTools = @($Context.FailedTools | Where-Object { $_ })
     if ($failedTools.Count -gt 0) {
         Write-CABStatus -Status warn -Message "Setup complete, with $($failedTools.Count) tool install(s) that didn't finish:"
         foreach ($f in $failedTools) {
