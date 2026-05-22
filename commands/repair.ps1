@@ -13,6 +13,7 @@
 #   --target identity           re-write per-folder git identity
 #   --target gh-auth            re-run gh auth login
 #   --target folders            recreate any missing top-level folders
+#   --target folder-renames     migrate legacy workspace folders to renamed paths (safety-contract compliant)
 #   --target journal            rebuild the journal from on-disk state
 
 function Invoke-CABCommandRepair {
@@ -135,6 +136,11 @@ function Invoke-CABRepairTarget {
             $r = Invoke-CABStep50 -Context $Context
             return @{ ok = ($r.status -in 'ok','skip'); details = $r.details }
         }
+        'folder-renames' {
+            $r = Invoke-CABRepairFolderRenames -Context $Context
+            $status = if ($r.status -in 'ok','noop') { 'ok' } elseif ($r.status -eq 'manual') { 'fail' } else { 'warn' }
+            Write-CABStatus -Status $status -Message $r.details
+        }
         'gh-auth' {
             . (Join-Path $Context.RepoRoot 'steps/30-gh-auth.ps1')
             $r = Invoke-CABStep30 -Context $Context
@@ -203,4 +209,128 @@ function Invoke-CABRepairRepoSlug {
         } | Out-Null
     }
     return $result
+}
+
+# Invoke-CABRepairFolderRenames — safety-contract-compliant folder rename.
+# Dispatched by `repair --target folder-renames`. Reads `renamed_from:`
+# from manifest/folders.yaml and migrates legacy folders to their new
+# names per the decision table in docs/specs/2026-05-22-folder-taxonomy-design.md.
+#
+# Returns @{ status = ok|noop|manual|skip; details = '...' }.
+function Invoke-CABRepairFolderRenames {
+    [CmdletBinding()]
+    param([hashtable]$Context)
+
+    $ws = $Context.WorkspacePath
+    if (-not $ws -or -not (Test-Path $ws)) {
+        return @{ status = 'fail'; details = "Workspace not set or missing: $ws" }
+    }
+
+    # Configure prompt mode from context so Read-CABConfirm works correctly
+    # in both interactive and test-harness scenarios.
+    #   Yes = $true  → unattended with no pre-loaded answers (defaults apply).
+    #   Yes = $false + Answers → unattended with explicit scripted answers.
+    $answers = if ($Context.ContainsKey('Answers') -and $Context.Answers) { $Context.Answers } else { @{} }
+    Set-CABPromptMode -Unattended $true -Answers $answers
+
+    $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
+    $renamed = @($manifest.folders | Where-Object { $_.renamed_from })
+    if ($renamed.Count -eq 0) {
+        return @{ status = 'noop'; details = 'No folders declare renamed_from:' }
+    }
+
+    $touched = 0
+    $skipped = 0
+    $manuals = New-Object System.Collections.Generic.List[string]
+
+    foreach ($f in $renamed) {
+        $legacyPath = Join-Path $ws ([string]$f.renamed_from)
+        $newPath    = Join-Path $ws ([string]$f.path)
+        $legacyExists = Test-Path $legacyPath -PathType Container
+        $newExists    = Test-Path $newPath    -PathType Container
+
+        if (-not $legacyExists) { continue }
+
+        $legacyChildren = @(Get-ChildItem -Path $legacyPath -Force -ErrorAction SilentlyContinue)
+        $newChildren    = if ($newExists) { @(Get-ChildItem -Path $newPath -Force -ErrorAction SilentlyContinue) } else { @() }
+
+        $legacyEmpty = $legacyChildren.Count -eq 0
+        $newEmpty    = (-not $newExists) -or ($newChildren.Count -eq 0)
+
+        # State: only legacy, empty → rename silently.
+        if (-not $newExists -and $legacyEmpty) {
+            Move-Item -Path $legacyPath -Destination $newPath -Force
+            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+                from = $legacyPath; to = $newPath; mode = 'silent-empty'
+            } | Out-Null } catch {}
+            $touched++
+            continue
+        }
+
+        # State: only legacy, non-empty → prompt before rename.
+        if (-not $newExists -and -not $legacyEmpty) {
+            $summary = "$($legacyChildren.Count) entries; first: $(($legacyChildren | Select-Object -First 3 -ExpandProperty Name) -join ', ')"
+            $proceed = Read-CABConfirm -Question "Move '$($f.renamed_from)/' → '$($f.path)/' (preserves all contents: $summary)?" `
+                                       -Default $true `
+                                       -AnswerKey "folder-rename.$($f.renamed_from)"
+            if (Test-CABNo $proceed) {
+                $skipped++
+                continue
+            }
+            Move-Item -Path $legacyPath -Destination $newPath -Force
+            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+                from = $legacyPath; to = $newPath; mode = 'prompted-nonempty'
+            } | Out-Null } catch {}
+            $touched++
+            continue
+        }
+
+        # State: both exist, both empty → remove empty legacy.
+        if ($newExists -and $legacyEmpty -and $newEmpty) {
+            Remove-Item -Path $legacyPath -Force
+            try { Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath } | Out-Null } catch {}
+            $touched++
+            continue
+        }
+
+        # State: both exist, legacy empty + new has content → silent remove of empty legacy.
+        if ($newExists -and $legacyEmpty -and -not $newEmpty) {
+            Remove-Item -Path $legacyPath -Force
+            try { Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath; reason = 'new-populated' } | Out-Null } catch {}
+            $touched++
+            continue
+        }
+
+        # State: both exist, new empty + legacy has content → prompt to move children + remove empty legacy.
+        if ($newExists -and $newEmpty -and -not $legacyEmpty) {
+            $summary = "$($legacyChildren.Count) entries"
+            $proceed = Read-CABConfirm -Question "Move children of '$($f.renamed_from)/' into '$($f.path)/' (then remove empty '$($f.renamed_from)/'): $summary?" `
+                                       -Default $true `
+                                       -AnswerKey "folder-rename.$($f.renamed_from).remove-empty-legacy"
+            if (Test-CABNo $proceed) {
+                $skipped++
+                continue
+            }
+            foreach ($child in $legacyChildren) {
+                Move-Item -Path $child.FullName -Destination $newPath -Force
+            }
+            Remove-Item -Path $legacyPath -Force
+            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+                from = $legacyPath; to = $newPath; mode = 'merge-into-empty-new'
+            } | Out-Null } catch {}
+            $touched++
+            continue
+        }
+
+        # State: both exist, both have content → manual merge.
+        $manuals.Add("$($f.renamed_from)/ and $($f.path)/ both contain files — inspect, decide which side to keep, then rerun.")
+    }
+
+    if ($manuals.Count -gt 0) {
+        return @{ status = 'manual'; details = ($manuals -join '; ') }
+    }
+    if ($touched -eq 0) {
+        return @{ status = 'noop'; details = "Nothing to rename (skipped: $skipped)" }
+    }
+    return @{ status = 'ok'; details = "Renamed/cleaned $touched folder(s); skipped $skipped" }
 }
