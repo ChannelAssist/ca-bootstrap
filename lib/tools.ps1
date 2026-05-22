@@ -14,6 +14,52 @@
 #     details  = '...'         # human-readable
 #   }
 
+# Expand-CABPathSafely — resolve a manifest path string without evaluating
+# arbitrary PowerShell subexpressions.
+#
+# Replaces $ExecutionContext.InvokeCommand.ExpandString for check.paths
+# entries: the original ExpandString call evaluated any $(...) inside
+# the string, which would have made manifests a code-execution vector
+# if a path ever contained something like "$(Get-Content secrets.txt)".
+# Manifests are data — only $env:VAR tokens and a leading ~ should be
+# resolvable. Nothing else.
+#
+# Expansion rules:
+#   - Leading `~/` or `~\`  → $HOME prefix
+#   - `$env:VAR`            → environment variable value (empty string if unset)
+#   - Anything else         → literal
+#
+# Returns the expanded string. No side effects, no filesystem access.
+function Expand-CABPathSafely {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    $expanded = $Path
+
+    # Leading ~ → $HOME. Match both forward and backslash separators
+    # because manifest authors may use either when targeting Windows.
+    if ($expanded -match '^~[/\\]') {
+        $tail = $expanded -replace '^~[/\\]', ''
+        $expanded = Join-Path $HOME $tail
+    } elseif ($expanded -eq '~') {
+        $expanded = $HOME
+    }
+
+    # $env:VAR tokens — single-pass regex replace via MatchEvaluator so
+    # values that happen to contain `$env:OTHER` don't trigger feedback
+    # loops. Unknown variables expand to empty string (matches POSIX
+    # shell semantics; the resulting path will simply fail Test-Path).
+    $envPattern = [regex]'\$env:([A-Za-z_][A-Za-z0-9_]*)'
+    $expanded = $envPattern.Replace($expanded, {
+        param($m)
+        $val = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
+        if ($null -eq $val) { return '' }
+        return $val
+    })
+
+    return $expanded
+}
+
 function Test-CABTool {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Tool)
@@ -70,11 +116,16 @@ function Test-CABTool {
             return $result
         }
         foreach ($p in $candidates) {
-            # ExpandString evaluates $env:LOCALAPPDATA and ~ at probe time
-            # rather than at manifest-parse time, so the same YAML works
-            # for any user account.
-            $expanded = $ExecutionContext.InvokeCommand.ExpandString($p)
-            if (Test-Path $expanded) {
+            # Safe path expansion: $env:VAR tokens and a leading ~ are
+            # resolved, but nothing else. ExpandString would evaluate
+            # arbitrary PowerShell subexpressions ($(...)), which would
+            # turn check.paths into a code-execution surface if a
+            # manifest path ever contained `$(Get-Content secrets)` or
+            # similar. Manifests are data, not script.
+            $expanded = Expand-CABPathSafely $p
+            # -LiteralPath blocks glob interpretation; check.paths
+            # entries are exact file/dir paths, never patterns.
+            if (Test-Path -LiteralPath $expanded) {
                 $result.status = 'ok'
                 $result.details = "Installed at $expanded"
                 return $result

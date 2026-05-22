@@ -93,7 +93,7 @@ Describe 'Test-CABTool' {
             $r.details | Should -Match 'Not installed'
         }
 
-        It 'expands $env: and ~ at probe time, not at parse time' {
+        It 'expands a leading ~ at probe time' {
             # Drop a marker file in $HOME and reference it via ~/ in the
             # manifest-style path string. If expansion happens correctly,
             # the probe finds it; if the literal string is used, it doesn't.
@@ -110,6 +110,47 @@ Describe 'Test-CABTool' {
             } finally {
                 Remove-Item $marker -Force -ErrorAction SilentlyContinue
             }
+        }
+
+        It 'expands $env:VAR tokens at probe time' {
+            # Set a sentinel env var to point at a temp directory, drop a
+            # marker file there, and reference it via $env:CAB_TEST_DIR
+            # in the manifest path. If safe-expansion handles env vars,
+            # the probe finds the marker.
+            $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-test-$([Guid]::NewGuid().ToString('N'))") -Force
+            $marker = Join-Path $tmp.FullName 'sentinel.txt'
+            New-Item -ItemType File -Path $marker | Out-Null
+            $env:CAB_TEST_DIR = $tmp.FullName
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @('$env:CAB_TEST_DIR/sentinel.txt') } }
+                }
+                (Test-CABTool -Tool $tool).status | Should -Be 'ok'
+            } finally {
+                Remove-Item $env:CAB_TEST_DIR -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item Env:CAB_TEST_DIR -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'does NOT evaluate $(...) PowerShell subexpressions in path strings' {
+            # Defense-in-depth: a malicious manifest can't trick the
+            # detector into running arbitrary code via $(...). The path
+            # should be treated as a literal string after env+tilde
+            # expansion — $(Get-Date) etc. stays literal and Test-Path
+            # fails to find it. (Compare with $ExecutionContext.InvokeCommand.ExpandString
+            # which would evaluate the subexpression.)
+            $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+            $tool = @{
+                id = 'fake-gui'; name = 'Fake'
+                check = @{ paths = @{ $osKey = @('/tmp/$(Get-Date -Format yyyy)/marker') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'fail'
+            # The literal subexpression syntax should survive into the
+            # 'Not installed' detail message — proves it wasn't evaluated.
+            $r.details | Should -Match '\$\(Get-Date'
         }
     }
 
