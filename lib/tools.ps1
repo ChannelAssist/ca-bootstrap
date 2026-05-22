@@ -338,6 +338,10 @@ function Install-CABTool {
     try {
         switch ($type) {
             'winget' {
+                if (-not (Get-Command 'winget' -ErrorAction SilentlyContinue)) {
+                    Write-Host ''
+                    return @{ ok = $false; details = 'winget not on PATH. Install "App Installer" from the Microsoft Store (https://aka.ms/getwinget) then re-run.' }
+                }
                 & winget install --id $id --silent --accept-source-agreements --accept-package-agreements 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE
             }
@@ -380,6 +384,10 @@ function Install-CABTool {
                 $cmdResult = $LASTEXITCODE
             }
             'npm' {
+                if (-not (Get-Command 'npm' -ErrorAction SilentlyContinue)) {
+                    Write-Host ''
+                    return @{ ok = $false; details = 'npm not on PATH. Install Node.js LTS (winget: `winget install OpenJS.NodeJS.LTS`) and reopen the shell, then re-run.' }
+                }
                 $globalFlag = if ($entry.global) { '-g' } else { $null }
                 & npm install $globalFlag $id 2>&1 | Out-Host
                 $cmdResult = $LASTEXITCODE

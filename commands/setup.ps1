@@ -66,14 +66,15 @@ function Invoke-CABQuitWithRollbackOffer {
 # rename or reorder a step, edit only this function.
 function Get-CABSetupStepDef {
     @(
-        @{ id = '10-welcome';       title = 'Welcome' }
-        @{ id = '40-workspace';     title = 'Workspace location' }
-        @{ id = '20-prereqs';       title = 'Prerequisites' }
-        @{ id = '30-gh-auth';       title = 'GitHub authentication' }
-        @{ id = '50-folders';       title = 'Folder structure' }
-        @{ id = '60-repos';         title = 'Clone repositories' }
-        @{ id = '70-git-identity';  title = 'Git identity' }
-        @{ id = '80-extras';        title = 'Optional extras' }
+        @{ id = '10-welcome';        title = 'Welcome' }
+        @{ id = '15-platform-check'; title = 'Platform readiness' }
+        @{ id = '40-workspace';      title = 'Workspace location' }
+        @{ id = '20-prereqs';        title = 'Prerequisites' }
+        @{ id = '30-gh-auth';        title = 'GitHub authentication' }
+        @{ id = '50-folders';        title = 'Folder structure' }
+        @{ id = '60-repos';          title = 'Clone repositories' }
+        @{ id = '70-git-identity';   title = 'Git identity' }
+        @{ id = '80-extras';         title = 'Optional extras' }
     )
 }
 
