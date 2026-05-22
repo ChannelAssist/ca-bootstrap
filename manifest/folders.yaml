@@ -29,6 +29,10 @@ folders:
   - path: ca-training
     description: ChannelAssist training material and learning resources
 
-  - path: experiments
+  - path: ca-experiments
     description: Internal experiments / prototypes (opt-in; sparse on disk by default)
     optional: true
+    renamed_from: experiments
+
+  - path: ca-work-dirs
+    description: Working directories for Claude Code worktrees, Claude Cowork sessions, and scratch clones

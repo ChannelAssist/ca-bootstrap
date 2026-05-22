@@ -32,11 +32,36 @@ folders:
 
         $m = Read-CABManifest -Path $script:tmp -Quiet
         $exp = $m.folders | Where-Object { $_.path -eq 'ca-experiments' } | Select-Object -First 1
+        $exp | Should -Not -BeNullOrEmpty -Because 'ca-experiments entry must exist in fixture'
         $exp.renamed_from | Should -Be 'experiments'
 
         $work = $m.folders | Where-Object { $_.path -eq 'ca-work-dirs' } | Select-Object -First 1
-        $work.path | Should -Be 'ca-work-dirs'
+        $work | Should -Not -BeNullOrEmpty -Because 'ca-work-dirs entry must exist in fixture'
         # ca-work-dirs is required → absence of optional key reads as null/empty
         [bool]$work.optional | Should -Be $false
+    }
+}
+
+Describe 'manifest/folders.yaml: actual repo manifest' {
+    BeforeAll {
+        $script:m = Read-CABManifest -Path (Join-Path $script:repoRoot 'manifest/folders.yaml') -Quiet
+    }
+
+    It 'no longer has a folder named `experiments`' {
+        $hit = $script:m.folders | Where-Object { $_.path -eq 'experiments' }
+        $hit | Should -BeNullOrEmpty
+    }
+
+    It 'declares ca-experiments with renamed_from: experiments' {
+        $f = $script:m.folders | Where-Object { $_.path -eq 'ca-experiments' } | Select-Object -First 1
+        $f | Should -Not -BeNullOrEmpty
+        $f.renamed_from | Should -Be 'experiments'
+        [bool]$f.optional | Should -Be $true
+    }
+
+    It 'declares ca-work-dirs as required' {
+        $f = $script:m.folders | Where-Object { $_.path -eq 'ca-work-dirs' } | Select-Object -First 1
+        $f | Should -Not -BeNullOrEmpty
+        [bool]$f.optional | Should -Be $false
     }
 }
