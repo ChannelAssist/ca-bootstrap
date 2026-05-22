@@ -320,3 +320,45 @@ Describe 'Install-CABTool — gh-extension dispatch' {
         }
     }
 }
+
+Describe 'Install-CABTool — installer presence guards' {
+    # Pre-dispatch checks added in 1d2e50a so a missing winget/npm
+    # produces a friendly ok=$false with remediation instead of letting
+    # `& winget`/`& npm` throw a PowerShell ObjectNotFound exception.
+    # These tests pin that contract.
+
+    Context 'winget branch' {
+        It 'returns ok=$false with remediation when winget is not on PATH' {
+            # Force the windows install entry and stub out winget presence.
+            Mock Get-CABOSFamily { 'windows' }
+            Mock Get-Command -ParameterFilter { $Name -eq 'winget' } -MockWith { $null }
+            $tool = @{
+                id = 'fake-winget-tool'
+                name = 'Fake'
+                install = @{ windows = @{ type = 'winget'; id = 'Fake.Tool' } }
+            }
+            $r = Install-CABTool -Tool $tool -Context @{}
+            $r.ok | Should -BeFalse
+            $r.details | Should -Match 'winget not on PATH'
+            # Remediation should point at the canonical fix.
+            $r.details | Should -Match 'aka.ms/getwinget|App Installer'
+        }
+    }
+
+    Context 'npm branch' {
+        It 'returns ok=$false with remediation when npm is not on PATH' {
+            Mock Get-CABOSFamily { 'windows' }
+            Mock Get-Command -ParameterFilter { $Name -eq 'npm' } -MockWith { $null }
+            $tool = @{
+                id = 'fake-npm-tool'
+                name = 'Fake'
+                install = @{ windows = @{ type = 'npm'; id = '@org/fake'; global = $true } }
+            }
+            $r = Install-CABTool -Tool $tool -Context @{}
+            $r.ok | Should -BeFalse
+            $r.details | Should -Match 'npm not on PATH'
+            # Remediation should point at the Node.js install path.
+            $r.details | Should -Match 'Node\.js|OpenJS\.NodeJS'
+        }
+    }
+}

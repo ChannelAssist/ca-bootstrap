@@ -54,17 +54,31 @@ smoke-clean: ## Remove smoke-test temp state
 
 .PHONY: setup
 setup: ## Run interactive setup wizard
+ifeq ($(OS),Windows_NT)
+	@$(PWSH) -NoLogo -NoProfile -Command "Write-Host 'This Makefile uses bash idioms that do not work on Windows native shells.' -ForegroundColor Yellow; Write-Host 'On Windows, use the PowerShell-native task runner instead:'; Write-Host ''; Write-Host '    .\\make.ps1 setup' -ForegroundColor Cyan; Write-Host ''; Write-Host '(WSL / Git Bash users: keep using make setup -- only cmd/pwsh need the redirect.)'"
+	@exit 2
+else
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS); ec=$$?; \
 		if [ $$ec -eq 1 ]; then \
 			exit 0; \
 		else \
 			exit $$ec; \
 		fi
-# ↑ Exit-code mapping: ca-bootstrap.ps1 returns 1 when the user voluntarily
-# quits (documented in docs/commands.md), but make's default failure
-# message ("make: *** [setup] Error 1") makes that look like a crash.
-# Map user-quit to exit 0 here so `make setup` returns silently on quit;
-# real errors (exit 2+ for failed installs, etc.) still propagate.
+endif
+# ↑ The `ifeq ($(OS),Windows_NT)` branch fires on Windows-native make:
+# GNU make on Windows automatically sets `$(OS)=Windows_NT`, so the
+# redirect is emitted before the bash chain in the else branch runs.
+# On macOS, Linux, and typical WSL/Git Bash environments, `$(OS)` is
+# unset and the bash branch executes normally. The condition relies
+# on GNU make's own variable population, not on shell availability or
+# WSL-specific behavior — environments that explicitly set OS to a
+# non-Windows_NT value will still fall through to the bash path.
+#
+# Exit-code mapping below: ca-bootstrap.ps1 returns 1 when the user
+# voluntarily quits (documented in docs/commands.md), but make's default
+# failure message ("make: *** [setup] Error 1") makes that look like a
+# crash. Map user-quit to exit 0 here so `make setup` returns silently
+# on quit; real errors (exit 2+ for failed installs, etc.) still propagate.
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)

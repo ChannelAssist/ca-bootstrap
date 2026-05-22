@@ -66,14 +66,15 @@ function Invoke-CABQuitWithRollbackOffer {
 # rename or reorder a step, edit only this function.
 function Get-CABSetupStepDef {
     @(
-        @{ id = '10-welcome';       title = 'Welcome' }
-        @{ id = '40-workspace';     title = 'Workspace location' }
-        @{ id = '20-prereqs';       title = 'Prerequisites' }
-        @{ id = '30-gh-auth';       title = 'GitHub authentication' }
-        @{ id = '50-folders';       title = 'Folder structure' }
-        @{ id = '60-repos';         title = 'Clone repositories' }
-        @{ id = '70-git-identity';  title = 'Git identity' }
-        @{ id = '80-extras';        title = 'Optional extras' }
+        @{ id = '10-welcome';        title = 'Welcome' }
+        @{ id = '15-platform-check'; title = 'Platform readiness' }
+        @{ id = '40-workspace';      title = 'Workspace location' }
+        @{ id = '20-prereqs';        title = 'Prerequisites' }
+        @{ id = '30-gh-auth';        title = 'GitHub authentication' }
+        @{ id = '50-folders';        title = 'Folder structure' }
+        @{ id = '60-repos';          title = 'Clone repositories' }
+        @{ id = '70-git-identity';   title = 'Git identity' }
+        @{ id = '80-extras';         title = 'Optional extras' }
     )
 }
 
@@ -146,7 +147,22 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Setup complete.'
+    # FailedTools is only populated by step 20 when it enters the install
+    # loop; on the all-clean path the key is never created. `@($null)`
+    # would otherwise produce a 1-element array with $null inside it,
+    # making this branch fire and print a blank "failed tool" line.
+    # Filter to truthy entries so unset / null / empty collapse to @().
+    $failedTools = @($Context.FailedTools | Where-Object { $_ })
+    if ($failedTools.Count -gt 0) {
+        Write-CABStatus -Status warn -Message "Setup complete, with $($failedTools.Count) tool install(s) that didn't finish:"
+        foreach ($f in $failedTools) {
+            Write-Host "    • $($f.id) — $($f.details)" -ForegroundColor Yellow
+            Write-Host "      retry: ca-bootstrap.ps1 repair --target $($f.id)" -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    } else {
+        Write-CABStatus -Status ok -Message 'Setup complete.'
+    }
     Write-Host '    `ca-bootstrap.ps1 doctor` — verify the result.'
     Write-Host '    `ca-bootstrap.ps1 repair --all` — fix anything doctor reports.'
     Write-Host '    `ca-bootstrap.ps1 undo` — reverse what was done.'
