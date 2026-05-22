@@ -67,10 +67,7 @@ $script:TargetDescriptions = [ordered]@{
     'test'                   = 'Run Pester unit tests under tests/'
     'lint'                   = 'Run PSScriptAnalyzer and markdownlint-cli2 (if installed)'
     'format'                 = 'Apply PSScriptAnalyzer auto-fix'
-    'wiki-clone'             = 'Clone the GitHub wiki repo into ./wiki'
-    'wiki-sync'              = 'Mirror README + DESIGN + docs/ into ./wiki (no push)'
-    'wiki-push'              = 'Commit + push wiki changes'
-    'wiki-update'            = 'wiki-sync + wiki-push (typical workflow)'
+    'wiki-update'            = 'Clone-if-missing + sync + push the GitHub wiki in one shot'
     'clean'                  = 'Remove caches and ephemeral state'
     'release'                = 'Cut a release. -Version X.Y.Z required. See release.ps1 docs for flags.'
     'release-dry-run'        = 'release with -DryRun (no mutations)'
@@ -412,32 +409,12 @@ Get-ChildItem -Recurse -Include *.ps1,*.psm1 | ForEach-Object {
     Write-Ok 'Formatted'
 }
 
-function Invoke-Wikiclone {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath clone
-    exit $LASTEXITCODE
-}
-
-function Invoke-Wikisync {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath sync
-    exit $LASTEXITCODE
-}
-
-function Invoke-Wikipush {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath push
-    exit $LASTEXITCODE
-}
-
 function Invoke-Wikiupdate {
-    # Call as separate child pwsh runs so each sub-script's exit doesn't
-    # tear down our own dispatcher mid-sequence.
+    Write-Host '[INFO] Updating GitHub Wiki...' -ForegroundColor Blue
     $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath sync
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $script:Pwsh -NoLogo -File $scriptPath push
-    exit $LASTEXITCODE
+    & $script:Pwsh -NoLogo -File $scriptPath full
+    if ($LASTEXITCODE -ne 0) { throw "wiki-sync.ps1 full failed (exit $LASTEXITCODE)" }
+    Write-Host '[OK]   Wiki updated' -ForegroundColor Green
 }
 
 function Invoke-Clean {
