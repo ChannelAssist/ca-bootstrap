@@ -65,4 +65,34 @@ Describe 'Step 50 — README seeding from templates/folder-readmes/' {
         $entries = Get-CABJournalEntry -Action 'seed_readme'
         @($entries).Count | Should -BeGreaterOrEqual 6
     }
+
+    It 'warns when a folder template is missing instead of silently skipping' {
+        # Point RepoRoot at a temp dir that has no templates/folder-readmes/
+        # so every template lookup misses, triggering the warning path.
+        $emptyRepo = Join-Path ([System.IO.Path]::GetTempPath()) "cab-step50-empty-$(Get-Random)"
+        New-Item -ItemType Directory -Path (Join-Path $emptyRepo 'manifest') -Force | Out-Null
+        Copy-Item -Path (Join-Path $script:repoRoot 'manifest/folders.yaml') `
+                  -Destination (Join-Path $emptyRepo 'manifest/folders.yaml')
+        $script:ctx.RepoRoot = $emptyRepo
+
+        # Capture Information stream (Write-Host → stream 6) alongside stdout.
+        $allOutput = Invoke-CABStep50 -Context $script:ctx 6>&1
+
+        # The result must still be ok (missing templates are non-fatal).
+        $result = $allOutput | Where-Object { $_ -is [hashtable] }
+        if (-not $result) {
+            # When piped, the hashtable return value appears as a PSObject.
+            $result = $allOutput | Where-Object { $_.Keys -contains 'status' }
+        }
+        $result.status | Should -Be 'ok' -Because 'missing templates must never fail the step'
+
+        # At least one "No README template" warning must have been emitted.
+        $warnings = $allOutput |
+            Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+            Where-Object { $_.MessageData -match 'No README template' }
+        ($warnings | Measure-Object).Count | Should -BeGreaterOrEqual 1 `
+            -Because 'missing templates must produce a visible warning'
+
+        Remove-Item -Recurse -Force $emptyRepo -ErrorAction SilentlyContinue
+    }
 }

@@ -71,11 +71,14 @@ function Invoke-CABStep50 {
             }
         }
 
-        # Seed README from templates/folder-readmes/<folder>/README.md, idempotently.
-        # Workspace READMEs are user-editable; the repo template is the source of truth.
-        $template = Join-Path $Context.RepoRoot (Join-Path 'templates/folder-readmes' (Join-Path $f.path 'README.md'))
+        # README seeding: idempotent, never overwrites a user-edited README.
+        # Missing template → warn (signals the manifest is out of sync with templates/).
+        # Copy failure → warn and continue (non-fatal).
+        $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
         $target   = Join-Path $full 'README.md'
-        if ((Test-Path $template) -and -not (Test-Path $target)) {
+        if (-not (Test-Path $template)) {
+            Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
+        } elseif (-not (Test-Path $target)) {
             try {
                 Copy-Item -Path $template -Destination $target -ErrorAction Stop
                 Add-CABJournalEntry -Step '50-folders' -Action 'seed_readme' -Data @{
@@ -84,7 +87,6 @@ function Invoke-CABStep50 {
                 } | Out-Null
                 $seededReadmes++
             } catch {
-                # Non-fatal: a missing template should never block setup. Log and continue.
                 Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
             }
         }

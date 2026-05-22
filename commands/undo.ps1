@@ -131,6 +131,7 @@ function Group-CABUndoEntry {
     $byCategory['plugin']       = @($Entries | Where-Object { $_.action -eq 'install_ca_claude_plugin' })
     $byCategory['repos']        = @($Entries | Where-Object { $_.action -eq 'clone_repo' })
     $byCategory['folders']      = @($Entries | Where-Object { $_.action -eq 'create_folder' })
+    $byCategory['readmes']      = @($Entries | Where-Object { $_.action -eq 'seed_readme' })
     $byCategory['gh-auth']      = @($Entries | Where-Object { $_.action -eq 'gh_auth_login' })
     if ($IncludeTools) {
         $byCategory['tools'] = @($Entries | Where-Object { $_.action -eq 'install_tool' })
@@ -160,6 +161,22 @@ function Invoke-CABUndoEntry {
         'configure_git_identity' { return Invoke-CABUndoIdentity -Entry $Entry }
         'clone_repo'             { return Invoke-CABUndoCloneRepo -Entry $Entry -Force:$Force }
         'create_folder'          { return Invoke-CABUndoCreateFolder -Entry $Entry -IncludeFolders:$IncludeFolders -Force:$Force }
+        'seed_readme'            {
+            $path = [string]$Entry.data.path
+            $template = [string]$Entry.data.template
+            if (-not (Test-Path $path)) {
+                return @{ status = 'noop'; details = "README already absent: $path" }
+            }
+            if (Test-Path $template) {
+                $pathHash     = (Get-FileHash -Path $path     -Algorithm SHA256).Hash
+                $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
+                if ($pathHash -ne $templateHash) {
+                    return @{ status = 'skip'; details = "README diverged from template; preserving user edits: $path" }
+                }
+            }
+            Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+            return @{ status = 'ok'; details = "Removed seeded README: $path" }
+        }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }
         'install_ca_claude_plugin' { return Invoke-CABUndoPluginLink -Entry $Entry }
