@@ -39,6 +39,78 @@ Describe 'Test-CABTool' {
             $r = Test-CABTool -Tool $tool
             $r.status | Should -Be 'na'
         }
+
+        It 'returns na for not-linux tools on linux hosts' -Skip:(-not $IsLinux) {
+            $tool = @{
+                id = 'claude-desktop'; name = 'Claude Desktop'; platform = 'not-linux'
+                check = @{ paths = @{ macos = @('/Applications/Claude.app') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'na'
+            $r.details | Should -Match 'Linux'
+        }
+
+        It 'does NOT return na for not-linux tools on non-linux hosts' -Skip:($IsLinux) {
+            # The platform guard should be transparent on Windows/macOS — the
+            # check.paths probe runs as if the platform key weren't present.
+            $tool = @{
+                id = 'claude-desktop'; name = 'Claude Desktop'; platform = 'not-linux'
+                check = @{ paths = @{
+                    windows = @('C:\definitely-not-here\claude.exe')
+                    macos   = @('/definitely-not-here/Claude.app')
+                } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Not -Be 'na'
+        }
+    }
+
+    Context 'check.paths probe (GUI apps)' {
+        It 'returns ok when at least one path exists' {
+            $tmp = New-TemporaryFile
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @($tmp.FullName) } }
+                }
+                $r = Test-CABTool -Tool $tool
+                $r.status | Should -Be 'ok'
+                $r.details | Should -Match ([regex]::Escape($tmp.FullName))
+            } finally {
+                Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'returns fail when no listed path exists' {
+            $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+            $tool = @{
+                id = 'fake-gui'; name = 'Fake'
+                check = @{ paths = @{ $osKey = @('/__definitely-not-here__/x') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'fail'
+            $r.details | Should -Match 'Not installed'
+        }
+
+        It 'expands $env: and ~ at probe time, not at parse time' {
+            # Drop a marker file in $HOME and reference it via ~/ in the
+            # manifest-style path string. If expansion happens correctly,
+            # the probe finds it; if the literal string is used, it doesn't.
+            $marker = Join-Path $HOME ".cab-test-marker-$([Guid]::NewGuid().ToString('N'))"
+            New-Item -ItemType File -Path $marker -Force | Out-Null
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $rel = "~/$(Split-Path $marker -Leaf)"
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @($rel) } }
+                }
+                (Test-CABTool -Tool $tool).status | Should -Be 'ok'
+            } finally {
+                Remove-Item $marker -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     Context 'meta-tools without check.cmd' {

@@ -30,7 +30,8 @@ function Test-CABTool {
         $result.required = $Tool.check.min_version
     }
 
-    # Platform restriction (e.g. wsl is windows-only).
+    # Platform restriction (e.g. wsl is windows-only; claude-desktop is
+    # not-linux because Anthropic doesn't ship an official Linux build).
     if ($Tool.platform) {
         $os = Get-CABOSFamily
         if ($Tool.platform -eq 'windows-only' -and $os -ne 'windows') {
@@ -43,6 +44,45 @@ function Test-CABTool {
             $result.details = 'macOS-only; not applicable on this OS.'
             return $result
         }
+        if ($Tool.platform -eq 'not-linux' -and $os -like 'linux*') {
+            $result.status = 'na'
+            $result.details = 'Not available on Linux.'
+            return $result
+        }
+    }
+
+    # Path-based detection for GUI apps that don't expose a CLI entry-point
+    # (e.g. Claude Desktop ships an Electron app to /Applications/Claude.app
+    # on macOS and %LOCALAPPDATA%\AnthropicClaude\claude.exe on Windows, but
+    # neither install adds a `claude` binary to PATH). The check.paths field
+    # is keyed by OS family ('windows' / 'macos'); the tool is considered
+    # installed if any listed path exists.
+    if ($Tool.check -and $Tool.check.paths) {
+        $os = Get-CABOSFamily
+        $osKey = if ($os -like 'linux*') { 'linux' } else { $os }
+        $candidates = @()
+        if ($Tool.check.paths.ContainsKey($osKey)) {
+            $candidates = @($Tool.check.paths[$osKey])
+        }
+        if ($candidates.Count -eq 0) {
+            $result.status = 'error'
+            $result.details = "No check.paths defined for $osKey."
+            return $result
+        }
+        foreach ($p in $candidates) {
+            # ExpandString evaluates $env:LOCALAPPDATA and ~ at probe time
+            # rather than at manifest-parse time, so the same YAML works
+            # for any user account.
+            $expanded = $ExecutionContext.InvokeCommand.ExpandString($p)
+            if (Test-Path $expanded) {
+                $result.status = 'ok'
+                $result.details = "Installed at $expanded"
+                return $result
+            }
+        }
+        $result.status = 'fail'
+        $result.details = "Not installed (none of: $($candidates -join ', '))"
+        return $result
     }
 
     if (-not $Tool.check -or -not $Tool.check.cmd) {
