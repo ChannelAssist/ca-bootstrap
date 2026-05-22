@@ -24,7 +24,7 @@ Reference: https://github.com/ChannelAssist/Keystone/blob/dev/content/docs/adr/0
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('clone', 'sync', 'push', 'help')]
+    [ValidateSet('clone', 'sync', 'push', 'full', 'help')]
     [string]$Command = 'help'
 )
 
@@ -65,7 +65,7 @@ function Cmd-Clone {
     if ($LASTEXITCODE -ne 0) {
         Write-Warn2 'Wiki clone failed — the wiki may not be initialized yet.'
         Write-Warn2 'Visit https://github.com/ChannelAssist/ca-bootstrap/wiki and create the first page,'
-        Write-Warn2 "then re-run './make.ps1 wiki-clone'."
+        Write-Warn2 "then re-run './make.ps1 wiki-update'."
         exit 1
     }
     Write-Ok "Wiki cloned to $($script:WikiDir)"
@@ -87,7 +87,7 @@ function Transform-Links {
 
 function Cmd-Sync {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-clone' first."
+        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-update' first."
         exit 1
     }
 
@@ -166,7 +166,7 @@ function Cmd-Sync {
 
 function Cmd-Push {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-clone' first."
+        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-update' first."
         exit 1
     }
 
@@ -225,14 +225,30 @@ function Cmd-Push {
     }
 }
 
+function Cmd-Full {
+    if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
+        Cmd-Clone
+    } else {
+        Write-Info "Wiki clone exists at $($script:WikiDir); pulling latest..."
+        Invoke-Git -Arguments @('-C', $script:WikiDir, 'fetch', '--quiet', 'origin')
+        $rc = Invoke-Git -Arguments @('-C', $script:WikiDir, 'reset', '--quiet', '--hard', 'origin/master') -AllowFailure
+        if ($rc -ne 0) {
+            Invoke-Git -Arguments @('-C', $script:WikiDir, 'reset', '--quiet', '--hard', 'origin/main')
+        }
+    }
+    Cmd-Sync
+    Cmd-Push
+}
+
 function Cmd-Help {
-    Write-Host 'Usage: ./scripts/wiki-sync.ps1 {clone|sync|push}'
+    Write-Host 'Usage: ./scripts/wiki-sync.ps1 {clone|sync|push|full}'
 }
 
 switch ($Command) {
     'clone' { Cmd-Clone }
     'sync'  { Cmd-Sync }
     'push'  { Cmd-Push }
+    'full'  { Cmd-Full }
     'help'  { Cmd-Help }
     default {
         Write-Bad "Unknown command: $Command"

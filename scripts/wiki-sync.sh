@@ -46,7 +46,7 @@ cmd_clone() {
     if ! git clone "$WIKI_URL_HTTPS" "$WIKI_DIR" 2>/dev/null; then
         color_yellow "Wiki clone failed — the wiki may not be initialized yet."
         color_yellow "Visit https://github.com/ChannelAssist/ca-bootstrap/wiki and create the first page,"
-        color_yellow "then re-run 'make wiki-clone'."
+        color_yellow "then re-run 'make wiki-update'."
         exit 1
     fi
     color_green "Wiki cloned to $WIKI_DIR"
@@ -74,7 +74,7 @@ transform_links() {
 
 cmd_sync() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-clone' first."
+        color_red "Wiki not cloned. Run 'make wiki-update' first."
         exit 1
     fi
 
@@ -151,7 +151,7 @@ cmd_full() {
 # Push with reconcile-on-divergence (same pattern as Keystone wiki-sync.sh).
 cmd_push() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-clone' first."
+        color_red "Wiki not cloned. Run 'make wiki-update' first."
         exit 1
     fi
     cd "$WIKI_DIR"
