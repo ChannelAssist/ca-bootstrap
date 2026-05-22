@@ -181,8 +181,8 @@ After the existing `folders` check, iterate folders that declare `renamed_from:`
 | no  | yes | `ok`   | (skip — current state is correct) | — |
 | no  | no  | `ok`   | (no folder yet — `folders` check already covers absent required folders) | — |
 | yes | no  | `warn` | "Legacy folder `<old>/` present, expected `<new>/`. Will rename via repair." | `repair --target folder-renames` |
-| yes | yes (both empty) | `warn` | "Legacy folder `<old>/` present alongside `<new>/`. Will merge via repair." | `repair --target folder-renames` |
-| yes | yes (any contents) | `fail` | "Legacy `<old>/` and current `<new>/` both contain files. Manual merge required." | (no auto-fix; manual instructions in repair output) |
+| yes | yes, **at least one empty** | `warn` | "Legacy folder `<old>/` present alongside `<new>/` — repair will merge." | `repair --target folder-renames` |
+| yes | yes, **both contain files** | `fail` | "Both `<old>/` and `<new>/` contain files — manual merge required." | (no auto-fix; manual instructions in repair output) |
 
 ### 5.6 Repair: `--target folder-renames` (`commands/repair.ps1`)
 
