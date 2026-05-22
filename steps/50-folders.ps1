@@ -59,8 +59,12 @@ function Invoke-CABStep50 {
     $seededReadmes = 0
     foreach ($f in $required) {
         $full = Join-Path $Context.WorkspacePath $f.path
-        if (Test-Path $full) {
+        if (Test-Path $full -PathType Container) {
             $kept++
+        } elseif (Test-Path $full) {
+            # Path exists but isn't a directory — fail clearly rather than silently
+            # mis-categorising or trying to seed a README under a non-directory.
+            return @{ status = 'fail'; details = "Path '$full' exists but is not a directory; resolve manually." }
         } else {
             try {
                 [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)

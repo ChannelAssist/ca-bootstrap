@@ -79,6 +79,16 @@ Describe 'Step 50 — README seeding from templates/folder-readmes/' {
             -Because 'optional folder exists on disk — step 50 must seed its README'
     }
 
+    It 'fails clearly when a regular file sits at the expected folder path' {
+        # Pre-create a FILE (not a directory) at one of the required-folder paths.
+        $collision = Join-Path $script:tmpWs 'ca-tools'
+        Set-Content -Path $collision -Value 'I am a file, not a directory' -Encoding utf8
+
+        $result = Invoke-CABStep50 -Context $script:ctx
+        $result.status | Should -Be 'fail'
+        $result.details | Should -Match 'not a directory'
+    }
+
     It 'warns when a folder template is missing instead of silently skipping' {
         # Point RepoRoot at a temp dir that has no templates/folder-readmes/
         # so every template lookup misses, triggering the warning path.
