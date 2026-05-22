@@ -14,6 +14,7 @@
 #   --target gh-auth            re-run gh auth login
 #   --target folders            recreate any missing top-level folders
 #   --target folder-renames     migrate legacy workspace folders to renamed paths (safety-contract compliant)
+#   --target folder-readmes     re-sync templates/folder-readmes/ into the workspace (prompts before overwriting drift)
 #   --target journal            rebuild the journal from on-disk state
 
 function Invoke-CABCommandRepair {
@@ -138,6 +139,10 @@ function Invoke-CABRepairTarget {
         }
         'folder-renames' {
             $r = Invoke-CABRepairFolderRenames -Context $Context
+            return @{ ok = ($r.status -in 'ok','noop'); details = $r.details }
+        }
+        'folder-readmes' {
+            $r = Invoke-CABRepairFolderReadmes -Context $Context
             return @{ ok = ($r.status -in 'ok','noop'); details = $r.details }
         }
         'gh-auth' {
@@ -344,4 +349,66 @@ function Invoke-CABRepairFolderRenames {
         return @{ status = 'noop'; details = "Nothing to rename (skipped: $skipped)" }
     }
     return @{ status = 'ok'; details = "Renamed/cleaned $touched folder(s); skipped $skipped" }
+}
+
+# Invoke-CABRepairFolderReadmes — re-sync README templates into workspace.
+# Dispatched by `repair --target folder-readmes`. Seeds missing READMEs;
+# prompts before overwriting drifted ones. `-Yes` is intentionally NOT
+# honored for the overwrite path — operator must consciously confirm.
+function Invoke-CABRepairFolderReadmes {
+    [CmdletBinding()]
+    param([hashtable]$Context)
+
+    $ws = $Context.WorkspacePath
+    if (-not $ws -or -not (Test-Path $ws)) {
+        return @{ status = 'fail'; details = "Workspace not set or missing: $ws" }
+    }
+
+    $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
+    $seeded = 0; $overwritten = 0; $skippedDrift = 0; $matched = 0
+
+    foreach ($f in $manifest.folders) {
+        $folder = Join-Path $ws ([string]$f.path)
+        if (-not (Test-Path $folder -PathType Container)) { continue }
+
+        $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' ([string]$f.path) 'README.md'
+        $target   = Join-Path $folder 'README.md'
+        if (-not (Test-Path $template)) { continue }
+
+        if (-not (Test-Path $target)) {
+            Copy-Item -Path $template -Destination $target -Force
+            Add-CABJournalEntry -Step 'repair' -Action 'seed_readme' -Data @{ path = $target; template = $template } | Out-Null
+            $seeded++
+            continue
+        }
+
+        $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
+        $targetHash   = (Get-FileHash -Path $target   -Algorithm SHA256).Hash
+        if ($templateHash -eq $targetHash) {
+            $matched++
+            continue
+        }
+
+        $answers = if ($Context.ContainsKey('Answers') -and $Context.Answers) { $Context.Answers } else { @{} }
+        Set-CABPromptMode -Unattended $true -Answers $answers
+
+        $proceed = Read-CABConfirm -Question "Workspace README at '$($f.path)/README.md' differs from the template. Overwrite?" `
+                                   -Default $false `
+                                   -AnswerKey "folder-readme.$($f.path).overwrite"
+        if (Test-CABQuit $proceed) {
+            return @{ status = 'skip'; details = 'User quit during folder-readmes repair.' }
+        }
+        if (Test-CABNo $proceed) {
+            $skippedDrift++
+            continue
+        }
+        Copy-Item -Path $template -Destination $target -Force
+        Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data @{ path = $target; template = $template } | Out-Null
+        $overwritten++
+    }
+
+    if ($seeded + $overwritten -eq 0) {
+        return @{ status = 'ok'; details = "no-op (matched: $matched, drift skipped: $skippedDrift)" }
+    }
+    return @{ status = 'ok'; details = "seeded $seeded, overwrote $overwritten, matched $matched, drift skipped $skippedDrift" }
 }
