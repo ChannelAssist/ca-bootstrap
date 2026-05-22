@@ -227,8 +227,14 @@ function Invoke-CABStep15 {
     $fails = @($probes | Where-Object { $_.status -eq 'fail' })
     $warns = @($probes | Where-Object { $_.status -eq 'warn' })
 
-    # Expose results so downstream steps can introspect (e.g., 20-prereqs
-    # can skip the winget install path if winget is missing).
+    # Expose results on the context for diagnostics and for future
+    # consumers. No step currently reads this; the missing-installer
+    # behavior the pre-flight warns about is handled at runtime by the
+    # per-method guards in lib/tools.ps1 Install-CABTool (winget / npm
+    # presence checks), which return a clean ok=$false with remediation
+    # instead of letting `&` throw. The pre-flight is informational —
+    # it surfaces issues earlier so the user can remediate up front;
+    # it does not gate or alter downstream install logic.
     $Context.PlatformReadiness = @{
         probes = $probes
         fails  = $fails

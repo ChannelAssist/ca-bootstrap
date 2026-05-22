@@ -78,8 +78,10 @@ function Invoke-CABStep20 {
     $progressIndex = 0
     $progressTotal = $missing.Count
 
-    # Initialize the shared failed-tools list so the final setup summary
-    # can surface them. Other steps (15-platform-check) also write here.
+    # Initialize the failed-tools list so the final setup summary in
+    # commands/setup.ps1 can surface them. Step 20 is the only writer
+    # today; the list is initialized defensively so the summary code
+    # can read it unconditionally without a key-existence check.
     if (-not $Context.ContainsKey('FailedTools')) { $Context.FailedTools = @() }
 
     foreach ($r in $missing) {
