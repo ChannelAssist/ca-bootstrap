@@ -113,24 +113,33 @@ function Convert-TargetToFunctionName {
 # ---------------------------------------------------------------------------
 
 function Invoke-Help {
-    Write-Step 'ca-bootstrap make targets (Windows-native; mirror of the Makefile)'
+    $bar = '━' * 81
     Write-Host ''
-    $widest = ($script:TargetDescriptions.Keys | Measure-Object -Property Length -Maximum).Maximum
-    foreach ($name in $script:TargetDescriptions.Keys) {
-        $padded = $name.PadRight($widest)
-        Write-Host ("  ") -NoNewline
-        Write-Host $padded -ForegroundColor Yellow -NoNewline
-        Write-Host ("  " + $script:TargetDescriptions[$name])
+    Write-Host $bar -ForegroundColor Cyan
+    Write-Host '  ca-bootstrap — Available Make Targets' -ForegroundColor Cyan
+    Write-Host $bar -ForegroundColor Cyan
+    Write-Host ''
+
+    $sections = [ordered]@{
+        'Workspace'        = @{ targets = @('setup','doctor','repair','undo','nuke','install-commit-hooks'); color = 'Green'   }
+        'Tools'            = @{ targets = @('tool-list','tool-install','tool-update','tool-remove');         color = 'Blue'    }
+        'Manifest'         = @{ targets = @('manifest-drift','manifest-edit');                                color = 'Blue'    }
+        'Quality'          = @{ targets = @('test','lint','format');                                          color = 'Green'   }
+        'Smoke & Cleanup'  = @{ targets = @('smoke','smoke-clean','clean');                                   color = 'Yellow'  }
+        'Wiki'             = @{ targets = @('wiki-update');                                                   color = 'Cyan'    }
+        'Releases'         = @{ targets = @('release','release-dry-run','release-full','release-full-dry-run','tag'); color = 'Magenta' }
     }
+    foreach ($name in $sections.Keys) {
+        Write-Host "${name}:" -ForegroundColor $sections[$name].color
+        foreach ($t in $sections[$name].targets) {
+            $desc = $script:TargetDescriptions[$t]
+            if (-not $desc) { continue }  # target not yet documented; skip silently
+            Write-Host ('  {0,-22} {1}' -f $t, $desc) -ForegroundColor Yellow
+        }
+        Write-Host ''
+    }
+    Write-Host $bar -ForegroundColor Cyan
     Write-Host ''
-    Write-Host 'Usage:'
-    Write-Host '  ./make.ps1 <target> [-FlagsPerTarget ...]'
-    Write-Host ''
-    Write-Host 'Examples:'
-    Write-Host '  ./make.ps1 smoke'
-    Write-Host '  ./make.ps1 tool-install -Tool dotnet-10'
-    Write-Host '  ./make.ps1 repair -All'
-    Write-Host '  ./make.ps1 release -Version 1.5.0'
 }
 
 function Invoke-Smoke {
