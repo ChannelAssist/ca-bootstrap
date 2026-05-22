@@ -14,6 +14,21 @@
 #   2   any ⚠ or ✗ found
 #  99   unexpected error
 
+# Auto-source lib dependencies when dot-sourced standalone (e.g. Pester).
+# The main orchestrator loads all libs before dot-sourcing this file, so
+# these guards are no-ops in that path.
+foreach ($__libDep in @(
+    @{ cmd = 'Get-CABOSFamily';    file = 'platform.ps1' }
+    @{ cmd = 'Get-CABToolReport';  file = 'tools.ps1'    }
+    @{ cmd = 'Test-CABRepoCloned'; file = 'git-ops.ps1'  }
+)) {
+    if (-not (Get-Command $__libDep.cmd -ErrorAction SilentlyContinue)) {
+        $__p = Join-Path $PSScriptRoot "../lib/$($__libDep.file)"
+        if (Test-Path $__p) { . $__p }
+    }
+}
+Remove-Variable __libDep, __p -ErrorAction SilentlyContinue
+
 # Invoke-CABDoctorCheck — produce the full check list. Returns an array of
 # [ordered]@{ id; status; details; ...extra }.
 function Invoke-CABDoctorCheck {
@@ -81,6 +96,51 @@ function Invoke-CABDoctorCheck {
                 details = "$($missing.Count)/$($expected.Count) missing: $(($missing.path) -join ', ')"
                 fix = 'repair --target folders'
             })
+        }
+    }
+
+    # ----- Folder renames -----
+    # Data-driven from `renamed_from:` in manifest/folders.yaml. Doctor
+    # detects drift (legacy folder still present) and points at
+    # `repair --target folder-renames` for the safe fix. Repair honors the
+    # safety contract: empty legacy → silent rename; non-empty → prompt;
+    # both with content → bail to manual.
+    if (Test-Path $workspace) {
+        $foldersManifest = if ($manifest) { $manifest } else { Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet }
+        $renamed = @($foldersManifest.folders | Where-Object { $_.renamed_from })
+        foreach ($f in $renamed) {
+            $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
+            $newPath    = Join-Path $workspace ([string]$f.path)
+            $legacyExists = Test-Path $legacyPath -PathType Container
+            $newExists    = Test-Path $newPath    -PathType Container
+
+            if (-not $legacyExists) { continue }
+
+            $legacyHasContent = $legacyExists -and (Get-ChildItem -Path $legacyPath -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+            $newHasContent    = $newExists    -and (Get-ChildItem -Path $newPath    -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
+            $id = "folder-rename:$($f.renamed_from)"
+
+            if (-not $newExists) {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'warn'
+                    details = "Legacy folder '$($f.renamed_from)/' present, expected '$($f.path)/'."
+                    fix     = 'repair --target folder-renames'
+                })
+            } elseif (-not $legacyHasContent -or -not $newHasContent) {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'warn'
+                    details = "Legacy folder '$($f.renamed_from)/' present alongside '$($f.path)/' — repair will merge."
+                    fix     = 'repair --target folder-renames'
+                })
+            } else {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'fail'
+                    details = "Both '$($f.renamed_from)/' and '$($f.path)/' contain files — manual merge required."
+                })
+            }
         }
     }
 
