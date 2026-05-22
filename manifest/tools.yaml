@@ -228,6 +228,7 @@ optional:
     extensions:
       - GitHub.copilot          # inline completions; the chat sibling below resolves ca-copilot-plugin agents/prompts
       - GitHub.copilot-chat     # /<prompt> and @<agent> entry points that consume ca-copilot-plugin content
+      - Anthropic.claude-code   # in-editor sidekick for the claude-code CLI (chat + diff review inside VS Code)
       - ms-dotnettools.csharp
       - ms-azuretools.vscode-docker
       - ms-python.python

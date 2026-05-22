@@ -117,6 +117,7 @@ See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable l
 | VS Code | winget Microsoft.VisualStudioCode | brew --cask visual-studio-code | apt code |
 | Claude Code (CLI) | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
 | Claude Desktop (GUI) | winget Anthropic.Claude | brew --cask claude | n/a (no official Linux build) |
+| Claude Code VS Code extension | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) |
 | GitHub Copilot CLI | npm i -g @github/copilot | npm i -g @github/copilot | npm i -g @github/copilot |
 | gh-copilot extension | gh extension install github/gh-copilot | gh extension install github/gh-copilot | gh extension install github/gh-copilot |
 | WSL2 + Ubuntu | wsl --install (optional) | n/a | n/a |
