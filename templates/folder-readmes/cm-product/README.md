@@ -19,7 +19,7 @@ that make up the ChannelManager product — they share the `cm-*` prefix.
 
 ```
 cm-product/
-├── channel-manager/             # legacy monolith (opt-in, ~4 GB)
+├── channel-manager/             # legacy monolith (opt-in, ≈4 GB)
 ├── cm-claims-validator/
 ├── cm-contracts/
 ├── cm-currency-service/

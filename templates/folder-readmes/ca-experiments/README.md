@@ -23,8 +23,7 @@ ca-experiments/
 
 If you've added sub-projects under `ca-experiments/` outside the manifest,
 they belong to **you** — ca-bootstrap will not delete this folder or its
-contents without an explicit confirmation prompt. See the safety contract
-in the main README.
+contents without an explicit confirmation prompt. See the [safety contract](../ca-tools/ca-bootstrap/docs/commands.md) for the full rules.
 
 ## Refresh
 

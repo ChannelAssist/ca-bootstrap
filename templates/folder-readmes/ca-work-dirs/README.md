@@ -13,8 +13,9 @@ Create a git worktree off any repo to run a parallel Claude Code session on
 a separate branch without disturbing your primary clone:
 
 ```bash
-git -C ../../ca-platform/ca-claude-plugin worktree add \
-    ../../ca-work-dirs/ca-claude-plugin-experiment feature/experiment
+# From <workspace> root:
+git -C ca-platform/ca-claude-plugin worktree add \
+    ca-work-dirs/ca-claude-plugin-experiment feature/experiment
 cd ca-work-dirs/ca-claude-plugin-experiment
 claude
 ```
@@ -58,7 +59,7 @@ checking what's inside.** Sub-folders may belong to:
 contents**. Any repair / undo flow that would remove a non-empty folder
 or a folder containing sub-folders requires an explicit confirmation
 prompt. See the safety contract in
-[`commands.md`](../../../docs/commands.md) for the full rules.
+[`commands.md`](../ca-tools/ca-bootstrap/docs/commands.md) for the full rules.
 
 ## Refresh
 

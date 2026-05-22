@@ -1,8 +1,7 @@
 # ca-docs
 
 ChannelAssist documentation + org-level profile repos. Source-of-truth docs
-that ride alongside code lives next to the code; everything cross-cutting
-lives here.
+that span multiple repos live here; code-adjacent docs live next to the code.
 
 ## What lives here
 
