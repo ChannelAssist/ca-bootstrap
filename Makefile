@@ -65,11 +65,14 @@ else
 			exit $$ec; \
 		fi
 endif
-# ↑ Windows guard uses GNU make's `ifeq` so it's evaluated before any
-# shell expansion — works even when cmd.exe / pwsh is the only available
-# shell and bash isn't on PATH. The `$(OS)` variable is set to
-# `Windows_NT` automatically by GNU make on Windows native (it's unset
-# under WSL, so WSL users still hit the normal bash path below).
+# ↑ The `ifeq ($(OS),Windows_NT)` branch fires on Windows-native make:
+# GNU make on Windows automatically sets `$(OS)=Windows_NT`, so the
+# redirect is emitted before the bash chain in the else branch runs.
+# On macOS, Linux, and typical WSL/Git Bash environments, `$(OS)` is
+# unset and the bash branch executes normally. The condition relies
+# on GNU make's own variable population, not on shell availability or
+# WSL-specific behavior — environments that explicitly set OS to a
+# non-Windows_NT value will still fall through to the bash path.
 #
 # Exit-code mapping below: ca-bootstrap.ps1 returns 1 when the user
 # voluntarily quits (documented in docs/commands.md), but make's default
