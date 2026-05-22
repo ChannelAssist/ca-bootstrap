@@ -138,8 +138,7 @@ function Invoke-CABRepairTarget {
         }
         'folder-renames' {
             $r = Invoke-CABRepairFolderRenames -Context $Context
-            $status = if ($r.status -in 'ok','noop') { 'ok' } elseif ($r.status -eq 'manual') { 'fail' } else { 'warn' }
-            Write-CABStatus -Status $status -Message $r.details
+            return @{ ok = ($r.status -in 'ok','noop'); details = $r.details }
         }
         'gh-auth' {
             . (Join-Path $Context.RepoRoot 'steps/30-gh-auth.ps1')
@@ -260,9 +259,9 @@ function Invoke-CABRepairFolderRenames {
         # State: only legacy, empty → rename silently.
         if (-not $newExists -and $legacyEmpty) {
             Move-Item -Path $legacyPath -Destination $newPath -Force
-            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+            Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'silent-empty'
-            } | Out-Null } catch {}
+            } | Out-Null
             $touched++
             continue
         }
@@ -273,14 +272,20 @@ function Invoke-CABRepairFolderRenames {
             $proceed = Read-CABConfirm -Question "Move '$($f.renamed_from)/' → '$($f.path)/' (preserves all contents: $summary)?" `
                                        -Default $true `
                                        -AnswerKey "folder-rename.$($f.renamed_from)"
+            # Quit aborts the whole folder-renames repair — matches undo.ps1's
+            # per-action quit behavior (line ~333): return immediately rather
+            # than continuing to the next folder in the loop.
+            if (Test-CABQuit $proceed) {
+                return @{ status = 'skip'; details = 'User quit during folder-rename repair.' }
+            }
             if (Test-CABNo $proceed) {
                 $skipped++
                 continue
             }
             Move-Item -Path $legacyPath -Destination $newPath -Force
-            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+            Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'prompted-nonempty'
-            } | Out-Null } catch {}
+            } | Out-Null
             $touched++
             continue
         }
@@ -288,7 +293,7 @@ function Invoke-CABRepairFolderRenames {
         # State: both exist, both empty → remove empty legacy.
         if ($newExists -and $legacyEmpty -and $newEmpty) {
             Remove-Item -Path $legacyPath -Force
-            try { Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath } | Out-Null } catch {}
+            Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath } | Out-Null
             $touched++
             continue
         }
@@ -296,7 +301,7 @@ function Invoke-CABRepairFolderRenames {
         # State: both exist, legacy empty + new has content → silent remove of empty legacy.
         if ($newExists -and $legacyEmpty -and -not $newEmpty) {
             Remove-Item -Path $legacyPath -Force
-            try { Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath; reason = 'new-populated' } | Out-Null } catch {}
+            Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath; reason = 'new-populated' } | Out-Null
             $touched++
             continue
         }
@@ -307,6 +312,12 @@ function Invoke-CABRepairFolderRenames {
             $proceed = Read-CABConfirm -Question "Move children of '$($f.renamed_from)/' into '$($f.path)/' (then remove empty '$($f.renamed_from)/'): $summary?" `
                                        -Default $true `
                                        -AnswerKey "folder-rename.$($f.renamed_from).remove-empty-legacy"
+            # Quit aborts the whole folder-renames repair — matches undo.ps1's
+            # per-action quit behavior (line ~333): return immediately rather
+            # than continuing to the next folder in the loop.
+            if (Test-CABQuit $proceed) {
+                return @{ status = 'skip'; details = 'User quit during folder-rename repair.' }
+            }
             if (Test-CABNo $proceed) {
                 $skipped++
                 continue
@@ -315,9 +326,9 @@ function Invoke-CABRepairFolderRenames {
                 Move-Item -Path $child.FullName -Destination $newPath -Force
             }
             Remove-Item -Path $legacyPath -Force
-            try { Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
+            Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'merge-into-empty-new'
-            } | Out-Null } catch {}
+            } | Out-Null
             $touched++
             continue
         }

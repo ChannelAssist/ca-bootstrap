@@ -103,4 +103,17 @@ Describe 'Repair — folder-renames' {
         (Test-Path $legacy) | Should -BeFalse
         (Test-Path (Join-Path $new 'b.txt')) | Should -BeTrue
     }
+
+    It 'treats quit (q) as decline-and-stop, never as consent' {
+        $legacy = Join-Path $script:tmpWs 'experiments'
+        New-Item -ItemType Directory -Path $legacy -Force | Out-Null
+        Set-Content -Path (Join-Path $legacy 'a.txt') -Value 'x' -Encoding utf8
+        $script:ctx.Yes = $false
+        $script:ctx.Answers = @{ 'folder-rename.experiments' = 'q' }
+
+        $r = Invoke-CABRepairFolderRenames -Context $script:ctx
+        # quit aborts the entire repair (matches undo.ps1's per-action quit pattern)
+        $r.status | Should -Be 'skip'
+        (Test-Path $legacy) | Should -BeTrue  # NEVER renamed on quit
+    }
 }
