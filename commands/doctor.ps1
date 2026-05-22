@@ -86,8 +86,8 @@ function Invoke-CABDoctorCheck {
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
         $expected = @($manifest.folders | Where-Object { -not $_.optional })
-        $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) })
-        $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path)) })
+        $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
+        $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
         if ($missing.Count -eq 0) {
             $checks.Add([ordered]@{ id = 'folders'; status = 'ok'; details = "$($present.Count)/$($expected.Count) present" })
         } else {

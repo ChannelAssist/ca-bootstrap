@@ -54,7 +54,10 @@ function Invoke-CABCommandRepair {
 
     # Build target list.
     $targets = if ($All) {
-        @($issues.id)
+        # Doctor IDs of the form 'folder-rename:<old>' all map to a single
+        # repair target 'folder-renames'; collapse to avoid running the
+        # function once per rename pair.
+        @($issues.id | ForEach-Object { if ($_ -like 'folder-rename:*') { 'folder-renames' } else { $_ } } | Select-Object -Unique)
     } else {
         @($Target)
     }
@@ -123,6 +126,12 @@ function Invoke-CABRepairTarget {
     if ($bare -like 'repos:*') {
         $slug = $bare -replace '^repos:', ''
         return Invoke-CABRepairRepoSlug -Slug $slug -Context $Context
+    }
+
+    # Folder-rename sub-target: doctor emits IDs like 'folder-rename:<old>'
+    # (e.g. --target folder-rename:experiments); normalise to 'folder-renames'.
+    if ($bare -like 'folder-rename:*') {
+        $bare = 'folder-renames'
     }
 
     switch ($bare) {
