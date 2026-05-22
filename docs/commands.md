@@ -182,7 +182,7 @@ You **must** specify either `--all` or `--target` — there is no default to pre
 | Target | Effect |
 |---|---|
 | `--all` | Fix every ✗ and ⚠ |
-| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `pwsh`, `make`, `dotnet-10`, `node-20`, `claude-code`, `copilot-cli`, `gh-copilot`) |
+| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `pwsh`, `make`, `dotnet-10`, `node-20`, `claude-code`, `claude-desktop`, `copilot-cli`, `gh-copilot`) |
 | `--target repos` | Re-clone or fetch missing/broken repos |
 | `--target repos:<slug>` | One specific repo (e.g. `repos:cm-shared-libs`) |
 | `--target identity` | Re-write per-folder git identity |

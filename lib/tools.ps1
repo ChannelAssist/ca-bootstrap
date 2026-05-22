@@ -14,6 +14,52 @@
 #     details  = '...'         # human-readable
 #   }
 
+# Expand-CABPathSafely — resolve a manifest path string without evaluating
+# arbitrary PowerShell subexpressions.
+#
+# Replaces $ExecutionContext.InvokeCommand.ExpandString for check.paths
+# entries: the original ExpandString call evaluated any $(...) inside
+# the string, which would have made manifests a code-execution vector
+# if a path ever contained something like "$(Get-Content secrets.txt)".
+# Manifests are data — only $env:VAR tokens and a leading ~ should be
+# resolvable. Nothing else.
+#
+# Expansion rules:
+#   - Leading `~/` or `~\`  → $HOME prefix
+#   - `$env:VAR`            → environment variable value (empty string if unset)
+#   - Anything else         → literal
+#
+# Returns the expanded string. No side effects, no filesystem access.
+function Expand-CABPathSafely {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+
+    $expanded = $Path
+
+    # Leading ~ → $HOME. Match both forward and backslash separators
+    # because manifest authors may use either when targeting Windows.
+    if ($expanded -match '^~[/\\]') {
+        $tail = $expanded -replace '^~[/\\]', ''
+        $expanded = Join-Path $HOME $tail
+    } elseif ($expanded -eq '~') {
+        $expanded = $HOME
+    }
+
+    # $env:VAR tokens — single-pass regex replace via MatchEvaluator so
+    # values that happen to contain `$env:OTHER` don't trigger feedback
+    # loops. Unknown variables expand to empty string (matches POSIX
+    # shell semantics; the resulting path will simply fail Test-Path).
+    $envPattern = [regex]'\$env:([A-Za-z_][A-Za-z0-9_]*)'
+    $expanded = $envPattern.Replace($expanded, {
+        param($m)
+        $val = [Environment]::GetEnvironmentVariable($m.Groups[1].Value)
+        if ($null -eq $val) { return '' }
+        return $val
+    })
+
+    return $expanded
+}
+
 function Test-CABTool {
     [CmdletBinding()]
     param([Parameter(Mandatory)] $Tool)
@@ -30,7 +76,8 @@ function Test-CABTool {
         $result.required = $Tool.check.min_version
     }
 
-    # Platform restriction (e.g. wsl is windows-only).
+    # Platform restriction (e.g. wsl is windows-only; claude-desktop is
+    # not-linux because Anthropic doesn't ship an official Linux build).
     if ($Tool.platform) {
         $os = Get-CABOSFamily
         if ($Tool.platform -eq 'windows-only' -and $os -ne 'windows') {
@@ -43,6 +90,50 @@ function Test-CABTool {
             $result.details = 'macOS-only; not applicable on this OS.'
             return $result
         }
+        if ($Tool.platform -eq 'not-linux' -and $os -like 'linux*') {
+            $result.status = 'na'
+            $result.details = 'Not available on Linux.'
+            return $result
+        }
+    }
+
+    # Path-based detection for GUI apps that don't expose a CLI entry-point
+    # (e.g. Claude Desktop ships an Electron app to /Applications/Claude.app
+    # on macOS and %LOCALAPPDATA%\AnthropicClaude\claude.exe on Windows, but
+    # neither install adds a `claude` binary to PATH). The check.paths field
+    # is keyed by OS family ('windows' / 'macos'); the tool is considered
+    # installed if any listed path exists.
+    if ($Tool.check -and $Tool.check.paths) {
+        $os = Get-CABOSFamily
+        $osKey = if ($os -like 'linux*') { 'linux' } else { $os }
+        $candidates = @()
+        if ($Tool.check.paths.ContainsKey($osKey)) {
+            $candidates = @($Tool.check.paths[$osKey])
+        }
+        if ($candidates.Count -eq 0) {
+            $result.status = 'error'
+            $result.details = "No check.paths defined for $osKey."
+            return $result
+        }
+        foreach ($p in $candidates) {
+            # Safe path expansion: $env:VAR tokens and a leading ~ are
+            # resolved, but nothing else. ExpandString would evaluate
+            # arbitrary PowerShell subexpressions ($(...)), which would
+            # turn check.paths into a code-execution surface if a
+            # manifest path ever contained `$(Get-Content secrets)` or
+            # similar. Manifests are data, not script.
+            $expanded = Expand-CABPathSafely $p
+            # -LiteralPath blocks glob interpretation; check.paths
+            # entries are exact file/dir paths, never patterns.
+            if (Test-Path -LiteralPath $expanded) {
+                $result.status = 'ok'
+                $result.details = "Installed at $expanded"
+                return $result
+            }
+        }
+        $result.status = 'fail'
+        $result.details = "Not installed (none of: $($candidates -join ', '))"
+        return $result
     }
 
     if (-not $Tool.check -or -not $Tool.check.cmd) {

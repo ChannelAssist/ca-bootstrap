@@ -35,6 +35,7 @@ prerequisites:
     vscode: install
     vscode-extensions: install
     claude-code: install
+    claude-desktop: install          # GUI app; Windows + macOS only (N/A on Linux)
     copilot-cli: skip                # opt in: standalone GitHub Copilot CLI
     gh-copilot: install
     wsl: skip                        # Windows-only; opt in explicitly

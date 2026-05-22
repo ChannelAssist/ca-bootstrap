@@ -39,6 +39,119 @@ Describe 'Test-CABTool' {
             $r = Test-CABTool -Tool $tool
             $r.status | Should -Be 'na'
         }
+
+        It 'returns na for not-linux tools on linux hosts' -Skip:(-not $IsLinux) {
+            $tool = @{
+                id = 'claude-desktop'; name = 'Claude Desktop'; platform = 'not-linux'
+                check = @{ paths = @{ macos = @('/Applications/Claude.app') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'na'
+            $r.details | Should -Match 'Linux'
+        }
+
+        It 'does NOT return na for not-linux tools on non-linux hosts' -Skip:($IsLinux) {
+            # The platform guard should be transparent on Windows/macOS — the
+            # check.paths probe runs as if the platform key weren't present.
+            $tool = @{
+                id = 'claude-desktop'; name = 'Claude Desktop'; platform = 'not-linux'
+                check = @{ paths = @{
+                    windows = @('C:\definitely-not-here\claude.exe')
+                    macos   = @('/definitely-not-here/Claude.app')
+                } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Not -Be 'na'
+        }
+    }
+
+    Context 'check.paths probe (GUI apps)' {
+        It 'returns ok when at least one path exists' {
+            $tmp = New-TemporaryFile
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @($tmp.FullName) } }
+                }
+                $r = Test-CABTool -Tool $tool
+                $r.status | Should -Be 'ok'
+                $r.details | Should -Match ([regex]::Escape($tmp.FullName))
+            } finally {
+                Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'returns fail when no listed path exists' {
+            $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+            $tool = @{
+                id = 'fake-gui'; name = 'Fake'
+                check = @{ paths = @{ $osKey = @('/__definitely-not-here__/x') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'fail'
+            $r.details | Should -Match 'Not installed'
+        }
+
+        It 'expands a leading ~ at probe time' {
+            # Drop a marker file in $HOME and reference it via ~/ in the
+            # manifest-style path string. If expansion happens correctly,
+            # the probe finds it; if the literal string is used, it doesn't.
+            $marker = Join-Path $HOME ".cab-test-marker-$([Guid]::NewGuid().ToString('N'))"
+            New-Item -ItemType File -Path $marker -Force | Out-Null
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $rel = "~/$(Split-Path $marker -Leaf)"
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @($rel) } }
+                }
+                (Test-CABTool -Tool $tool).status | Should -Be 'ok'
+            } finally {
+                Remove-Item $marker -Force -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'expands $env:VAR tokens at probe time' {
+            # Set a sentinel env var to point at a temp directory, drop a
+            # marker file there, and reference it via $env:CAB_TEST_DIR
+            # in the manifest path. If safe-expansion handles env vars,
+            # the probe finds the marker.
+            $tmp = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "cab-test-$([Guid]::NewGuid().ToString('N'))") -Force
+            $marker = Join-Path $tmp.FullName 'sentinel.txt'
+            New-Item -ItemType File -Path $marker | Out-Null
+            $env:CAB_TEST_DIR = $tmp.FullName
+            try {
+                $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+                $tool = @{
+                    id = 'fake-gui'; name = 'Fake'
+                    check = @{ paths = @{ $osKey = @('$env:CAB_TEST_DIR/sentinel.txt') } }
+                }
+                (Test-CABTool -Tool $tool).status | Should -Be 'ok'
+            } finally {
+                Remove-Item $env:CAB_TEST_DIR -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item Env:CAB_TEST_DIR -ErrorAction SilentlyContinue
+            }
+        }
+
+        It 'does NOT evaluate $(...) PowerShell subexpressions in path strings' {
+            # Defense-in-depth: a malicious manifest can't trick the
+            # detector into running arbitrary code via $(...). The path
+            # should be treated as a literal string after env+tilde
+            # expansion — $(Get-Date) etc. stays literal and Test-Path
+            # fails to find it. (Compare with $ExecutionContext.InvokeCommand.ExpandString
+            # which would evaluate the subexpression.)
+            $osKey = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+            $tool = @{
+                id = 'fake-gui'; name = 'Fake'
+                check = @{ paths = @{ $osKey = @('/tmp/$(Get-Date -Format yyyy)/marker') } }
+            }
+            $r = Test-CABTool -Tool $tool
+            $r.status | Should -Be 'fail'
+            # The literal subexpression syntax should survive into the
+            # 'Not installed' detail message — proves it wasn't evaluated.
+            $r.details | Should -Match '\$\(Get-Date'
+        }
     }
 
     Context 'meta-tools without check.cmd' {
