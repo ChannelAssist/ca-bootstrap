@@ -18,7 +18,7 @@ Branch model: `dev` (default) → `main` (release). Branch from `dev`, PR back i
 - AI attribution footer (`Co-Authored-By: Claude <model> <noreply@anthropic.com>`) when AI-assisted
 - `Refs: AB#<id>` footer when there's an Azure Boards work item
 - Branch naming: `feature/<desc>-AB#<id>` or `bugfix/<desc>-AB#<id>` (`docs/` and `chore/` exceptions documented in `branch-name-check`)
-  - **zsh users only — quote refs when tracking:** under zsh with `EXTENDED_GLOB` + `NOMATCH` (oh-my-zsh defaults), `#` is a glob quantifier, so `git checkout --track origin/feature/foo-AB#1234` errors with `zsh: no matches found` *before git is invoked*. Workaround: quote the ref → `git checkout --track "origin/…-AB#1234"`. Windows/pwsh and Linux/bash are unaffected. See [Keystone journal 2026-Q2 — "zsh EXTENDED_GLOB makes `#` a glob quantifier"](https://github.com/ChannelAssist/Keystone/blob/dev/content/journal/2026-q2.md) for the full reproduction.
+  - **zsh users only — quote refs when tracking:** under zsh with `EXTENDED_GLOB` + `NOMATCH` (oh-my-zsh defaults), `#` is a glob quantifier, so `git checkout --track origin/feature/foo-AB#1234` errors with `zsh: no matches found` *before git is invoked*. Workaround: quote the ref → `git checkout --track "origin/feature/foo-AB#1234"`. Windows/pwsh and Linux/bash are unaffected. See [Keystone journal 2026-Q2 — "zsh EXTENDED_GLOB makes `#` a glob quantifier"](https://github.com/ChannelAssist/Keystone/blob/dev/content/journal/2026-q2.md) for the full reproduction.
 
 ## References
 
