@@ -74,9 +74,13 @@ function Invoke-CABStep20 {
     # say where it is in the queue.
     $installed = 0
     $skipped = 0
-    $failed = New-Object System.Collections.Generic.List[string]
+    $failed = New-Object System.Collections.Generic.List[hashtable]
     $progressIndex = 0
     $progressTotal = $missing.Count
+
+    # Initialize the shared failed-tools list so the final setup summary
+    # can surface them. Other steps (15-platform-check) also write here.
+    if (-not $Context.ContainsKey('FailedTools')) { $Context.FailedTools = @() }
 
     foreach ($r in $missing) {
         $progressIndex++
@@ -132,17 +136,33 @@ function Invoke-CABStep20 {
             }
         } else {
             Write-CABStatus -Status fail -Prefix $progressPrefix -Message "$($tool.id) — $($result.details)"
-            $failed.Add($tool.id)
+            $entry = @{ id = $tool.id; required = [bool]($tool.id -in @($manifest.required.id)); details = $result.details }
+            $failed.Add($entry)
+            $Context.FailedTools += $entry
+            # Hint inline so the user understands the wizard isn't stopping.
+            $hint = if ($entry.required) {
+                'required tool — setup will continue; rerun `ca-bootstrap.ps1 repair --target {0}` after fixing the root cause.'
+            } else {
+                'optional tool — setup continues without it.'
+            }
+            Write-Host ("      → " + ($hint -f $tool.id)) -ForegroundColor DarkGray
         }
     }
 
     $summary = "$installed installed, $skipped skipped, $($failed.Count) failed"
     if ($failed.Count -gt 0) {
-        $missingRequiredAfter = @($failed | Where-Object { ($byId[$_]).id -in @($manifest.required.id) })
-        if ($missingRequiredAfter.Count -gt 0) {
-            return @{ status = 'fail'; details = "$summary. Required failures: $($missingRequiredAfter -join ', ')" }
-        }
-        return @{ status = 'warn'; details = "$summary. Optional failures: $($failed -join ', ')" }
+        # Previously, required failures returned status='fail' which aborted
+        # the wizard with a rollback offer. Per the "don't bork on failure"
+        # directive, we now downgrade to 'warn' so the user gets through
+        # the rest of setup (gh auth, folders, clones) and sees a single
+        # actionable summary at the end. The orchestrator's final summary
+        # surfaces the per-tool `repair --target X` commands.
+        $req = @($failed | Where-Object { $_.required } | ForEach-Object { $_.id })
+        $opt = @($failed | Where-Object { -not $_.required } | ForEach-Object { $_.id })
+        $parts = @()
+        if ($req.Count -gt 0) { $parts += "Required failures: $($req -join ', ')" }
+        if ($opt.Count -gt 0) { $parts += "Optional failures: $($opt -join ', ')" }
+        return @{ status = 'warn'; details = "$summary. $($parts -join '; ')" }
     }
     return @{ status = 'ok'; details = $summary }
 }

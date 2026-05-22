@@ -147,7 +147,17 @@ function Invoke-CABCommandSetup {
     Save-CABJournal
 
     Write-Host ''
-    Write-CABStatus -Status ok -Message 'Setup complete.'
+    $failedTools = @($Context.FailedTools)
+    if ($failedTools.Count -gt 0) {
+        Write-CABStatus -Status warn -Message "Setup complete, with $($failedTools.Count) tool install(s) that didn't finish:"
+        foreach ($f in $failedTools) {
+            Write-Host "    • $($f.id) — $($f.details)" -ForegroundColor Yellow
+            Write-Host "      retry: ca-bootstrap.ps1 repair --target $($f.id)" -ForegroundColor DarkGray
+        }
+        Write-Host ''
+    } else {
+        Write-CABStatus -Status ok -Message 'Setup complete.'
+    }
     Write-Host '    `ca-bootstrap.ps1 doctor` — verify the result.'
     Write-Host '    `ca-bootstrap.ps1 repair --all` — fix anything doctor reports.'
     Write-Host '    `ca-bootstrap.ps1 undo` — reverse what was done.'
