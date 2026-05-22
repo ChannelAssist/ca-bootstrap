@@ -23,12 +23,17 @@ Describe 'Repair — folder-readmes' {
             New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $p) -Force | Out-Null
         }
         $script:ctx = @{ RepoRoot = $script:repoRoot; WorkspacePath = $script:tmpWs }
+        # Reset prompt mode to interactive before each test. Tests that need
+        # scripted answers call Set-CABPromptMode themselves — the function
+        # under test no longer forces unattended mode.
+        Set-CABPromptMode -Unattended $false -Answers @{}
     }
     AfterEach {
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
+        Set-CABPromptMode -Unattended $false -Answers @{}
     }
 
     It 'seeds READMEs into folders that are missing them' {
@@ -47,7 +52,9 @@ Describe 'Repair — folder-readmes' {
         Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
         $drift = Join-Path $script:tmpWs 'ca-tools/README.md'
         Set-Content -Path $drift -Value '# my edits' -Encoding utf8
-        $script:ctx.Answers = @{ 'folder-readme.ca-tools.overwrite' = 'n' }
+        # Test harness sets prompt mode — the function under test must NOT
+        # force unattended mode; interactive runs must get a real prompt.
+        Set-CABPromptMode -Unattended $true -Answers @{ 'folder-readme.ca-tools.overwrite' = 'n' }
 
         Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
         (Get-Content -Raw $drift) | Should -Match 'my edits'

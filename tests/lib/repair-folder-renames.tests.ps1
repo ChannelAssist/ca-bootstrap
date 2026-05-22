@@ -21,14 +21,19 @@ Describe 'Repair — folder-renames' {
         $script:ctx = @{
             RepoRoot      = $script:repoRoot
             WorkspacePath = $script:tmpWs
-            Yes           = $true  # non-interactive — short-circuits prompts on SAFE paths only
         }
+        # Reset prompt mode to interactive (non-unattended) before each test.
+        # Tests that need scripted answers call Set-CABPromptMode themselves —
+        # the function under test no longer forces unattended mode, so the test
+        # harness must be the one to do it.
+        Set-CABPromptMode -Unattended $false -Answers @{}
     }
     AfterEach {
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }
         Remove-Item Env:CA_BOOTSTRAP_STATE -ErrorAction SilentlyContinue
+        Set-CABPromptMode -Unattended $false -Answers @{}
     }
 
     It 'renames an empty legacy folder silently' {
@@ -49,12 +54,13 @@ Describe 'Repair — folder-renames' {
         $r.status | Should -Be 'noop'
     }
 
-    It 'requires confirmation for a non-empty legacy folder (Yes=false)' {
+    It 'requires confirmation for a non-empty legacy folder (user says no)' {
         $legacy = Join-Path $script:tmpWs 'experiments'
         New-Item -ItemType Directory -Path $legacy -Force | Out-Null
         Set-Content -Path (Join-Path $legacy 'a.txt') -Value 'x' -Encoding utf8
-        $script:ctx.Yes = $false
-        $script:ctx.Answers = @{ 'folder-rename.experiments' = 'n' }
+        # Test harness sets prompt mode — the function under test must NOT
+        # force unattended mode; interactive runs must get a real prompt.
+        Set-CABPromptMode -Unattended $true -Answers @{ 'folder-rename.experiments' = 'n' }
 
         Invoke-CABRepairFolderRenames -Context $script:ctx | Out-Null
         (Test-Path $legacy) | Should -BeTrue  # not renamed
@@ -64,8 +70,7 @@ Describe 'Repair — folder-renames' {
         $legacy = Join-Path $script:tmpWs 'experiments'
         New-Item -ItemType Directory -Path $legacy -Force | Out-Null
         Set-Content -Path (Join-Path $legacy 'a.txt') -Value 'x' -Encoding utf8
-        $script:ctx.Yes = $false
-        $script:ctx.Answers = @{ 'folder-rename.experiments' = 'y' }
+        Set-CABPromptMode -Unattended $true -Answers @{ 'folder-rename.experiments' = 'y' }
 
         Invoke-CABRepairFolderRenames -Context $script:ctx | Out-Null
         (Test-Path $legacy) | Should -BeFalse
@@ -96,8 +101,7 @@ Describe 'Repair — folder-renames' {
         New-Item -ItemType Directory -Path $new    -Force | Out-Null
         Set-Content -Path (Join-Path $new 'b.txt') -Value 'y' -Encoding utf8
 
-        $script:ctx.Yes = $false
-        $script:ctx.Answers = @{ 'folder-rename.experiments.remove-empty-legacy' = 'y' }
+        Set-CABPromptMode -Unattended $true -Answers @{ 'folder-rename.experiments.remove-empty-legacy' = 'y' }
 
         Invoke-CABRepairFolderRenames -Context $script:ctx | Out-Null
         (Test-Path $legacy) | Should -BeFalse
@@ -108,8 +112,7 @@ Describe 'Repair — folder-renames' {
         $legacy = Join-Path $script:tmpWs 'experiments'
         New-Item -ItemType Directory -Path $legacy -Force | Out-Null
         Set-Content -Path (Join-Path $legacy 'a.txt') -Value 'x' -Encoding utf8
-        $script:ctx.Yes = $false
-        $script:ctx.Answers = @{ 'folder-rename.experiments' = 'q' }
+        Set-CABPromptMode -Unattended $true -Answers @{ 'folder-rename.experiments' = 'q' }
 
         $r = Invoke-CABRepairFolderRenames -Context $script:ctx
         # quit aborts the entire repair (matches undo.ps1's per-action quit pattern)

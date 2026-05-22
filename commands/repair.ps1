@@ -230,13 +230,6 @@ function Invoke-CABRepairFolderRenames {
         return @{ status = 'fail'; details = "Workspace not set or missing: $ws" }
     }
 
-    # Configure prompt mode from context so Read-CABConfirm works correctly
-    # in both interactive and test-harness scenarios.
-    #   Yes = $true  → unattended with no pre-loaded answers (defaults apply).
-    #   Yes = $false + Answers → unattended with explicit scripted answers.
-    $answers = if ($Context.ContainsKey('Answers') -and $Context.Answers) { $Context.Answers } else { @{} }
-    Set-CABPromptMode -Unattended $true -Answers $answers
-
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
     $renamed = @($manifest.folders | Where-Object { $_.renamed_from })
     if ($renamed.Count -eq 0) {
@@ -388,9 +381,6 @@ function Invoke-CABRepairFolderReadmes {
             $matched++
             continue
         }
-
-        $answers = if ($Context.ContainsKey('Answers') -and $Context.Answers) { $Context.Answers } else { @{} }
-        Set-CABPromptMode -Unattended $true -Answers $answers
 
         $proceed = Read-CABConfirm -Question "Workspace README at '$($f.path)/README.md' differs from the template. Overwrite?" `
                                    -Default $false `
