@@ -54,14 +54,14 @@ Describe 'manifest/folders.yaml: actual repo manifest' {
 
     It 'declares ca-experiments with renamed_from: experiments' {
         $f = $script:m.folders | Where-Object { $_.path -eq 'ca-experiments' } | Select-Object -First 1
-        $f | Should -Not -BeNullOrEmpty
+        $f | Should -Not -BeNullOrEmpty -Because 'ca-experiments must be present in the live manifest'
         $f.renamed_from | Should -Be 'experiments'
         [bool]$f.optional | Should -Be $true
     }
 
     It 'declares ca-work-dirs as required' {
         $f = $script:m.folders | Where-Object { $_.path -eq 'ca-work-dirs' } | Select-Object -First 1
-        $f | Should -Not -BeNullOrEmpty
+        $f | Should -Not -BeNullOrEmpty -Because 'ca-work-dirs must be present in the live manifest'
         [bool]$f.optional | Should -Be $false
     }
 }

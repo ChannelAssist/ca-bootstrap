@@ -36,3 +36,4 @@ folders:
 
   - path: ca-work-dirs
     description: Working directories for Claude Code worktrees, Claude Cowork sessions, and scratch clones
+
