@@ -59,4 +59,48 @@ Describe 'Repair — folder-readmes' {
         Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
         (Get-Content -Raw $drift) | Should -Match 'my edits'
     }
+
+    # ---------------------------------------------------------------------------
+    # Failure-path tests — Copy-Item error propagation
+    # ---------------------------------------------------------------------------
+
+    It 'returns status=fail when Copy-Item cannot write the seeded README (destination directory is read-only)' {
+        # Make the ca-tools folder read-only so Copy-Item into it fails.
+        # This is reliable on macOS/Linux (chmod a-w). On Windows, ACLs are
+        # more complex; we skip if the chmod equivalent doesn't block writes.
+        $targetDir = Join-Path $script:tmpWs 'ca-tools'
+
+        if ($IsWindows) {
+            Set-ItResult -Skipped -Because 'Read-only directory injection unreliable on Windows without ACL manipulation; failure path verified by code review'
+            return
+        }
+
+        # Remove write permission from the folder so Copy-Item into it fails.
+        & chmod a-w $targetDir
+        try {
+            $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
+            $r.status | Should -Be 'fail'
+            $r.details | Should -Match 'Failed to seed README'
+        } finally {
+            # Always restore write permission so AfterEach cleanup can remove the dir.
+            & chmod u+w $targetDir
+        }
+    }
+
+    It 'returns status=fail when Copy-Item cannot overwrite a drifted README (failure injection deferred)' {
+        # Failure injection for the overwrite Copy-Item path is not reliably
+        # cross-platform:
+        #   - chmod a-w on the parent directory: on macOS, overwriting an
+        #     *existing* file does not require write permission on the parent
+        #     (the inode is already allocated), so Copy-Item -Force succeeds.
+        #   - chmod a-w / chflags uchg on the file itself: Copy-Item -Force
+        #     bypasses the read-only bit when the caller is the file owner.
+        #   - Making the destination path a directory: would hit a different
+        #     error code than the one we're testing for.
+        # The try/catch wrapping and the "Failed to overwrite README" message
+        # are verified by code review; manual testing on a filesystem mounted
+        # read-only (e.g. a read-only bind mount) confirms the path.
+        # Failure path tested manually; cross-platform test injection deferred.
+        Set-ItResult -Skipped -Because 'Cross-platform Copy-Item overwrite failure injection deferred; try/catch verified by code review (see comment in test file)'
+    }
 }

@@ -86,19 +86,26 @@ function Invoke-CABCommandUndo {
 
     Save-CABJournal
 
-    # Snapshot the journal post-undo for audit.
+    # Snapshot the journal post-undo for audit. Non-fatal — if the copy fails
+    # (e.g. disk full) we warn but don't fail the overall undo operation since
+    # the primary journal was already saved correctly above.
     $snapshot = "$(Get-CABJournalPath).undone-$(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH-mm-ssZ')"
-    Copy-Item -Path (Get-CABJournalPath) -Destination $snapshot -Force -ErrorAction SilentlyContinue
+    try {
+        Copy-Item -Path (Get-CABJournalPath) -Destination $snapshot -Force -ErrorAction Stop
+    } catch {
+        Write-CABColor Yellow "  ⚠ Could not create audit snapshot: $($_.Exception.Message)"
+        $snapshot = $null
+    }
 
     Write-Host ''
     if ($failed.Count -gt 0) {
         Write-CABStatus -Status fail -Message "$undone reversed, $skipped skipped, $($failed.Count) failed"
         foreach ($f in $failed) { Write-Host "    • $f" }
-        Write-Host "    Journal snapshot: $snapshot"
+        if ($snapshot) { Write-Host "    Journal snapshot: $snapshot" }
         return 7
     }
     Write-CABStatus -Status ok -Message "$undone reversed, $skipped skipped"
-    Write-Host "    Journal snapshot: $snapshot"
+    if ($snapshot) { Write-Host "    Journal snapshot: $snapshot" }
     return 0
 }
 
@@ -176,7 +183,14 @@ function Invoke-CABUndoEntry {
             if ($pathHash -ne $templateHash) {
                 return @{ status = 'skip'; details = "README diverged from template; preserving user edits: $path" }
             }
-            Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
+            try {
+                Remove-Item -Path $path -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to remove seeded README '$path': $($_.Exception.Message)" }
+            }
+            if (Test-Path $path) {
+                return @{ status = 'fail'; details = "Remove appeared to succeed but '$path' is still present afterwards." }
+            }
             return @{ status = 'ok'; details = "Removed seeded README: $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }

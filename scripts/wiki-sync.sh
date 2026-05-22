@@ -134,15 +134,15 @@ cmd_sync() {
 }
 
 # cmd_full — single "do it all" entrypoint. Clones the wiki if absent,
-# pulls latest, syncs, and pushes. Called by `make wiki-update`.
+# then delegates to cmd_sync (which owns the fetch/reset) and cmd_push.
+# The redundant fetch/reset that used to live here was removed: cmd_sync
+# already does a fetch+reset at its start, so doing it twice created two
+# separate reset-points — the second (in cmd_sync) always wins, but the
+# gap between them is a silent failure surface if the first reset succeeds
+# and the second fails after further state mutation. One place owns the pull.
 cmd_full() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
         cmd_clone
-    else
-        color_blue "Wiki clone exists at $WIKI_DIR; pulling latest..."
-        git -C "$WIKI_DIR" fetch --quiet origin
-        git -C "$WIKI_DIR" reset --quiet --hard origin/master 2>/dev/null \
-            || git -C "$WIKI_DIR" reset --quiet --hard origin/main
     fi
     cmd_sync
     cmd_push

@@ -226,15 +226,14 @@ function Cmd-Push {
 }
 
 function Cmd-Full {
+    # Clones the wiki if absent, then delegates to Cmd-Sync (which owns the
+    # fetch/reset) and Cmd-Push. The redundant fetch/reset that used to live
+    # here was removed: Cmd-Sync already does a fetch+reset at its start, so
+    # doing it twice created two separate reset-points — the second (in
+    # Cmd-Sync) always wins, but the gap between them is a silent failure
+    # surface. One place owns the pull.
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
         Cmd-Clone
-    } else {
-        Write-Info "Wiki clone exists at $($script:WikiDir); pulling latest..."
-        Invoke-Git -Arguments @('-C', $script:WikiDir, 'fetch', '--quiet', 'origin')
-        $rc = Invoke-Git -Arguments @('-C', $script:WikiDir, 'reset', '--quiet', '--hard', 'origin/master') -AllowFailure
-        if ($rc -ne 0) {
-            Invoke-Git -Arguments @('-C', $script:WikiDir, 'reset', '--quiet', '--hard', 'origin/main')
-        }
     }
     Cmd-Sync
     Cmd-Push

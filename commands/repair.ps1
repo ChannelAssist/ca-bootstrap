@@ -256,7 +256,14 @@ function Invoke-CABRepairFolderRenames {
 
         # State: only legacy, empty → rename silently.
         if (-not $newExists -and $legacyEmpty) {
-            Move-Item -Path $legacyPath -Destination $newPath -Force
+            try {
+                Move-Item -Path $legacyPath -Destination $newPath -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to rename '$legacyPath' → '$newPath': $($_.Exception.Message)" }
+            }
+            if (-not (Test-Path $newPath -PathType Container)) {
+                return @{ status = 'fail'; details = "Rename appeared to succeed but '$newPath' is not present afterwards." }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'silent-empty'
             } | Out-Null
@@ -280,7 +287,14 @@ function Invoke-CABRepairFolderRenames {
                 $skipped++
                 continue
             }
-            Move-Item -Path $legacyPath -Destination $newPath -Force
+            try {
+                Move-Item -Path $legacyPath -Destination $newPath -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to rename '$legacyPath' → '$newPath': $($_.Exception.Message)" }
+            }
+            if (-not (Test-Path $newPath -PathType Container)) {
+                return @{ status = 'fail'; details = "Rename appeared to succeed but '$newPath' is not present afterwards." }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'prompted-nonempty'
             } | Out-Null
@@ -290,7 +304,14 @@ function Invoke-CABRepairFolderRenames {
 
         # State: both exist, both empty → remove empty legacy.
         if ($newExists -and $legacyEmpty -and $newEmpty) {
-            Remove-Item -Path $legacyPath -Force
+            try {
+                Remove-Item -Path $legacyPath -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to remove empty legacy folder '$legacyPath': $($_.Exception.Message)" }
+            }
+            if (Test-Path $legacyPath) {
+                return @{ status = 'fail'; details = "Remove appeared to succeed but '$legacyPath' is still present afterwards." }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath } | Out-Null
             $touched++
             continue
@@ -298,7 +319,14 @@ function Invoke-CABRepairFolderRenames {
 
         # State: both exist, legacy empty + new has content → silent remove of empty legacy.
         if ($newExists -and $legacyEmpty -and -not $newEmpty) {
-            Remove-Item -Path $legacyPath -Force
+            try {
+                Remove-Item -Path $legacyPath -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to remove empty legacy folder '$legacyPath': $($_.Exception.Message)" }
+            }
+            if (Test-Path $legacyPath) {
+                return @{ status = 'fail'; details = "Remove appeared to succeed but '$legacyPath' is still present afterwards." }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'remove_empty_folder' -Data @{ path = $legacyPath; reason = 'new-populated' } | Out-Null
             $touched++
             continue
@@ -321,9 +349,20 @@ function Invoke-CABRepairFolderRenames {
                 continue
             }
             foreach ($child in $legacyChildren) {
-                Move-Item -Path $child.FullName -Destination $newPath -Force
+                try {
+                    Move-Item -Path $child.FullName -Destination $newPath -Force -ErrorAction Stop
+                } catch {
+                    return @{ status = 'fail'; details = "Failed to move child '$($child.FullName)' → '$newPath': $($_.Exception.Message)" }
+                }
             }
-            Remove-Item -Path $legacyPath -Force
+            try {
+                Remove-Item -Path $legacyPath -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Moved children but failed to remove now-empty legacy folder '$legacyPath': $($_.Exception.Message)" }
+            }
+            if (Test-Path $legacyPath) {
+                return @{ status = 'fail'; details = "Remove appeared to succeed but '$legacyPath' is still present afterwards." }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'rename_folder' -Data @{
                 from = $legacyPath; to = $newPath; mode = 'merge-into-empty-new'
             } | Out-Null
@@ -369,7 +408,11 @@ function Invoke-CABRepairFolderReadmes {
         if (-not (Test-Path $template)) { continue }
 
         if (-not (Test-Path $target)) {
-            Copy-Item -Path $template -Destination $target -Force
+            try {
+                Copy-Item -Path $template -Destination $target -Force -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to seed README at '$target': $($_.Exception.Message)" }
+            }
             Add-CABJournalEntry -Step 'repair' -Action 'seed_readme' -Data @{ path = $target; template = $template } | Out-Null
             $seeded++
             continue
@@ -392,7 +435,11 @@ function Invoke-CABRepairFolderReadmes {
             $skippedDrift++
             continue
         }
-        Copy-Item -Path $template -Destination $target -Force
+        try {
+            Copy-Item -Path $template -Destination $target -Force -ErrorAction Stop
+        } catch {
+            return @{ status = 'fail'; details = "Failed to overwrite README at '$target': $($_.Exception.Message)" }
+        }
         Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data @{ path = $target; template = $template } | Out-Null
         $overwritten++
     }
