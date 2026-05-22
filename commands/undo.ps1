@@ -167,12 +167,13 @@ function Invoke-CABUndoEntry {
             if (-not (Test-Path $path)) {
                 return @{ status = 'noop'; details = "README already absent: $path" }
             }
-            if (Test-Path $template) {
-                $pathHash     = (Get-FileHash -Path $path     -Algorithm SHA256).Hash
-                $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
-                if ($pathHash -ne $templateHash) {
-                    return @{ status = 'skip'; details = "README diverged from template; preserving user edits: $path" }
-                }
+            if (-not (Test-Path $template)) {
+                return @{ status = 'skip'; details = "Template no longer at recorded path; preserving (cannot verify content match): $path" }
+            }
+            $pathHash     = (Get-FileHash -Path $path     -Algorithm SHA256).Hash
+            $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
+            if ($pathHash -ne $templateHash) {
+                return @{ status = 'skip'; details = "README diverged from template; preserving user edits: $path" }
             }
             Remove-Item -Path $path -Force -ErrorAction SilentlyContinue
             return @{ status = 'ok'; details = "Removed seeded README: $path" }

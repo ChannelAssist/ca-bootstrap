@@ -25,7 +25,7 @@ ado-legacy/
 This is a read-only reference. `ca-bootstrap` does not manage its contents
 beyond creating the empty folder. If you populate it, those subdirectories
 belong to **you and the TFVC mapping** — not to `ca-bootstrap`. The
-[safety contract](../ca-tools/ca-bootstrap/docs/commands.md) applies: ca-bootstrap will not
+[safety contract](https://github.com/ChannelAssist/ca-bootstrap/blob/main/docs/commands.md) applies: ca-bootstrap will not
 delete this folder or its contents without an explicit confirmation
 prompt.
 
