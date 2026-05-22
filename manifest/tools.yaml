@@ -247,6 +247,24 @@ optional:
       macos:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
       linux:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
 
+  - id: claude-desktop
+    name: Claude Desktop (Anthropic GUI)
+    description: Standalone Claude chat app; the GUI companion to claude-code. Anthropic does not ship an official Linux build, so this entry is `not-linux` and is reported as N/A on Linux hosts.
+    # Path-based detection because Claude Desktop is an Electron GUI with
+    # no CLI entry-point. Windows: winget installs to %LOCALAPPDATA%; macOS:
+    # brew cask installs the .app bundle to /Applications.
+    platform: not-linux
+    check:
+      paths:
+        windows:
+          - "$env:LOCALAPPDATA\\AnthropicClaude\\claude.exe"
+          - "$env:LOCALAPPDATA\\Programs\\claude-desktop\\Claude.exe"
+        macos:
+          - "/Applications/Claude.app"
+    install:
+      windows: { type: winget, id: Anthropic.Claude }
+      macos:   { type: brew,   id: claude, cask: true }
+
   - id: copilot-cli
     name: GitHub Copilot CLI
     description: Standalone Copilot agent in the terminal (`copilot` binary). Distinct from `gh copilot`.

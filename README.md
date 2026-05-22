@@ -115,7 +115,8 @@ See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable l
 | Python 3.12 | winget Python.Python.3.12 | brew python@3.12 | apt/dnf python3.12 |
 | Docker Desktop | winget Docker.DockerDesktop | brew Docker | apt docker-ce |
 | VS Code | winget Microsoft.VisualStudioCode | brew --cask visual-studio-code | apt code |
-| Claude Code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
+| Claude Code (CLI) | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
+| Claude Desktop (GUI) | winget Anthropic.Claude | brew --cask claude | n/a (no official Linux build) |
 | GitHub Copilot CLI | npm i -g @github/copilot | npm i -g @github/copilot | npm i -g @github/copilot |
 | gh-copilot extension | gh extension install github/gh-copilot | gh extension install github/gh-copilot | gh extension install github/gh-copilot |
 | WSL2 + Ubuntu | wsl --install (optional) | n/a | n/a |
