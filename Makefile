@@ -54,17 +54,31 @@ smoke-clean: ## Remove smoke-test temp state
 
 .PHONY: setup
 setup: ## Run interactive setup wizard
+ifeq ($(OS),Windows_NT)
+	@printf "$(YELLOW)This Makefile uses bash idioms that don't work on Windows native shells.$(RESET)\n"
+	@printf "On Windows, use the PowerShell-native task runner instead:\n\n"
+	@printf "    $(BLUE).\\make.ps1 setup$(RESET)\n\n"
+	@printf "(WSL / Git Bash users: keep using `make setup` — only cmd/pwsh need the redirect.)\n"
+	@exit 2
+else
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 setup $(ARGS); ec=$$?; \
 		if [ $$ec -eq 1 ]; then \
 			exit 0; \
 		else \
 			exit $$ec; \
 		fi
-# ↑ Exit-code mapping: ca-bootstrap.ps1 returns 1 when the user voluntarily
-# quits (documented in docs/commands.md), but make's default failure
-# message ("make: *** [setup] Error 1") makes that look like a crash.
-# Map user-quit to exit 0 here so `make setup` returns silently on quit;
-# real errors (exit 2+ for failed installs, etc.) still propagate.
+endif
+# ↑ Windows guard uses GNU make's `ifeq` so it's evaluated before any
+# shell expansion — works even when cmd.exe / pwsh is the only available
+# shell and bash isn't on PATH. The `$(OS)` variable is set to
+# `Windows_NT` automatically by GNU make on Windows native (it's unset
+# under WSL, so WSL users still hit the normal bash path below).
+#
+# Exit-code mapping below: ca-bootstrap.ps1 returns 1 when the user
+# voluntarily quits (documented in docs/commands.md), but make's default
+# failure message ("make: *** [setup] Error 1") makes that look like a
+# crash. Map user-quit to exit 0 here so `make setup` returns silently
+# on quit; real errors (exit 2+ for failed installs, etc.) still propagate.
 
 .PHONY: doctor
 doctor: ## Run doctor (exit 2 = drift found, not a make failure)
