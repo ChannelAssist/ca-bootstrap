@@ -56,22 +56,41 @@ function Invoke-CABStep50 {
 
     $created = 0
     $kept = 0
+    $seededReadmes = 0
     foreach ($f in $required) {
         $full = Join-Path $Context.WorkspacePath $f.path
         if (Test-Path $full) {
             $kept++
-            continue
+        } else {
+            try {
+                [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
+                Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
+                $created++
+            } catch {
+                return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+            }
         }
-        try {
-            [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
-            Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
-            $created++
-        } catch {
-            return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+
+        # Seed README from templates/folder-readmes/<folder>/README.md, idempotently.
+        # Workspace READMEs are user-editable; the repo template is the source of truth.
+        $template = Join-Path $Context.RepoRoot (Join-Path 'templates/folder-readmes' (Join-Path $f.path 'README.md'))
+        $target   = Join-Path $full 'README.md'
+        if ((Test-Path $template) -and -not (Test-Path $target)) {
+            try {
+                Copy-Item -Path $template -Destination $target -ErrorAction Stop
+                Add-CABJournalEntry -Step '50-folders' -Action 'seed_readme' -Data @{
+                    path     = $target
+                    template = $template
+                } | Out-Null
+                $seededReadmes++
+            } catch {
+                # Non-fatal: a missing template should never block setup. Log and continue.
+                Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
+            }
         }
     }
 
-    return @{ status = 'ok'; details = "$created created, $kept kept" }
+    return @{ status = 'ok'; details = "$created created, $kept kept, $seededReadmes README(s) seeded" }
 }
 
 function Undo-CABStep50 {
