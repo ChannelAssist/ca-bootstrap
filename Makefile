@@ -6,9 +6,7 @@
 #   make test          - run Pester unit tests
 #   make lint          - PSScriptAnalyzer + markdownlint
 #   make format        - apply PSScriptAnalyzer auto-fix
-#   make wiki-sync     - mirror docs/ to the GitHub Wiki working tree
-#   make wiki-push     - commit + push wiki changes
-#   make wiki-update   - sync + push (typical workflow)
+#   make wiki-update   - clone-if-missing + sync + push the GitHub wiki
 #   make clean         - remove ephemeral state under /tmp/cab-* and ~/.ca-bootstrap/cache
 
 SHELL := /bin/bash
@@ -200,32 +198,19 @@ format: ## Apply PSScriptAnalyzer auto-fix where supported
 	@printf "$(GREEN)✓ Formatted$(RESET)\n"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Wiki
+# Wiki sync — single "do it all" target. Clones if missing, pulls
+# latest, syncs README + DESIGN + docs/, transforms links, regenerates
+# sidebar + footer, commits and pushes.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 WIKI_DIR := wiki
 
-.PHONY: wiki-clone
-wiki-clone: ## Clone the GitHub wiki repo into ./wiki (requires gh auth)
-	@printf "$(BLUE)Cloning GitHub Wiki...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh clone
-
-.PHONY: wiki-sync
-wiki-sync: ## Mirror README + DESIGN + docs/ into ./wiki (no push)
-	@printf "$(BLUE)Syncing documentation to wiki working tree...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh sync
-	@printf "$(GREEN)✓ Documentation synced to wiki$(RESET)\n"
-
-.PHONY: wiki-push
-wiki-push: ## Commit and push wiki changes
-	@printf "$(BLUE)Pushing wiki changes...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh push
-
 .PHONY: wiki-update
-wiki-update: wiki-sync wiki-push ## Sync + push (typical workflow)
+wiki-update: ## Clone-if-missing + sync + push the GitHub wiki in one shot
+	@printf "$(BLUE)Updating GitHub Wiki...$(RESET)\n"
+	@chmod +x scripts/wiki-sync.sh
+	@./scripts/wiki-sync.sh full
+	@printf "$(GREEN)✓ Wiki updated$(RESET)\n"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Releases
