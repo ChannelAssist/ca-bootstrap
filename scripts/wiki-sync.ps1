@@ -87,7 +87,7 @@ function Transform-Links {
 
 function Cmd-Sync {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-update' first."
+        Write-Bad "Wiki not cloned. Run './scripts/wiki-sync.ps1 clone' first (or 'full' / './make.ps1 wiki-update' for the end-to-end flow)."
         exit 1
     }
 
@@ -166,7 +166,7 @@ function Cmd-Sync {
 
 function Cmd-Push {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-update' first."
+        Write-Bad "Wiki not cloned. Run './scripts/wiki-sync.ps1 clone' first (or 'full' / './make.ps1 wiki-update' for the end-to-end flow)."
         exit 1
     }
 

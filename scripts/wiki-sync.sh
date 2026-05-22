@@ -74,7 +74,7 @@ transform_links() {
 
 cmd_sync() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-update' first."
+        color_red "Wiki not cloned. Run './scripts/wiki-sync.sh clone' first (or 'full' / 'make wiki-update' for the end-to-end flow)."
         exit 1
     fi
 
@@ -151,7 +151,7 @@ cmd_full() {
 # Push with reconcile-on-divergence (same pattern as Keystone wiki-sync.sh).
 cmd_push() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-update' first."
+        color_red "Wiki not cloned. Run './scripts/wiki-sync.sh clone' first (or 'full' / 'make wiki-update' for the end-to-end flow)."
         exit 1
     fi
     cd "$WIKI_DIR"
