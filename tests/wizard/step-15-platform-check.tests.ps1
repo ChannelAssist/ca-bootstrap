@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # tests/wizard/step-15-platform-check.tests.ps1 — Pester unit tests for
-# the Windows pre-flight step introduced in commit 1d2e50a (AB#39916).
+# the Windows pre-flight step introduced under AB#39916 (PR #73).
 #
 # The probes inside step 15 each query real Windows surfaces
 # (winget, ExecPolicy, Defender, %TEMP%, MSI cache). These tests
