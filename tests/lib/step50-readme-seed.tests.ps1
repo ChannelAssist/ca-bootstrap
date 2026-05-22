@@ -66,6 +66,19 @@ Describe 'Step 50 — README seeding from templates/folder-readmes/' {
         @($entries).Count | Should -BeGreaterOrEqual 6
     }
 
+    It 'seeds README.md for an optional folder that already exists on disk' {
+        # Optional folders (e.g. ca-experiments/) are not created by step 50.
+        # But if one exists on disk (manually created or pre-existing), step 50
+        # must seed its README just like it does for required folders.
+        $optPath = Join-Path $script:tmpWs 'ca-experiments'
+        New-Item -ItemType Directory -Path $optPath -Force | Out-Null
+
+        $result = Invoke-CABStep50 -Context $script:ctx
+        $result.status | Should -Be 'ok'
+        Test-Path (Join-Path $optPath 'README.md') | Should -BeTrue `
+            -Because 'optional folder exists on disk — step 50 must seed its README'
+    }
+
     It 'warns when a folder template is missing instead of silently skipping' {
         # Point RepoRoot at a temp dir that has no templates/folder-readmes/
         # so every template lookup misses, triggering the warning path.

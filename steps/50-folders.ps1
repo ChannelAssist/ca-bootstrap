@@ -92,6 +92,34 @@ function Invoke-CABStep50 {
         }
     }
 
+    # Seed READMEs for OPTIONAL folders that exist on disk. Optional folders
+    # are not created by this step (they're created later by step 60 when their
+    # repo group is cloned, or manually by the user). We only seed when the
+    # folder already exists — never create folders here that the user didn't
+    # ask for. Required folders were handled by the loop above.
+    $optional = @($manifest.folders | Where-Object { $_.optional })
+    foreach ($f in $optional) {
+        $full = Join-Path $Context.WorkspacePath $f.path
+        if (-not (Test-Path $full -PathType Container)) { continue }
+        $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
+        $target   = Join-Path $full 'README.md'
+        if (-not (Test-Path $template)) {
+            Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
+            continue
+        }
+        if (Test-Path $target) { continue }
+        try {
+            Copy-Item -Path $template -Destination $target -ErrorAction Stop
+            Add-CABJournalEntry -Step '50-folders' -Action 'seed_readme' -Data @{
+                path     = $target
+                template = $template
+            } | Out-Null
+            $seededReadmes++
+        } catch {
+            Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
+        }
+    }
+
     return @{ status = 'ok'; details = "$created created, $kept kept, $seededReadmes README(s) seeded" }
 }
 

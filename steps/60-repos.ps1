@@ -225,6 +225,34 @@ function Invoke-CABStep60 {
         Write-CABColor Yellow "    everything this session tracked. Re-run setup to re-clone."
         Write-Host ''
     }
+    # After cloning, optional workspace folders (e.g. ca-experiments/) may
+    # have been created as a side-effect of cloning repos that live inside
+    # them. Step 50 only seeds READMEs for optional folders that existed at
+    # step-50 time — which for opt-in groups is never (they didn't exist yet).
+    # Seed them now for any that exist on disk.
+    $foldersManifestPath = Join-Path $Context.RepoRoot 'manifest/folders.yaml'
+    if (Test-Path $foldersManifestPath) {
+        $fManifest = Read-CABManifest -Path $foldersManifestPath -Quiet
+        $optionalFolders = @($fManifest.folders | Where-Object { $_.optional })
+        foreach ($f in $optionalFolders) {
+            $full = Join-Path $Context.WorkspacePath $f.path
+            if (-not (Test-Path $full -PathType Container)) { continue }
+            $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
+            $target   = Join-Path $full 'README.md'
+            if (-not (Test-Path $template)) { continue }
+            if (Test-Path $target) { continue }
+            try {
+                Copy-Item -Path $template -Destination $target -ErrorAction Stop
+                Add-CABJournalEntry -Step '60-repos' -Action 'seed_readme' -Data @{
+                    path     = $target
+                    template = $template
+                } | Out-Null
+            } catch {
+                Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
+            }
+        }
+    }
+
     $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalMismatch mismatched, $totalFailed failed"
     if ($totalFailed -gt 0) {
         return @{ status = 'fail'; details = "$summary. Errors:`n  $($failedDetails -join "`n  ")" }
