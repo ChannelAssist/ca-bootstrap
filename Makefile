@@ -49,7 +49,7 @@ help: ## Show this help (default target)
 	@echo "$(BOLD)$(GREEN)Quality:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; $$1 == "test" || $$1 == "lint" || $$1 == "format" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
-	@echo "$(BOLD)Smoke & Cleanup:$(RESET)"
+	@echo "$(BOLD)$(YELLOW)Smoke & Cleanup:$(RESET)"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^smoke/ || $$1 == "clean" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BOLD)$(CYAN)Wiki:$(RESET)"
@@ -83,6 +83,11 @@ smoke: ## Run an end-to-end smoke test against /tmp (no real workspace touched)
 smoke-clean: ## Remove smoke-test temp state
 	@rm -rf $(SMOKE_STATE) $(SMOKE_WORKSPACE)
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
+
+.PHONY: clean
+clean: smoke-clean ## Remove caches and ephemeral state
+	@rm -rf $(HOME)/.ca-bootstrap/cache
+	@printf "$(GREEN)✓ Cleaned cache and smoke state$(RESET)\n"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Workspace
@@ -221,11 +226,6 @@ wiki-push: ## Commit and push wiki changes
 
 .PHONY: wiki-update
 wiki-update: wiki-sync wiki-push ## Sync + push (typical workflow)
-
-.PHONY: clean
-clean: smoke-clean ## Remove caches and ephemeral state
-	@rm -rf $(HOME)/.ca-bootstrap/cache
-	@printf "$(GREEN)✓ Cleaned cache and smoke state$(RESET)\n"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Releases
