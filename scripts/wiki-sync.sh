@@ -133,6 +133,21 @@ cmd_sync() {
     color_green "Wiki working tree synced."
 }
 
+# cmd_full — single "do it all" entrypoint. Clones the wiki if absent,
+# pulls latest, syncs, and pushes. Called by `make wiki-update`.
+cmd_full() {
+    if [[ ! -d "$WIKI_DIR/.git" ]]; then
+        cmd_clone
+    else
+        color_blue "Wiki clone exists at $WIKI_DIR; pulling latest..."
+        git -C "$WIKI_DIR" fetch --quiet origin
+        git -C "$WIKI_DIR" reset --quiet --hard origin/master 2>/dev/null \
+            || git -C "$WIKI_DIR" reset --quiet --hard origin/main
+    fi
+    cmd_sync
+    cmd_push
+}
+
 # Push with reconcile-on-divergence (same pattern as Keystone wiki-sync.sh).
 cmd_push() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
@@ -179,14 +194,15 @@ main() {
     local cmd="${1:-help}"
     case "$cmd" in
         clone) cmd_clone ;;
-        sync)  cmd_sync ;;
-        push)  cmd_push ;;
+        sync)  cmd_sync  ;;
+        push)  cmd_push  ;;
+        full)  cmd_full  ;;
         help|--help|-h)
-            echo "Usage: $0 {clone|sync|push}"
+            echo "Usage: $0 {clone|sync|push|full}"
             ;;
         *)
             color_red "Unknown command: $cmd"
-            echo "Usage: $0 {clone|sync|push}"
+            echo "Usage: $0 {clone|sync|push|full}"
             exit 1
             ;;
     esac
