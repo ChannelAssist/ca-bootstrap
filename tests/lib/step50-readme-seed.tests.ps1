@@ -31,6 +31,10 @@ Describe 'Step 50 — README seeding from templates/folder-readmes/' {
         New-Item -ItemType Directory -Path $script:tmpWs -Force | Out-Null
     }
     AfterEach {
+        # Release transcript handle + session lock so temp dirs can be removed on Windows.
+        try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
+        try { Unlock-CABSession } catch { Write-Verbose "No session lock to release." }
+
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }

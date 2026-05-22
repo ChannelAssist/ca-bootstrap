@@ -413,7 +413,10 @@ function Invoke-Wikiupdate {
     Write-Host '[INFO] Updating GitHub Wiki...' -ForegroundColor Blue
     $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
     & $script:Pwsh -NoLogo -File $scriptPath full
-    if ($LASTEXITCODE -ne 0) { throw "wiki-sync.ps1 full failed (exit $LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Bad "Wiki update failed (exit $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
     Write-Host '[OK]   Wiki updated' -ForegroundColor Green
 }
 
