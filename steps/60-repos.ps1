@@ -239,7 +239,10 @@ function Invoke-CABStep60 {
             if (-not (Test-Path $full -PathType Container)) { continue }
             $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
             $target   = Join-Path $full 'README.md'
-            if (-not (Test-Path $template)) { continue }
+            if (-not (Test-Path $template)) {
+                Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
+                continue
+            }
             if (Test-Path $target) { continue }
             try {
                 Copy-Item -Path $template -Destination $target -ErrorAction Stop

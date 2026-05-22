@@ -89,6 +89,31 @@ Describe 'Step 50 — README seeding from templates/folder-readmes/' {
         $result.details | Should -Match 'not a directory'
     }
 
+    It 'warns when a regular file sits at an optional-folder path but still returns ok' {
+        # Pre-create a FILE (not a directory) at an optional-folder path.
+        # The step must not fail (optional-folder collisions are non-fatal) but
+        # must emit the "exists but is not a directory" warning introduced in
+        # cycle-3 to match the required-folder behaviour from cycle-2.
+        $collision = Join-Path $script:tmpWs 'ca-experiments'
+        Set-Content -Path $collision -Value 'I am a file, not a directory' -Encoding utf8
+
+        $allOutput = Invoke-CABStep50 -Context $script:ctx 6>&1
+
+        # Status must still be ok — optional-folder collisions are non-fatal.
+        $result = $allOutput | Where-Object { $_ -is [hashtable] }
+        if (-not $result) {
+            $result = $allOutput | Where-Object { $_.Keys -contains 'status' }
+        }
+        $result.status | Should -Be 'ok' -Because 'file-at-optional-folder-path must not fail the step'
+
+        # The warning must have been emitted.
+        $warnings = $allOutput |
+            Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+            Where-Object { $_.MessageData -match 'exists but is not a directory' }
+        ($warnings | Measure-Object).Count | Should -BeGreaterOrEqual 1 `
+            -Because 'a file-at-optional-folder-path must produce a visible warning'
+    }
+
     It 'warns when a folder template is missing instead of silently skipping' {
         # Point RepoRoot at a temp dir that has no templates/folder-readmes/
         # so every template lookup misses, triggering the warning path.

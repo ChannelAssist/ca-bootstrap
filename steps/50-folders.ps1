@@ -104,7 +104,12 @@ function Invoke-CABStep50 {
     $optional = @($manifest.folders | Where-Object { $_.optional })
     foreach ($f in $optional) {
         $full = Join-Path $Context.WorkspacePath $f.path
-        if (-not (Test-Path $full -PathType Container)) { continue }
+        if (-not (Test-Path $full -PathType Container)) {
+            if (Test-Path $full) {
+                Write-CABColor Yellow "    ⚠ Optional folder path '$full' exists but is not a directory — skipping README seed"
+            }
+            continue
+        }
         $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
         $target   = Join-Path $full 'README.md'
         if (-not (Test-Path $template)) {
