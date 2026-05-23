@@ -94,6 +94,19 @@ Describe 'Repair — folder-renames' {
         (Test-Path (Join-Path $new    'b.txt')) | Should -BeTrue
     }
 
+    It 'treats manual folder-rename outcomes as non-success for targeted repair exit' {
+        $legacy = Join-Path $script:tmpWs 'experiments'
+        $new    = Join-Path $script:tmpWs 'ca-experiments'
+        New-Item -ItemType Directory -Path $legacy -Force | Out-Null
+        New-Item -ItemType Directory -Path $new    -Force | Out-Null
+        Set-Content -Path (Join-Path $legacy 'a.txt') -Value 'x' -Encoding utf8
+        Set-Content -Path (Join-Path $new    'b.txt') -Value 'y' -Encoding utf8
+
+        $r = Invoke-CABRepairTarget -Target 'folder-renames' -Context $script:ctx
+        $r.ok | Should -BeFalse
+        $r.details | Should -Match 'Manual intervention required'
+    }
+
     It 'removes an empty legacy when both exist and new is the populated one' {
         $legacy = Join-Path $script:tmpWs 'experiments'
         $new    = Join-Path $script:tmpWs 'ca-experiments'

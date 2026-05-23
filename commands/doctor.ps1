@@ -116,9 +116,19 @@ function Invoke-CABDoctorCheck {
 
             if (-not $legacyExists) { continue }
 
-            $legacyHasContent = $legacyExists -and (Get-ChildItem -Path $legacyPath -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
-            $newHasContent    = $newExists    -and (Get-ChildItem -Path $newPath    -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
             $id = "folder-rename:$($f.renamed_from)"
+
+            try {
+                $legacyHasContent = $legacyExists -and [bool](Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1)
+                $newHasContent    = $newExists    -and [bool](Get-ChildItem -Path $newPath    -Force -ErrorAction Stop | Select-Object -First 1)
+            } catch {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'fail'
+                    details = "Unable to inspect folder contents for '$($f.renamed_from)/' or '$($f.path)/': $($_.Exception.Message)"
+                })
+                continue
+            }
 
             if (-not $newExists) {
                 $checks.Add([ordered]@{

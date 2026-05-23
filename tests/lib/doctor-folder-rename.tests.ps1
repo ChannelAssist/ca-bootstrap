@@ -80,4 +80,18 @@ Describe 'Doctor — folder-rename check' {
         $hit.status | Should -Be 'fail'
         $hit.details | Should -Match 'manual'
     }
+
+    It 'fails when folder content enumeration errors' {
+        $legacy = Join-Path $script:tmpWs 'experiments'
+        New-Item -ItemType Directory -Path $legacy -Force | Out-Null
+
+        Mock -CommandName Get-ChildItem -ParameterFilter { $Path -eq $legacy } -MockWith {
+            throw 'access denied'
+        }
+
+        $checks = Invoke-CABDoctorCheck -Context $script:ctx
+        $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
+        $hit.status | Should -Be 'fail'
+        $hit.details | Should -Match 'Unable to inspect folder contents'
+    }
 }

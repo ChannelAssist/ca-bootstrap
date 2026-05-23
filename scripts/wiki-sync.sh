@@ -114,13 +114,14 @@ cmd_sync() {
         echo ''
         echo '## Reference'
         # Sort case-insensitively to match the PowerShell peer's Sort-Object Name.
-        for f in $(printf '%s\n' "$WIKI_DIR"/*.md | LC_ALL=C sort); do
+        # Use NUL-delimited iteration so filenames with spaces are handled safely.
+        while IFS= read -r -d '' f; do
             base=$(basename "$f" .md)
             case "$base" in
                 Home|DESIGN|_Sidebar|_Footer) continue ;;
             esac
             echo "- [[$base]]"
-        done
+        done < <(find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' -print0 | LC_ALL=C sort -z -f)
     } > "$WIKI_DIR/_Sidebar.md"
 
     color_blue "Stamping footer..."

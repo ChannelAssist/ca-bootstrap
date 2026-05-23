@@ -148,7 +148,7 @@ function Invoke-CABRepairTarget {
         }
         'folder-renames' {
             $r = Invoke-CABRepairFolderRenames -Context $Context
-            $isOk = $r.status -in 'ok','noop','manual'
+            $isOk = $r.status -in 'ok','noop'
             $details = if ($r.status -eq 'manual') { "Manual intervention required: $($r.details)" } else { $r.details }
             return @{ ok = $isOk; details = $details }
         }
