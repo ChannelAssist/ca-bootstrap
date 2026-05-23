@@ -13,6 +13,9 @@
 #   --target identity           re-write per-folder git identity
 #   --target gh-auth            re-run gh auth login
 #   --target folders            recreate any missing top-level folders
+#   --target folder-tree-refresh regenerate the "## Tree" section of each
+#                               workspace folder's README from the live
+#                               manifest (idempotent; explicit-only)
 #   --target journal            rebuild the journal from on-disk state
 
 function Invoke-CABCommandRepair {
@@ -134,6 +137,11 @@ function Invoke-CABRepairTarget {
             . (Join-Path $Context.RepoRoot 'steps/50-folders.ps1')
             $r = Invoke-CABStep50 -Context $Context
             return @{ ok = ($r.status -in 'ok','skip'); details = $r.details }
+        }
+        'folder-tree-refresh' {
+            . (Join-Path $Context.RepoRoot 'lib/folder-tree-refresh.ps1')
+            $r = Invoke-CABFolderTreeRefresh -Context $Context
+            return @{ ok = ($r.status -in 'ok','warn'); details = $r.details }
         }
         'gh-auth' {
             . (Join-Path $Context.RepoRoot 'steps/30-gh-auth.ps1')

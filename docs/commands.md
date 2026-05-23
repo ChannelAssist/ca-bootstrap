@@ -188,6 +188,7 @@ You **must** specify either `--all` or `--target` — there is no default to pre
 | `--target identity` | Re-write per-folder git identity |
 | `--target gh-auth` | Re-run `gh auth login` |
 | `--target folders` | Recreate any missing top-level folders |
+| `--target folder-tree-refresh` | Regenerate the `## Tree` section of each workspace folder's `README.md` from `manifest/repos.yaml`. Idempotent; only invoked explicitly (no `--all` coverage) because the hand-written templates may carry intentional grouping that a flat regenerate would flatten. Skips folders whose README has no `## Tree` heading or fenced code block (warning, no error). |
 | `--target journal` | Rebuild the journal from on-disk state |
 
 ### Flags
