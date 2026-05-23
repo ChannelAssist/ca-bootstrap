@@ -59,7 +59,7 @@ checking what's inside.** Sub-folders may belong to:
 contents**. Any repair / undo flow that would remove a non-empty folder
 or a folder containing sub-folders requires an explicit confirmation
 prompt. See the safety contract in
-[`commands.md`](https://github.com/ChannelAssist/ca-bootstrap/blob/main/docs/commands.md) for the full rules.
+[`commands.md`](https://github.com/ChannelAssist/ca-bootstrap/blob/dev/docs/commands.md) for the full rules.
 
 ## Refresh
 

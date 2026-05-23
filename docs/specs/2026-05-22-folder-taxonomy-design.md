@@ -178,8 +178,8 @@ After the existing `folders` check, iterate folders that declare `renamed_from:`
 
 | `<workspace>/<old>` exists | `<workspace>/<new>` exists | Status | Details | Fix |
 |---|---|---|---|---|
-| no  | yes | `ok`   | (skip — current state is correct) | — |
-| no  | no  | `ok`   | (no folder yet — `folders` check already covers absent required folders) | — |
+| no  | yes | (no row emitted)   | (skip — current state is correct; doctor `continue`s) | — |
+| no  | no  | (no row emitted)   | (no folder yet — `folders` check already covers absent required folders; doctor `continue`s) | — |
 | yes | no  | `warn` | "Legacy folder `<old>/` present, expected `<new>/`. Will rename via repair." | `repair --target folder-renames` |
 | yes | yes, **at least one empty** | `warn` | "Legacy folder `<old>/` present alongside `<new>/` — repair will merge." | `repair --target folder-renames` |
 | yes | yes, **both contain files** | `fail` | "Both `<old>/` and `<new>/` contain files — manual merge required." | (no auto-fix; manual instructions in repair output) |
@@ -278,24 +278,14 @@ Targets **removed**: `wiki-clone`, `wiki-sync`, `wiki-push`.
 New script subcommand in `scripts/wiki-sync.sh` (and the PowerShell peer `scripts/wiki-sync.ps1`):
 
 ```bash
-cmd_full() {
-    # 1. Ensure wiki clone exists
-    if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        cmd_clone
-    else
-        color_blue "Wiki clone exists; pulling latest..."
-        git -C "$WIKI_DIR" fetch --quiet origin
-        git -C "$WIKI_DIR" reset --quiet --hard origin/master 2>/dev/null \
-            || git -C "$WIKI_DIR" reset --quiet --hard origin/main
-    fi
-
-    # 2. Sync (existing function — unchanged)
-    cmd_sync
-
-    # 3. Push (existing function — unchanged, with reconcile-on-divergence)
-    cmd_push
-}
+cmd_full:
+  if !exists(./wiki/.git):
+    cmd_clone
+  cmd_sync   # owns the pull (fetch + reset)
+  cmd_push
 ```
+
+Earlier drafts of this design had `cmd_full` perform its own fetch/reset before calling `cmd_sync`. Code review caught the redundancy in implementation cycle 4; `cmd_sync` is now the sole owner of the wiki working-tree state.
 
 The internal `clone|sync|push` subcommands stay in the script — they're called by `full` and remain useful for ad-hoc debugging (`./scripts/wiki-sync.sh sync` to preview without pushing). Only the **Makefile surface** is consolidated; the script API stays composable.
 
