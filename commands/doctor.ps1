@@ -63,7 +63,7 @@ function Invoke-CABDoctorCheck {
     $workspaceEntries = @(Get-CABJournalEntry -Action 'select_workspace' -Step '40-workspace')
     if ($workspaceEntries.Count -eq 0) {
         $workspaceEntries = @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace' |
-            Where-Object { $_.PSObject.Properties['is_workspace_root'] -and $_.is_workspace_root })
+            Where-Object { try { [bool]$_.is_workspace_root } catch { $false } })
     }
     if ($workspaceEntries.Count -gt 0) {
         $workspace = [string]$workspaceEntries[-1].path
@@ -95,7 +95,7 @@ function Invoke-CABDoctorCheck {
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
         $expected = @($manifest.folders | Where-Object {
-            -not ($_.PSObject.Properties['optional'] -and $_.optional)
+            try { -not $_.optional } catch { $true }
         })
         $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
         $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
@@ -119,7 +119,7 @@ function Invoke-CABDoctorCheck {
     if (Test-Path $workspace) {
         $foldersManifest = if ($manifest) { $manifest } else { Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet }
         $renamed = @($foldersManifest.folders | Where-Object {
-            $_.PSObject.Properties['renamed_from'] -and $_.renamed_from
+            try { [bool]$_.renamed_from } catch { $false }
         })
         foreach ($f in $renamed) {
             $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
@@ -234,7 +234,7 @@ function Invoke-CABDoctorCheck {
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml') -Quiet
         $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object {
-            -not ($_.PSObject.Properties['opt_in'] -and $_.opt_in)
+            try { -not $_.opt_in } catch { $true }
         })
         $expectedRepoSlugs = @($expectedRepos | ForEach-Object { $_.repo })
         $missingRepos = New-Object System.Collections.Generic.List[string]
