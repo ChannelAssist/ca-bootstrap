@@ -118,29 +118,7 @@ function Invoke-CABDoctorCheck {
 
             $id = "folder-rename:$($f.renamed_from)"
             $legacyHasContent = $false
-            try {
-                $legacyHasContent = $legacyExists -and ((Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null)
-            } catch {
-                $checks.Add([ordered]@{
-                    id      = $id
-                    status  = 'fail'
-                    details = "Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required."
-                })
-                continue
-            }
-            $newHasContent = $false
-            if ($newExists) {
-                try {
-                    $newHasContent = (Get-ChildItem -Path $newPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null
-                } catch {
-                    $checks.Add([ordered]@{
-                        id      = $id
-                        status  = 'fail'
-                        details = "Cannot enumerate '$($f.path)/' contents ($($_.Exception.Message)) — manual resolution required."
-                    })
-                    continue
-                }
-            }
+            $newHasContent    = $false
 
             try {
                 $legacyHasContent = $legacyExists -and [bool](Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1)
