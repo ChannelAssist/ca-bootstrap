@@ -436,6 +436,11 @@ function Invoke-CABRepairFolderReadmes {
         return @{ status = 'fail'; details = "Workspace not set or missing: $ws" }
     }
 
+    # Source the README-seed helper if not already loaded.
+    if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+        . (Join-Path $Context.RepoRoot 'lib/folder-readmes.ps1')
+    }
+
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
     $seeded = 0; $overwritten = 0; $skippedDrift = 0; $matched = 0
 
@@ -448,13 +453,15 @@ function Invoke-CABRepairFolderReadmes {
         if (-not (Test-Path $template)) { continue }
 
         if (-not (Test-Path $target)) {
-            try {
-                Copy-Item -Path $template -Destination $target -Force -ErrorAction Stop
-            } catch {
-                return @{ status = 'fail'; details = "Failed to seed README at '$target': $($_.Exception.Message)" }
+            $result = Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath ([string]$f.path) `
+                -StepName 'repair'
+            if ($result -eq 'seeded') { $seeded++ }
+            elseif ($result -eq 'failed') {
+                return @{ status = 'fail'; details = "Failed to seed README at '$target'" }
             }
-            Add-CABJournalEntry -Step 'repair' -Action 'seed_readme' -Data @{ path = $target; template = $template } | Out-Null
-            $seeded++
             continue
         }
 

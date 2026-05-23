@@ -1,6 +1,11 @@
 ﻿#requires -Version 7.0
 # steps/50-folders.ps1 — create the standard folder skeleton in the workspace.
 
+# Source the README-seed helper (used here + in step 60 + in repair).
+if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '../lib/folder-readmes.ps1')
+}
+
 function Test-CABStep50 {
     [CmdletBinding()]
     param([hashtable]$Context)
@@ -78,21 +83,14 @@ function Invoke-CABStep50 {
         # README seeding: idempotent, never overwrites a user-edited README.
         # Missing template → warn (signals the manifest is out of sync with templates/).
         # Copy failure → warn and continue (non-fatal).
-        $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
-        $target   = Join-Path $full 'README.md'
-        if (-not (Test-Path $template)) {
-            Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
-        } elseif (-not (Test-Path $target)) {
-            try {
-                Copy-Item -Path $template -Destination $target -ErrorAction Stop
-                Add-CABJournalEntry -Step '50-folders' -Action 'seed_readme' -Data @{
-                    path     = $target
-                    template = $template
-                } | Out-Null
-                $seededReadmes++
-            } catch {
-                Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
-            }
+        $folder = Join-Path $Context.WorkspacePath $f.path
+        if (Test-Path $folder -PathType Container) {
+            $result = Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath $f.path `
+                -StepName '50-folders'
+            if ($result -eq 'seeded') { $seededReadmes++ }
         }
     }
 
@@ -110,23 +108,12 @@ function Invoke-CABStep50 {
             }
             continue
         }
-        $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
-        $target   = Join-Path $full 'README.md'
-        if (-not (Test-Path $template)) {
-            Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
-            continue
-        }
-        if (Test-Path $target) { continue }
-        try {
-            Copy-Item -Path $template -Destination $target -ErrorAction Stop
-            Add-CABJournalEntry -Step '50-folders' -Action 'seed_readme' -Data @{
-                path     = $target
-                template = $template
-            } | Out-Null
-            $seededReadmes++
-        } catch {
-            Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
-        }
+        $result = Invoke-CABSeedFolderReadme `
+            -RepoRoot $Context.RepoRoot `
+            -WorkspacePath $Context.WorkspacePath `
+            -FolderPath $f.path `
+            -StepName '50-folders'
+        if ($result -eq 'seeded') { $seededReadmes++ }
     }
 
     return @{ status = 'ok'; details = "$created created, $kept kept, $seededReadmes README(s) seeded" }

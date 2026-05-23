@@ -1,6 +1,11 @@
 ﻿#requires -Version 7.0
 # steps/60-repos.ps1 — clone repos group by group.
 
+# Source the README-seed helper (used here + in step 50 + in repair).
+if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '../lib/folder-readmes.ps1')
+}
+
 function Test-CABStep60 {
     [CmdletBinding()]
     param([hashtable]$Context)
@@ -242,22 +247,11 @@ function Invoke-CABStep60 {
                 }
                 continue
             }
-            $template = Join-Path $Context.RepoRoot 'templates/folder-readmes' $f.path 'README.md'
-            $target   = Join-Path $full 'README.md'
-            if (-not (Test-Path $template)) {
-                Write-CABColor Yellow "    ⚠ No README template for $($f.path) — skipping seed"
-                continue
-            }
-            if (Test-Path $target) { continue }
-            try {
-                Copy-Item -Path $template -Destination $target -ErrorAction Stop
-                Add-CABJournalEntry -Step '60-repos' -Action 'seed_readme' -Data @{
-                    path     = $target
-                    template = $template
-                } | Out-Null
-            } catch {
-                Write-CABColor Yellow "    ⚠ Could not seed README for $($f.path): $($_.Exception.Message)"
-            }
+            Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath $f.path `
+                -StepName '60-repos' | Out-Null
         }
     }
 
