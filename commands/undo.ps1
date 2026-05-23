@@ -233,9 +233,11 @@ function Invoke-CABUndoEntry {
         'refresh_readme'         {
             # refresh_readme actions overwrote a drifted README with the
             # template. The original drift content was NOT captured in the
-            # journal, so undo cannot restore it.
+            # journal, so undo cannot restore it. Returning 'noop' marks the
+            # entry undone so it doesn't reappear in subsequent undo runs.
+            # ('skip' would leave it open; 'noop' signals "handled — move on".)
             $path = [string]$Entry.path
-            return @{ status = 'noop'; details = "refresh_readme is not undoable (original drift content not captured): $path" }
+            return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }
