@@ -138,7 +138,15 @@ $context = @{
 
 # Banner + session start. Suppressed when --json or --quiet is set so the
 # JSON / one-line-summary output isn't polluted with banner text on stdout.
+#
+# IMPORTANT: only the read-only commands (doctor, manifest-drift) are
+# allowed to skip Start-CABSession. Every command that may call
+# Add-CABJournalEntry MUST have a paired Start-CABSession upstream;
+# otherwise the journal write throws "No active session" mid-run and the
+# audit trail is lost. See the audit of Add-CABJournalEntry callers.
+$readOnlyCommand = $Command -in @('doctor','manifest-drift')
 $silent = $Json -or $Quiet
+$skipSession = $silent -and $readOnlyCommand
 if ($context.TestMode -and -not $silent) {
     Write-CABColor Yellow '  ⚠ TEST MODE — gh auth, tool installs, and remote clones may be stubbed.'
 }
@@ -158,9 +166,11 @@ if ($ForceUnlock) {
 }
 
 try {
-    if ($silent) {
-        # JSON / quiet modes avoid stdout noise. manifest-drift is read-only,
-        # so its silent path can skip journal I/O entirely.
+    if ($skipSession) {
+        # JSON / quiet modes for the read-only commands avoid stdout noise.
+        # manifest-drift is read-only, so its silent path can skip journal
+        # I/O entirely; doctor still reads the journal to cross-check
+        # detected state against recorded actions.
         if ($Command -ne 'manifest-drift') {
             Read-CABJournal | Out-Null
         }
@@ -257,7 +267,7 @@ catch {
     $exitCode = 99
 }
 finally {
-    if ($silent) {
+    if ($skipSession) {
         if ($Command -ne 'manifest-drift') {
             Save-CABJournal
         }
