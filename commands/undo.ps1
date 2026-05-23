@@ -178,8 +178,12 @@ function Invoke-CABUndoEntry {
             if (-not (Test-Path $template)) {
                 return @{ status = 'skip'; details = "Template no longer at recorded path; preserving (cannot verify content match): $path" }
             }
-            $pathHash     = (Get-FileHash -Path $path     -Algorithm SHA256).Hash
-            $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
+            try {
+                $pathHash     = (Get-FileHash -Path $path     -Algorithm SHA256 -ErrorAction Stop).Hash
+                $templateHash = (Get-FileHash -Path $template -Algorithm SHA256 -ErrorAction Stop).Hash
+            } catch {
+                return @{ status = 'fail'; details = "Could not hash README or template for $path : $($_.Exception.Message)" }
+            }
             if ($pathHash -ne $templateHash) {
                 return @{ status = 'skip'; details = "README diverged from template; preserving user edits: $path" }
             }
