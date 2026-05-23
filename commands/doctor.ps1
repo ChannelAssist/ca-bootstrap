@@ -39,6 +39,14 @@ function Invoke-CABDoctorCheck {
 
     # ----- Workspace -----
     $workspace = $null
+    # Prefer an explicit WorkspacePath in $Context (set by test harnesses and
+    # repair) so the journal-state lookup is bypassed entirely. This avoids
+    # stale in-memory journal entries from earlier Pester test cases pointing
+    # at temp dirs that no longer exist, which would cause Test-Path $workspace
+    # to return $false and silently skip every workspace-gated check.
+    if ($Context.WorkspacePath) {
+        $workspace = $Context.WorkspacePath
+    } else {
     # Most-recent non-undone entry wins. Get-CABJournalEntry walks
     # sessions oldest-first and returns them in that order, so [0] is the
     # OLDEST surviving record — which after a default-path change reads
@@ -74,6 +82,7 @@ function Invoke-CABDoctorCheck {
         }
         $workspace = Join-Path $profileDir $sub
     }
+    } # end else ($Context.WorkspacePath was not pre-set)
     $Context.WorkspacePath = $workspace
 
     if (Test-Path $workspace) {

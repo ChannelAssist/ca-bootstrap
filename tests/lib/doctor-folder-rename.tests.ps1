@@ -41,9 +41,15 @@ Describe 'Doctor — folder-rename check' {
         foreach ($p in 'ca-tools','ca-docs','ca-platform','cm-product','ca-training','ca-work-dirs') {
             New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $p) -Force | Out-Null
         }
-        # Force the workspace path so doctor doesn't read from the journal.
+        # Supply WorkspacePath directly in the context so doctor bypasses the
+        # journal-state lookup entirely. On Windows, Pester's in-memory
+        # $Script:CABJournalState can persist stale entries from earlier test
+        # cases that pointed at now-deleted temp dirs; those stale entries
+        # would resolve $workspace to a non-existent path, causing Test-Path
+        # to return $false and every workspace-gated check to be silently
+        # skipped. Also keep the env-var as a belt-and-suspenders fallback.
         $env:CA_BOOTSTRAP_WORKSPACE = $script:tmpWs
-        $script:ctx = @{ RepoRoot = $script:repoRoot }
+        $script:ctx = @{ RepoRoot = $script:repoRoot; WorkspacePath = $script:tmpWs }
     }
     AfterEach {
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
