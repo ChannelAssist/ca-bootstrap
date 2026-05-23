@@ -136,14 +136,25 @@ $context = @{
     TestReposFile = $env:CA_BOOTSTRAP_TEST_REPOS_FILE
 }
 
-# Banner + session start. Suppressed when --json or --quiet is set so the
-# JSON / one-line-summary output isn't polluted with banner text on stdout.
+# Banner suppression and session-start skipping are two separate gates:
 #
-# IMPORTANT: only the read-only commands (doctor, manifest-drift) are
-# allowed to skip Start-CABSession. Every command that may call
-# Add-CABJournalEntry MUST have a paired Start-CABSession upstream;
-# otherwise the journal write throws "No active session" mid-run and the
-# audit trail is lost. See the audit of Add-CABJournalEntry callers.
+#   $silent       = $Json -or $Quiet      → also suppresses the banner +
+#                                            -not-strictly-silent prints,
+#                                            so stdout stays clean for the
+#                                            JSON / one-line summary.
+#   $skipSession  = $silent -and          → ALSO skips Start-CABSession.
+#                   $readOnlyCommand        Only the read-only commands
+#                                            (doctor, manifest-drift) may
+#                                            skip it; mutating commands
+#                                            (setup, repair, undo,
+#                                            manifest-edit) must always
+#                                            pair Add-CABJournalEntry with
+#                                            a Start-CABSession upstream
+#                                            or the throw fires mid-run
+#                                            and the audit trail is lost.
+#                                            See the static caller audit
+#                                            in tests/lib/journal-session-
+#                                            required.tests.ps1.
 $readOnlyCommand = $Command -in @('doctor','manifest-drift')
 $silent = $Json -or $Quiet
 $skipSession = $silent -and $readOnlyCommand

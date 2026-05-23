@@ -17,6 +17,12 @@ $Script:CABootstrapJournalPath = Join-Path $Script:CABootstrapStateDir 'journal.
 $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
 $Script:CABootstrapSessionId   = $null
 $Script:CABJournalState        = $null   # full in-memory representation of the journal
+# Direct reference to the session Start-CABSession created in this
+# process run. Caching avoids an O(#sessions) Where-Object scan in
+# Get-CABCurrentSession (called once per Add-CABJournalEntry) and
+# removes the id-collision concern entirely — reference identity
+# doesn't care if two sessions ever share an id string.
+$Script:CABActiveSession       = $null
 # Monotonic per-process counter that disambiguates entry ids when two
 # Add-CABJournalEntry / Repair-CABJournal calls land in the same wall-
 # clock instant. Set-CABEntryUndone matches by id string, so two entries
@@ -73,6 +79,7 @@ function Reset-CABJournalState {
     $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
     $Script:CABootstrapSessionId   = $null
     $Script:CABJournalState        = $null
+    $Script:CABActiveSession       = $null
     $Script:CABEntryIdSequence     = 0
 }
 
@@ -328,6 +335,11 @@ function Start-CABSession {
     $existing = @()
     if ($Script:CABJournalState.sessions) { $existing = @($Script:CABJournalState.sessions) }
     $Script:CABJournalState.sessions = $existing + @($newSession)
+    # Cache the direct reference for O(1) Get-CABCurrentSession lookups.
+    # Must come after the append, otherwise the cached reference would
+    # point at a copy that powershell-yaml may detach during a later
+    # Save-CABJournal / ConvertTo-Yaml round-trip.
+    $Script:CABActiveSession = $Script:CABJournalState.sessions[-1]
 
     # Rotate prior transcript if present, then start a new one.
     if (Test-Path $Script:CABootstrapTranscript) {
@@ -360,27 +372,22 @@ function Stop-CABSession {
     Unlock-CABSession
 }
 
-# Get-CABCurrentSession — returns a reference to the current session
-# hashtable so steps can mutate its `actions` list directly.
+# Get-CABCurrentSession — returns a reference to the session
+# Start-CABSession created in this process run, so steps can mutate
+# its `actions` list directly.
 #
-# "Current" means the session Start-CABSession created in THIS process
-# run, identified by $Script:CABootstrapSessionId. Returning `sessions[-1]`
-# unconditionally would mis-classify the last prior session loaded from
-# disk as active — in production where the journal already has dozens of
-# prior sessions, Add-CABJournalEntry would then silently append to the
-# previous session instead of throwing "No active session". The PR #80
-# review caught this regression; the seeded-prior-session test below
-# pins it.
+# The implementation is intentionally O(1): Start-CABSession stamps
+# $Script:CABActiveSession with the live reference, and we return it
+# directly. Two earlier shapes failed in different ways:
+#   - return $sessions[-1] silently appended to the most-recent prior
+#     session when the journal already had history on disk.
+#   - Where-Object { $_.id -eq $sessId } | Select-Object -First 1
+#     scanned every session on every Add-CABJournalEntry and would
+#     have picked the wrong session if two ids ever collided
+#     (second-granularity timestamps are not guaranteed unique).
+# Reference identity has neither failure mode.
 function Get-CABCurrentSession {
-    if (-not $Script:CABootstrapSessionId) { return $null }
-    if (-not $Script:CABJournalState -or -not $Script:CABJournalState.sessions) { return $null }
-    $sessions = @($Script:CABJournalState.sessions)
-    if ($sessions.Count -eq 0) { return $null }
-    # Match by id rather than position so the lookup is robust to any
-    # future rearrangement of $Script:CABJournalState.sessions.
-    $match = $sessions | Where-Object { $_.id -eq $Script:CABootstrapSessionId } | Select-Object -First 1
-    if ($match) { return $match }
-    return $null
+    return $Script:CABActiveSession
 }
 
 # ---------------------------------------------------------------------------

@@ -104,7 +104,11 @@ Describe 'Orchestrator pairs Start-CABSession with every journal-mutating comman
         # The orchestrator computes $skipSession from $readOnlyCommand;
         # this test pins that list so a future contributor can't
         # accidentally widen the skip set to setup/repair/undo/manifest-edit.
-        $script:orchestrator | Should -Match "\`$readOnlyCommand\s*=\s*\`$Command\s+-in\s+@\('doctor','manifest-drift'\)"
+        # Allow whitespace variation around the array literal — the
+        # invariant is "the set is exactly {doctor, manifest-drift}",
+        # not the exact source formatting. A formatter rerun that
+        # introduces spaces inside @(...) shouldn't fail this test.
+        $script:orchestrator | Should -Match "\`$readOnlyCommand\s*=\s*\`$Command\s+-in\s+@\(\s*'doctor'\s*,\s*'manifest-drift'\s*\)"
         $script:orchestrator | Should -Match "\`$skipSession\s*=\s*\`$silent\s+-and\s+\`$readOnlyCommand"
     }
 
