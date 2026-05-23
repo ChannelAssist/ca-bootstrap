@@ -84,7 +84,7 @@ function Invoke-CABDoctorCheck {
 
     # ----- Folders -----
     if (Test-Path $workspace) {
-        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
+        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
         $expected = @($manifest.folders | Where-Object { -not $_.optional })
         $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
         $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
@@ -175,7 +175,7 @@ function Invoke-CABDoctorCheck {
 
     # ----- Repositories (compare journal expectations vs disk) -----
     if (Test-Path $workspace) {
-        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml')
+        $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml') -Quiet
         $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object { -not $_.opt_in })
         $expectedRepoSlugs = @($expectedRepos | ForEach-Object { $_.repo })
         $missingRepos = New-Object System.Collections.Generic.List[string]

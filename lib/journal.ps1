@@ -23,6 +23,9 @@ $Script:CABJournalState        = $null   # full in-memory representation of the 
 # sharing an id would be marked undone together — see the format
 # documented on New-CABEntryId below.
 $Script:CABEntryIdSequence     = 0
+# One-time-per-process flag: ensures the no-session warning in
+# Add-CABJournalEntry fires only once so tests are non-noisy.
+$Script:CABJournalEntrySessionWarningEmitted = $false
 
 # ---------------------------------------------------------------------------
 # Path accessors
@@ -74,6 +77,7 @@ function Reset-CABJournalState {
     $Script:CABootstrapSessionId   = $null
     $Script:CABJournalState        = $null
     $Script:CABEntryIdSequence     = 0
+    $Script:CABJournalEntrySessionWarningEmitted = $false
 }
 
 # New-CABEntryId — produce a journal entry id that is guaranteed unique
@@ -383,11 +387,24 @@ function Add-CABJournalEntry {
         [hashtable]$Data = @{}
     )
     $session = Get-CABCurrentSession
-    # If no session is active (e.g. invoked outside a setup/repair flow, or
-    # in a test harness that bypasses Start-CABSession), silently skip
-    # journaling. The journal is an audit trail, not a hard dependency —
-    # caller code should not have to wrap every journal call in try/catch.
+    # If no session is active (e.g. in a test harness that bypasses
+    # Start-CABSession), skip journaling. The journal is an audit trail,
+    # not a hard dependency — caller code should not have to wrap every
+    # call in try/catch.
+    #
+    # IMPORTANT: production --quiet mode legitimately mutates state without
+    # calling Start-CABSession. Silently dropping entries there breaks the
+    # audit trail and prevents undo from reversing those actions. We emit a
+    # one-time Write-Warning per process so operators see the gap immediately
+    # while test suites (each a fresh process) stay non-noisy. The
+    # $Script:CABJournalEntrySessionWarningEmitted flag is reset by
+    # Reset-CABJournalState, so unit tests that call Reset between cases
+    # do get a fresh warning on the first no-session call after each reset.
     if (-not $session) {
+        if (-not $Script:CABJournalEntrySessionWarningEmitted) {
+            Write-Warning "Add-CABJournalEntry called without an active session. Journal entries are being dropped — undo will not be able to reverse these actions. This is expected in tests; in production setup/repair/undo runs it indicates a session-setup gap. Call Start-CABSession before mutating."
+            $Script:CABJournalEntrySessionWarningEmitted = $true
+        }
         return $null
     }
 
