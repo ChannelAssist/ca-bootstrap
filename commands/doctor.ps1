@@ -111,19 +111,37 @@ function Invoke-CABDoctorCheck {
         foreach ($f in $renamed) {
             $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
             $newPath    = Join-Path $workspace ([string]$f.path)
-            $legacyExists = Test-Path $legacyPath -PathType Container
-            $newExists    = Test-Path $newPath    -PathType Container
-
-            if (-not $legacyExists) { continue }
+            $legacyPathExists = Test-Path $legacyPath
+            $newPathExists    = Test-Path $newPath
+            $legacyExists     = Test-Path $legacyPath -PathType Container
+            $newExists        = Test-Path $newPath    -PathType Container
 
             $id = "folder-rename:$($f.renamed_from)"
+
+            if ($legacyPathExists -and -not $legacyExists) {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'fail'
+                    details = "'$($f.renamed_from)/' exists but is not a directory — manual resolution required."
+                })
+                continue
+            }
+            if ($newPathExists -and -not $newExists) {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'fail'
+                    details = "'$($f.path)/' exists but is not a directory — manual resolution required."
+                })
+                continue
+            }
+            if (-not $legacyExists) { continue }
 
             # Enumerate both paths; if either enumeration fails, emit a fail
             # check entry and skip the rest of the state machine for this
             # rename pair — we can't safely classify what we can't read.
             $legacyHasContent = $false
             try {
-                $legacyHasContent = (Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null
+                $legacyHasContent = $null -ne (Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1)
             } catch {
                 $checks.Add([ordered]@{
                     id      = $id
@@ -135,7 +153,7 @@ function Invoke-CABDoctorCheck {
             $newHasContent = $false
             if ($newExists) {
                 try {
-                    $newHasContent = (Get-ChildItem -Path $newPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null
+                    $newHasContent = $null -ne (Get-ChildItem -Path $newPath -Force -ErrorAction Stop | Select-Object -First 1)
                 } catch {
                     $checks.Add([ordered]@{
                         id      = $id

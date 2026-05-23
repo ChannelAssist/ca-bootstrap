@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/undo-readmes.tests.ps1 — regression: undo seed_readme actually
 # removes the README (cycle 10 caught field access bug that made it noop).
 
@@ -10,7 +10,7 @@ BeforeAll {
     . (Join-Path $script:repoRoot 'commands/undo.ps1')
 }
 
-Describe 'Undo seed_readme reverser' {
+Describe 'Undo README reversers' {
     BeforeEach {
         $script:tmp = Join-Path ([System.IO.Path]::GetTempPath()) "cab-undo-readme-$(Get-Random)"
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-undo-readme-state-$(Get-Random)"
@@ -68,4 +68,23 @@ Describe 'Undo seed_readme reverser' {
         (Test-Path $target) | Should -BeTrue
         (Get-Content -Raw $target) | Should -Match 'my edits'
     }
+
+    It 'marks refresh_readme as a noop so it can be closed out in the journal' {
+        $target = Join-Path $script:tmp 'README.md'
+        Set-Content -Path $target -Value '# template' -Encoding utf8
+
+        $entry = [ordered]@{
+            id        = 3
+            step      = 'repair'
+            action    = 'refresh_readme'
+            path      = $target
+            template  = (Join-Path $script:tmp 'tpl.md')
+            timestamp = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'noop'
+        (Test-Path $target) | Should -BeTrue
+    }
 }
+

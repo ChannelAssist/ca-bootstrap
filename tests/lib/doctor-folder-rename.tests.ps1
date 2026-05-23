@@ -1,4 +1,4 @@
-#requires -Version 7.0
+﻿#requires -Version 7.0
 # tests/lib/doctor-folder-rename.tests.ps1 — doctor's new folder-rename
 # check driven by `renamed_from:` in folders.yaml. Covers all 5 rows of
 # the decision table in the spec.
@@ -17,6 +17,23 @@ Describe 'Doctor — folder-rename check' {
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-doctor-state-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tmpState
         Reset-CABJournalState
+        $script:foldersManifest = [pscustomobject]@{
+            folders = @(
+                [pscustomobject]@{ path = 'ca-tools';      optional = $false }
+                [pscustomobject]@{ path = 'ca-docs';       optional = $false }
+                [pscustomobject]@{ path = 'ca-platform';   optional = $false }
+                [pscustomobject]@{ path = 'cm-product';    optional = $false }
+                [pscustomobject]@{ path = 'ca-training';   optional = $false }
+                [pscustomobject]@{ path = 'ca-experiments'; optional = $true;  renamed_from = 'experiments' }
+                [pscustomobject]@{ path = 'ca-work-dirs';  optional = $false }
+            )
+        }
+        Mock -CommandName Read-CABManifest -MockWith {
+            if ($Path -like '*manifest/folders.yaml') { return $script:foldersManifest }
+            return [pscustomobject]@{ groups = @() }
+        }
+        Mock -CommandName Get-CABToolReport -MockWith { @() }
+        Mock -CommandName Test-CABRepoCloned -MockWith { 'matches' }
 
         New-Item -ItemType Directory -Path $script:tmpWs -Force | Out-Null
         # Pre-create every required folder + ca-work-dirs so the existing
@@ -94,4 +111,23 @@ Describe 'Doctor — folder-rename check' {
         $hit.status | Should -Be 'fail'
         $hit.details | Should -Match 'Cannot enumerate'
     }
+
+    It 'fails when the legacy rename path exists as a non-directory' {
+        Set-Content -Path (Join-Path $script:tmpWs 'experiments') -Value 'not a directory' -Encoding utf8
+
+        $checks = Invoke-CABDoctorCheck -Context $script:ctx
+        $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
+        $hit.status | Should -Be 'fail'
+        $hit.details | Should -Match 'not a directory'
+    }
+
+    It 'fails when the new rename path exists as a non-directory' {
+        Set-Content -Path (Join-Path $script:tmpWs 'ca-experiments') -Value 'not a directory' -Encoding utf8
+
+        $checks = Invoke-CABDoctorCheck -Context $script:ctx
+        $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
+        $hit.status | Should -Be 'fail'
+        $hit.details | Should -Match 'not a directory'
+    }
 }
+

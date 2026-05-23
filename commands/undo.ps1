@@ -235,7 +235,7 @@ function Invoke-CABUndoEntry {
             # template. The original drift content was NOT captured in the
             # journal, so undo cannot restore it.
             $path = [string]$Entry.path
-            return @{ status = 'skip'; details = "refresh_readme is not undoable (original drift content not captured): $path" }
+            return @{ status = 'noop'; details = "refresh_readme is not undoable (original drift content not captured): $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }
