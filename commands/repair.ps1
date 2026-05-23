@@ -148,6 +148,10 @@ function Invoke-CABRepairTarget {
         }
         'folder-renames' {
             $r = Invoke-CABRepairFolderRenames -Context $Context
+            # manual is NOT ok — user must take action. Surface the message
+            # clearly with a "Manual intervention required: " prefix but exit
+            # non-zero so callers (CI, scripts) can detect "not actually
+            # repaired."
             $isOk = $r.status -in 'ok','noop'
             $details = if ($r.status -eq 'manual') { "Manual intervention required: $($r.details)" } else { $r.details }
             return @{ ok = $isOk; details = $details }

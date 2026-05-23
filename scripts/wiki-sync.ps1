@@ -140,7 +140,7 @@ function Cmd-Sync {
     $sidebarLines.Add('')
     $sidebarLines.Add('## Reference')
     Get-ChildItem -Path $script:WikiDir -Filter '*.md' -File |
-        Sort-Object Name | ForEach-Object {
+        Sort-Object -Property Name -CaseSensitive:$false | ForEach-Object {
             $base = [IO.Path]::GetFileNameWithoutExtension($_.Name)
             if ($base -notin @('Home', 'DESIGN', '_Sidebar', '_Footer')) {
                 $sidebarLines.Add("- [[$base]]")

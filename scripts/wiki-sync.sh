@@ -113,15 +113,17 @@ cmd_sync() {
         echo '- [[DESIGN]]'
         echo ''
         echo '## Reference'
-        # Sort case-insensitively to match the PowerShell peer's Sort-Object Name.
-        # Use NUL-delimited iteration so filenames with spaces are handled safely.
-        while IFS= read -r -d '' f; do
-            base=$(basename "$f" .md)
-            case "$base" in
-                Home|DESIGN|_Sidebar|_Footer) continue ;;
-            esac
-            echo "- [[$base]]"
-        done < <(find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' -print0 | LC_ALL=C sort -z -f)
+        # Stable, whitespace-safe, case-insensitive sort to match the
+        # PowerShell peer's Sort-Object Name (case-insensitive on Windows).
+        find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null \
+            | LC_ALL=C sort -fz \
+            | while IFS= read -r -d '' f; do
+                base=$(basename "$f" .md)
+                case "$base" in
+                    Home|DESIGN|_Sidebar|_Footer) continue ;;
+                esac
+                echo "- [[$base]]"
+            done
     } > "$WIKI_DIR/_Sidebar.md"
 
     color_blue "Stamping footer..."
