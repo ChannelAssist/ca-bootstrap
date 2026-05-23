@@ -116,7 +116,7 @@ cmd_sync() {
         # Stable, whitespace-safe, case-insensitive sort to match the
         # PowerShell peer's Sort-Object Name (case-insensitive on Windows).
         find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null \
-            | LC_ALL=C sort -fsz \
+            | LC_ALL=C sort -fzs \
             | while IFS= read -r -d '' f; do
                 base=$(basename "$f" .md)
                 case "$base" in
@@ -130,8 +130,12 @@ cmd_sync() {
     {
         # Footer text must match the PowerShell peer (scripts/wiki-sync.ps1)
         # byte-for-byte — see that file's matching comment.
-        printf "\n---\n*Last synced from the repository working tree at %s UTC. Edit source under \`docs/\` and run \`make wiki-update\` (or \`./make.ps1 wiki-update\` on Windows).*\n" \
-            "$(date -u +'%Y-%m-%d %H:%M')"
+        local source_ref
+        source_ref=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')
+        local source_sha
+        source_sha=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '0000000')
+        printf '\n---\n*Last synced from `%s` (`%s`) at %s UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*\n' \
+            "$source_ref" "$source_sha" "$(date -u +'%Y-%m-%d %H:%M')"
     } > "$WIKI_DIR/_Footer.md"
 
     color_green "Wiki working tree synced."

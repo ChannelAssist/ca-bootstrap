@@ -149,13 +149,17 @@ function Cmd-Sync {
     Set-Content -Path (Join-Path $script:WikiDir '_Sidebar.md') -Value ($sidebarLines -join "`n")
 
     Write-Info 'Stamping footer...'
+    $sourceRef = & git -C $script:RepoRoot rev-parse --abbrev-ref HEAD 2>$null
+    if (-not $sourceRef -or $LASTEXITCODE -ne 0) { $sourceRef = 'unknown' }
+    $sourceSha = & git -C $script:RepoRoot rev-parse --short HEAD 2>$null
+    if (-not $sourceSha -or $LASTEXITCODE -ne 0) { $sourceSha = '0000000' }
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm')
     # Footer text must match the bash peer (scripts/wiki-sync.sh) byte-for-byte
     # — this string is committed into the wiki and gets rewritten on every sync,
     # so any divergence between peers causes churn when sync runs from different
     # platforms. Use single-quoted string concatenation to avoid PS backtick
     # escaping inside here-strings, which would produce doubled backticks.
-    $footer = "`n---`n" + '*Last synced from the repository working tree at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*'
+    $footer = "`n---`n" + '*Last synced from `' + $sourceRef + '` (`' + $sourceSha + '`) at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*'
     Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -Value $footer
 
     Write-Ok 'Wiki working tree synced.'
