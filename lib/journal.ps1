@@ -362,11 +362,25 @@ function Stop-CABSession {
 
 # Get-CABCurrentSession — returns a reference to the current session
 # hashtable so steps can mutate its `actions` list directly.
+#
+# "Current" means the session Start-CABSession created in THIS process
+# run, identified by $Script:CABootstrapSessionId. Returning `sessions[-1]`
+# unconditionally would mis-classify the last prior session loaded from
+# disk as active — in production where the journal already has dozens of
+# prior sessions, Add-CABJournalEntry would then silently append to the
+# previous session instead of throwing "No active session". The PR #80
+# review caught this regression; the seeded-prior-session test below
+# pins it.
 function Get-CABCurrentSession {
+    if (-not $Script:CABootstrapSessionId) { return $null }
     if (-not $Script:CABJournalState -or -not $Script:CABJournalState.sessions) { return $null }
     $sessions = @($Script:CABJournalState.sessions)
     if ($sessions.Count -eq 0) { return $null }
-    return $sessions[-1]
+    # Match by id rather than position so the lookup is robust to any
+    # future rearrangement of $Script:CABJournalState.sessions.
+    $match = $sessions | Where-Object { $_.id -eq $Script:CABootstrapSessionId } | Select-Object -First 1
+    if ($match) { return $match }
+    return $null
 }
 
 # ---------------------------------------------------------------------------

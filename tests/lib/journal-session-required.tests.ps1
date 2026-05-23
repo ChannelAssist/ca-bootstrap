@@ -50,6 +50,39 @@ Describe 'Add-CABJournalEntry refuses to write without an active session' {
             Should -Throw -ExpectedMessage '*No active session*'
     }
 
+    It 'throws when the journal already contains prior sessions but none was started this run' {
+        # Production case (caught by PR #80 review): a real journal almost
+        # always has prior sessions on disk. If Get-CABCurrentSession
+        # returned sessions[-1] unconditionally, Add-CABJournalEntry would
+        # silently append to the most-recent prior session instead of
+        # throwing — defeating the entire "session-required" contract.
+        # This test pins the corrected behavior: only the session that
+        # Start-CABSession created in THIS process run counts as active.
+        Initialize-CABJournal
+        $priorJournal = @'
+schema_version: 1
+host:
+  os: linux
+  user: ci
+  hostname: prior-run
+sessions:
+  - id: 2026-01-01T00:00:00Z
+    command: setup
+    ca_bootstrap_version: 0.0.0-prior
+    actions:
+      - id: 2026-01-01T00:00:00Z-1
+        step: '00-prior'
+        action: pretend
+        data: {}
+'@
+        Set-Content -Path (Join-Path $script:tempState 'journal.yaml') -Value $priorJournal -Encoding utf8NoBOM
+        Read-CABJournal | Out-Null
+        # Sanity: the prior session loaded.
+        @($Script:CABJournalState.sessions).Count | Should -BeGreaterOrEqual 1
+        { Add-CABJournalEntry -Step '99-test' -Action 'pretend' -Data @{ foo = 'bar' } } |
+            Should -Throw -ExpectedMessage '*No active session*'
+    }
+
     It 'does NOT silently return $null (which would mask audit gaps)' {
         # Regression guard: if a future change ever softens the contract
         # back to "silently return $null", this assertion fails so the
