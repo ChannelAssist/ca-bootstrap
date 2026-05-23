@@ -1,6 +1,11 @@
 ﻿#requires -Version 7.0
 # steps/50-folders.ps1 — create the standard folder skeleton in the workspace.
 
+# Source the README-seed helper (used here + in step 60 + in repair).
+if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '../lib/folder-readmes.ps1')
+}
+
 function Test-CABStep50 {
     [CmdletBinding()]
     param([hashtable]$Context)
@@ -56,22 +61,62 @@ function Invoke-CABStep50 {
 
     $created = 0
     $kept = 0
+    $seededReadmes = 0
     foreach ($f in $required) {
         $full = Join-Path $Context.WorkspacePath $f.path
-        if (Test-Path $full) {
+        if (Test-Path $full -PathType Container) {
             $kept++
-            continue
+        } elseif (Test-Path $full) {
+            # Path exists but isn't a directory — fail clearly rather than silently
+            # mis-categorising or trying to seed a README under a non-directory.
+            return @{ status = 'fail'; details = "Path '$full' exists but is not a directory; resolve manually." }
+        } else {
+            try {
+                [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
+                Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
+                $created++
+            } catch {
+                return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+            }
         }
-        try {
-            [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
-            Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
-            $created++
-        } catch {
-            return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+
+        # README seeding: idempotent, never overwrites a user-edited README.
+        # Missing template → warn (signals the manifest is out of sync with templates/).
+        # Copy failure → warn and continue (non-fatal).
+        $folder = Join-Path $Context.WorkspacePath $f.path
+        if (Test-Path $folder -PathType Container) {
+            $result = Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath $f.path `
+                -StepName '50-folders'
+            if ($result -eq 'seeded') { $seededReadmes++ }
         }
     }
 
-    return @{ status = 'ok'; details = "$created created, $kept kept" }
+    # Seed READMEs for OPTIONAL folders that exist on disk. Optional folders
+    # are not created by this step (they're created later by step 60 when their
+    # repo group is cloned, or manually by the user). We only seed when the
+    # folder already exists — never create folders here that the user didn't
+    # ask for. Required folders were handled by the loop above.
+    $optional = @($manifest.folders | Where-Object { $_.optional })
+    foreach ($f in $optional) {
+        $full = Join-Path $Context.WorkspacePath $f.path
+        if (-not (Test-Path $full -PathType Container)) {
+            if (Test-Path $full) {
+                Write-CABColor Yellow "    ⚠ Optional folder path '$full' exists but is not a directory — skipping README seed"
+            }
+            continue
+        }
+        $result = Invoke-CABSeedFolderReadme `
+            -RepoRoot $Context.RepoRoot `
+            -WorkspacePath $Context.WorkspacePath `
+            -FolderPath $f.path `
+            -StepName '50-folders'
+        if ($result -eq 'seeded') { $seededReadmes++ }
+    }
+
+    return @{ status = 'ok'; details = "$created created, $kept kept, $seededReadmes README(s) seeded" }
 }
 
 function Undo-CABStep50 {

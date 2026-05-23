@@ -78,4 +78,16 @@ Describe 'Journal round-trip' {
         @(Get-CABJournalEntry -Action 'clone_repo').Count                 | Should -Be 0
         @(Get-CABJournalEntry -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
     }
+
+    It 'silently returns $null when Add-CABJournalEntry is called without an active session' {
+        # BeforeEach already called Reset-CABJournalState (no Start-CABSession).
+        # Production code paths always call Start-CABSession before mutating;
+        # the no-session path is test-only and must be fully silent.
+        $r1 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/x' }
+        $r1 | Should -BeNullOrEmpty
+
+        # A second call must also return $null silently.
+        $r2 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/y' }
+        $r2 | Should -BeNullOrEmpty
+    }
 }
