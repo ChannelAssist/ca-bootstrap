@@ -231,13 +231,32 @@ function Invoke-CABUndoEntry {
             return @{ status = 'ok'; details = "Recreated empty folder: $path" }
         }
         'refresh_readme'         {
-            # refresh_readme actions overwrote a drifted README with the
-            # template. The original drift content was NOT captured in the
-            # journal, so undo cannot restore it. Returning 'noop' marks the
-            # entry undone so it doesn't reappear in subsequent undo runs.
-            # ('skip' would leave it open; 'noop' signals "handled — move on".)
+            # refresh_readme overwrote a drifted README with the template.
+            # If the pre-overwrite content was captured (base64-encoded in
+            # `previous_content`), restore it byte-for-byte. If not (legacy
+            # entries or files > 64KB at capture time), fall back to noop
+            # so the entry is closed out rather than re-attempted forever.
             $path = [string]$Entry.path
-            return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
+            $b64  = $null
+            try { $b64 = [string]$Entry['previous_content'] } catch { $b64 = $null }
+            if (-not $b64) {
+                return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
+            }
+            try {
+                $bytes = [Convert]::FromBase64String($b64)
+            } catch {
+                return @{ status = 'fail'; details = "refresh_readme previous_content is not valid base64 for $path : $($_.Exception.Message)" }
+            }
+            try {
+                $parent = Split-Path -Parent $path
+                if ($parent -and -not (Test-Path $parent -PathType Container)) {
+                    return @{ status = 'skip'; details = "Parent folder no longer exists; cannot restore $path" }
+                }
+                [System.IO.File]::WriteAllBytes($path, $bytes)
+            } catch {
+                return @{ status = 'fail'; details = "Failed to restore pre-overwrite README at '$path': $($_.Exception.Message)" }
+            }
+            return @{ status = 'ok'; details = "Restored pre-overwrite README content: $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }

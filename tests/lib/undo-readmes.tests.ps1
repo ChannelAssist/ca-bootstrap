@@ -69,7 +69,7 @@ Describe 'Undo README reversers' {
         (Get-Content -Raw $target) | Should -Match 'my edits'
     }
 
-    It 'marks refresh_readme as a noop so it can be closed out in the journal' {
+    It 'marks refresh_readme as a noop when no previous_content snapshot was captured' {
         $target = Join-Path $script:tmp 'README.md'
         Set-Content -Path $target -Value '# template' -Encoding utf8
 
@@ -85,6 +85,49 @@ Describe 'Undo README reversers' {
         $r = Invoke-CABUndoEntry -Entry $entry
         $r.status | Should -Be 'noop'
         (Test-Path $target) | Should -BeTrue
+    }
+
+    It 'restores pre-overwrite README content from a base64 previous_content snapshot' {
+        $target = Join-Path $script:tmp 'README.md'
+        # Current on-disk content is the template; the journal carries the
+        # user's pre-overwrite drift content as base64.
+        Set-Content -Path $target -Value '# template' -Encoding utf8
+        $driftBytes = [System.Text.Encoding]::UTF8.GetBytes("# my drift edits`n")
+        $b64        = [Convert]::ToBase64String($driftBytes)
+
+        $entry = [ordered]@{
+            id               = 4
+            step             = 'repair'
+            action           = 'refresh_readme'
+            path             = $target
+            template         = (Join-Path $script:tmp 'tpl.md')
+            previous_content = $b64
+            timestamp        = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'ok'
+        $r.details | Should -Match 'Restored'
+        (Get-Content -Raw $target) | Should -Match 'my drift edits'
+    }
+
+    It 'returns fail when previous_content is not valid base64' {
+        $target = Join-Path $script:tmp 'README.md'
+        Set-Content -Path $target -Value '# template' -Encoding utf8
+
+        $entry = [ordered]@{
+            id               = 5
+            step             = 'repair'
+            action           = 'refresh_readme'
+            path             = $target
+            template         = (Join-Path $script:tmp 'tpl.md')
+            previous_content = '!!! not base64 !!!'
+            timestamp        = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'fail'
+        $r.details | Should -Match 'base64'
     }
 }
 

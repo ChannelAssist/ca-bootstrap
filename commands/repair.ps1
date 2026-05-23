@@ -487,12 +487,34 @@ function Invoke-CABRepairFolderReadmes {
             $skippedDrift++
             continue
         }
+        # Capture a base64 snapshot of the pre-overwrite content so undo can
+        # restore the user's drift. Size-capped at 64KB of source bytes;
+        # larger files keep the legacy noop-undo behavior so we don't bloat
+        # the journal with megabytes of content.
+        $previousContent = $null
+        $captureSkipped  = $false
+        try {
+            $preBytes = [System.IO.File]::ReadAllBytes($target)
+            if ($preBytes.Length -le 65536) {
+                $previousContent = [Convert]::ToBase64String($preBytes)
+            } else {
+                $captureSkipped = $true
+                Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot skipped for '$($f.path)/README.md' ($($preBytes.Length) bytes > 64KB cap); undo will not be able to restore drift content."
+            }
+        } catch {
+            $captureSkipped = $true
+            Write-CABColor Yellow "    ⚠ Could not capture pre-overwrite snapshot for '$($f.path)/README.md': $($_.Exception.Message)"
+        }
+
         try {
             Copy-Item -Path $template -Destination $target -Force -ErrorAction Stop
         } catch {
             return @{ status = 'fail'; details = "Failed to overwrite README at '$target': $($_.Exception.Message)" }
         }
-        Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data @{ path = $target; template = $template } | Out-Null
+        $journalData = @{ path = $target; template = $template }
+        if ($previousContent) { $journalData['previous_content'] = $previousContent }
+        if ($captureSkipped)  { $journalData['previous_content_captured'] = $false }
+        Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data $journalData | Out-Null
         $overwritten++
     }
 
