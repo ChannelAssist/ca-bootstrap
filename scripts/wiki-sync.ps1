@@ -146,7 +146,8 @@ function Cmd-Sync {
                 $sidebarLines.Add("- [[$base]]")
             }
         }
-    Set-Content -Path (Join-Path $script:WikiDir '_Sidebar.md') -Value ($sidebarLines -join "`n")
+    $sidebar = ($sidebarLines -join "`n") + "`n"
+    Set-Content -Path (Join-Path $script:WikiDir '_Sidebar.md') -NoNewline -Value $sidebar
 
     Write-Info 'Stamping footer...'
     $sourceRef = & git -C $script:RepoRoot rev-parse --abbrev-ref HEAD 2>$null
@@ -159,8 +160,8 @@ function Cmd-Sync {
     # so any divergence between peers causes churn when sync runs from different
     # platforms. Use single-quoted string concatenation to avoid PS backtick
     # escaping inside here-strings, which would produce doubled backticks.
-    $footer = "`n---`n" + '*Last synced from `' + $sourceRef + '` (`' + $sourceSha + '`) at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*'
-    Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -Value $footer
+    $footer = "`n---`n" + '*Last synced from `' + $sourceRef + '` (`' + $sourceSha + '`) at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*' + "`n"
+    Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -NoNewline -Value $footer
 
     Write-Ok 'Wiki working tree synced.'
 }
