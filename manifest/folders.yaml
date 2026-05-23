@@ -2,6 +2,18 @@
 #
 # Each entry creates one folder under the chosen workspace root.
 # Folders marked optional are not created unless explicitly requested.
+#
+# Renames: a folder may optionally declare `renamed_from:` as either a
+# scalar (single previous name) or a list (chain of previous names,
+# most-recent first). doctor checks each predecessor; repair (and step
+# 50) rename the most-recent existing predecessor into the new path
+# instead of creating an empty one, so operators who skipped an earlier
+# migration still get caught up. Example:
+#
+#   - path: ca-prototypes
+#     renamed_from:
+#       - ca-experiments     # most recent
+#       - experiments        # oldest
 
 version: 1
 

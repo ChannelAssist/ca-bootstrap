@@ -71,15 +71,50 @@ function Invoke-CABDoctorCheck {
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
         $expected = @($manifest.folders | Where-Object { -not $_.optional })
-        $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) })
-        $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path)) })
-        if ($missing.Count -eq 0) {
+        $present  = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) })
+        $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path)) })
+
+        # Of the missing folders, see which ones have a predecessor on
+        # disk via renamed_from (scalar or list, walked most-recent →
+        # oldest). Those are flagged as "needs rename" so doctor can
+        # tell an operator who skipped a migration apart from one with
+        # genuine missing folders. Repair walks the same chain.
+        $renames   = New-Object System.Collections.Generic.List[hashtable]
+        $stillMissing = New-Object System.Collections.Generic.List[string]
+        foreach ($f in $missing) {
+            $predecessors = @(Get-CABFolderRenamedFrom -Folder $f)
+            $found = $null
+            foreach ($prev in $predecessors) {
+                if (Test-Path (Join-Path $workspace $prev)) { $found = $prev; break }
+            }
+            if ($found) {
+                $renames.Add(@{ path = [string]$f.path; from = $found })
+            } else {
+                $stillMissing.Add([string]$f.path)
+            }
+        }
+
+        if ($stillMissing.Count -eq 0 -and $renames.Count -eq 0) {
             $checks.Add([ordered]@{ id = 'folders'; status = 'ok'; details = "$($present.Count)/$($expected.Count) present" })
+        } elseif ($stillMissing.Count -eq 0) {
+            $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+            $checks.Add([ordered]@{
+                id = 'folders'; status = 'warn'
+                details = "$($renames.Count) folder(s) need rename: $renameSummary"
+                fix = 'repair --target folders'
+                renames = $renames.ToArray()
+            })
         } else {
+            $detail = "$($stillMissing.Count)/$($expected.Count) missing: $($stillMissing -join ', ')"
+            if ($renames.Count -gt 0) {
+                $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+                $detail += "; $($renames.Count) need rename: $renameSummary"
+            }
             $checks.Add([ordered]@{
                 id = 'folders'; status = 'fail'
-                details = "$($missing.Count)/$($expected.Count) missing: $(($missing.path) -join ', ')"
+                details = $detail
                 fix = 'repair --target folders'
+                renames = $renames.ToArray()
             })
         }
     }

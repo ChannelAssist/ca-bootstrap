@@ -8,12 +8,25 @@ function Test-CABStep50 {
         return @{ status = 'fail'; details = 'Workspace path not set. Run setup or use --target workspace first.' }
     }
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
-    $expected = @($manifest.folders | Where-Object { -not $_.optional } | ForEach-Object { $_.path })
-    $missing  = $expected | Where-Object { -not (Test-Path (Join-Path $Context.WorkspacePath $_)) }
+    $expected = @($manifest.folders | Where-Object { -not $_.optional })
+    $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $Context.WorkspacePath $_.path)) })
     if ($missing.Count -eq 0) {
         return @{ status = 'ok'; details = "$($expected.Count)/$($expected.Count) folders present" }
     }
-    return @{ status = 'pending'; details = "$($missing.Count) folder(s) missing: $($missing -join ', ')" }
+    $renamePairs = New-Object System.Collections.Generic.List[string]
+    $stillMissing = New-Object System.Collections.Generic.List[string]
+    foreach ($f in $missing) {
+        $prev = $null
+        foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
+            if (Test-Path (Join-Path $Context.WorkspacePath $p)) { $prev = $p; break }
+        }
+        if ($prev) { $renamePairs.Add("$prev → $($f.path)") }
+        else       { $stillMissing.Add([string]$f.path) }
+    }
+    $parts = @()
+    if ($stillMissing.Count -gt 0) { $parts += "$($stillMissing.Count) folder(s) missing: $($stillMissing -join ', ')" }
+    if ($renamePairs.Count -gt 0)  { $parts += "$($renamePairs.Count) need rename: $($renamePairs -join ', ')" }
+    return @{ status = 'pending'; details = ($parts -join '; ') }
 }
 
 function Invoke-CABStep50 {
@@ -36,13 +49,29 @@ function Invoke-CABStep50 {
     # Mirror the Format-CABToolReport / Write-CABToolLine pattern so the
     # ✓-row formatting (4 spaces + icon + 2 spaces + 20-wide label +
     # 2 spaces + description) is identical to step 3's tool list.
-    # Existing folders → ✓ (Green, no-op needed). Missing → + (Cyan,
-    # will-create).
+    # Existing folders → ✓ (Green, no-op needed). Missing with a
+    # rename predecessor on disk → ↻ (Yellow, will-rename). Missing
+    # outright → + (Cyan, will-create).
     foreach ($f in $required) {
         $present = Test-Path (Join-Path $Context.WorkspacePath $f.path)
-        $icon, $color = if ($present) { '✓', 'Green' } else { '+', 'Cyan' }
+        if ($present) {
+            $icon, $color = '✓', 'Green'
+            $desc = $f.description
+        } else {
+            $prev = $null
+            foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
+                if (Test-Path (Join-Path $Context.WorkspacePath $p)) { $prev = $p; break }
+            }
+            if ($prev) {
+                $icon, $color = '↻', 'Yellow'
+                $desc = "rename $prev → $($f.path) ($($f.description))"
+            } else {
+                $icon, $color = '+', 'Cyan'
+                $desc = $f.description
+            }
+        }
         $label = ([string]$f.path).PadRight(20)
-        Write-CABColor ([ConsoleColor]$color) "    $icon  $label  $($f.description)"
+        Write-CABColor ([ConsoleColor]$color) "    $icon  $label  $desc"
     }
     Write-Host ''
 
@@ -56,11 +85,34 @@ function Invoke-CABStep50 {
 
     $created = 0
     $kept = 0
+    $renamed = 0
     foreach ($f in $required) {
         $full = Join-Path $Context.WorkspacePath $f.path
         if (Test-Path $full) {
             $kept++
             continue
+        }
+        # Walk renamed_from (most-recent → oldest). If a predecessor
+        # still exists on disk, rename it into place instead of
+        # creating a new empty folder — operators who skipped a
+        # previous rename get caught up safely.
+        $predecessor = $null
+        foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
+            $candidate = Join-Path $Context.WorkspacePath $p
+            if (Test-Path $candidate) { $predecessor = $candidate; break }
+        }
+        if ($predecessor) {
+            try {
+                Move-Item -LiteralPath $predecessor -Destination $full -ErrorAction Stop
+                Add-CABJournalEntry -Step '50-folders' -Action 'rename_folder' -Data @{
+                    from = $predecessor
+                    to   = $full
+                } | Out-Null
+                $renamed++
+                continue
+            } catch {
+                return @{ status = 'fail'; details = "Failed to rename $predecessor → $full : $($_.Exception.Message)" }
+            }
         }
         try {
             [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
@@ -71,7 +123,9 @@ function Invoke-CABStep50 {
         }
     }
 
-    return @{ status = 'ok'; details = "$created created, $kept kept" }
+    $summary = "$created created, $kept kept"
+    if ($renamed -gt 0) { $summary += ", $renamed renamed" }
+    return @{ status = 'ok'; details = $summary }
 }
 
 function Undo-CABStep50 {
