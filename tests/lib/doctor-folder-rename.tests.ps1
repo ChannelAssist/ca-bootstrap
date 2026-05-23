@@ -29,7 +29,9 @@ Describe 'Doctor — folder-rename check' {
             )
         }
         Mock -CommandName Read-CABManifest -MockWith {
-            if ($Path -like '*manifest/folders.yaml') { return $script:foldersManifest }
+            # Use *folders.yaml (no path separator) so the match works on both
+            # Windows (backslash) and Unix (forward slash) path separators.
+            if ($Path -like '*folders.yaml') { return $script:foldersManifest }
             return [pscustomobject]@{ groups = @() }
         }
         Mock -CommandName Get-CABToolReport -MockWith { @() }
