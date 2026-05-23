@@ -19,7 +19,8 @@
 *.psd1.bak
 
 # Pester output
-TestResults.xml
+[Tt]est[Rr]esults.xml
+*.testresults.xml
 coverage.xml
 
 # Wiki working tree (separate git repo, never committed to main)
