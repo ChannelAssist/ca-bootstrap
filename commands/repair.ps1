@@ -148,7 +148,9 @@ function Invoke-CABRepairTarget {
         }
         'folder-renames' {
             $r = Invoke-CABRepairFolderRenames -Context $Context
-            return @{ ok = ($r.status -in 'ok','noop'); details = $r.details }
+            $isOk = $r.status -in 'ok','noop','manual'
+            $details = if ($r.status -eq 'manual') { "Manual intervention required: $($r.details)" } else { $r.details }
+            return @{ ok = $isOk; details = $details }
         }
         'folder-readmes' {
             $r = Invoke-CABRepairFolderReadmes -Context $Context
@@ -270,8 +272,20 @@ function Invoke-CABRepairFolderRenames {
             continue
         }
 
-        $legacyChildren = @(Get-ChildItem -Path $legacyPath -Force -ErrorAction SilentlyContinue)
-        $newChildren    = if ($newExists) { @(Get-ChildItem -Path $newPath -Force -ErrorAction SilentlyContinue) } else { @() }
+        try {
+            $legacyChildren = @(Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop)
+        } catch {
+            $manuals.Add("Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required.")
+            continue
+        }
+        $newChildren = if ($newExists) {
+            try {
+                @(Get-ChildItem -Path $newPath -Force -ErrorAction Stop)
+            } catch {
+                $manuals.Add("Cannot enumerate '$($f.path)/' contents ($($_.Exception.Message)) — manual resolution required.")
+                continue
+            }
+        } else { @() }
 
         $legacyEmpty = $legacyChildren.Count -eq 0
         $newEmpty    = (-not $newExists) -or ($newChildren.Count -eq 0)

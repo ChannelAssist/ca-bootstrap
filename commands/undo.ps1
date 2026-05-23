@@ -124,8 +124,8 @@ function Select-CABUndoEntry {
         'identity'  { return $Entries | Where-Object { $_.action -eq 'configure_git_identity' } }
         'repos'     { return $Entries | Where-Object { $_.action -eq 'clone_repo' } }
         'workspace' { return $Entries | Where-Object { $_.is_workspace_root } }
-        'folders'   { return $Entries | Where-Object { $_.action -eq 'create_folder' -and -not $_.is_workspace_root } }
-        'readmes'   { return $Entries | Where-Object { $_.action -eq 'seed_readme' } }
+        'folders'   { return $Entries | Where-Object { $_.action -in 'create_folder','rename_folder','remove_empty_folder' -and -not $_.is_workspace_root } }
+        'readmes'   { return $Entries | Where-Object { $_.action -in 'seed_readme','refresh_readme' } }
         'gh-auth'   { return $Entries | Where-Object { $_.action -eq 'gh_auth_login' } }
         default     { return $Entries | Where-Object { $_.tool -eq $bare -or $_.action -eq "install_$bare" } }
     }
@@ -138,8 +138,8 @@ function Group-CABUndoEntry {
     $byCategory['workspace']    = @($Entries | Where-Object { $_.action -in 'create_workspace_file','create_file' })
     $byCategory['plugin']       = @($Entries | Where-Object { $_.action -eq 'install_ca_claude_plugin' })
     $byCategory['repos']        = @($Entries | Where-Object { $_.action -eq 'clone_repo' })
-    $byCategory['folders']      = @($Entries | Where-Object { $_.action -eq 'create_folder' })
-    $byCategory['readmes']      = @($Entries | Where-Object { $_.action -eq 'seed_readme' })
+    $byCategory['folders']      = @($Entries | Where-Object { $_.action -in 'create_folder','rename_folder','remove_empty_folder' })
+    $byCategory['readmes']      = @($Entries | Where-Object { $_.action -in 'seed_readme','refresh_readme' })
     $byCategory['gh-auth']      = @($Entries | Where-Object { $_.action -eq 'gh_auth_login' })
     if ($IncludeTools) {
         $byCategory['tools'] = @($Entries | Where-Object { $_.action -eq 'install_tool' })
@@ -196,6 +196,46 @@ function Invoke-CABUndoEntry {
                 return @{ status = 'fail'; details = "Remove appeared to succeed but '$path' is still present afterwards." }
             }
             return @{ status = 'ok'; details = "Removed seeded README: $path" }
+        }
+        'rename_folder'          {
+            # Reverse a Move-Item by moving back.
+            $from = [string]$Entry.from
+            $to   = [string]$Entry.to
+            if (-not (Test-Path $to -PathType Container)) {
+                return @{ status = 'noop'; details = "Renamed folder no longer present at $to" }
+            }
+            if (Test-Path $from) {
+                return @{ status = 'skip'; details = "Cannot reverse rename: a path already exists at $from" }
+            }
+            try {
+                Move-Item -Path $to -Destination $from -ErrorAction Stop
+            } catch {
+                return @{ status = 'fail'; details = "Failed to reverse rename ${to} -> ${from} : $($_.Exception.Message)" }
+            }
+            return @{ status = 'ok'; details = "Reversed rename: $to -> $from" }
+        }
+        'remove_empty_folder'    {
+            # Recreate the removed empty folder if missing.
+            $path = [string]$Entry.path
+            if (Test-Path $path -PathType Container) {
+                return @{ status = 'noop'; details = "Folder already present: $path" }
+            }
+            if (Test-Path $path) {
+                return @{ status = 'skip'; details = "A non-directory exists at $path" }
+            }
+            try {
+                [void](New-Item -ItemType Directory -Path $path -Force -ErrorAction Stop)
+            } catch {
+                return @{ status = 'fail'; details = "Failed to recreate $path : $($_.Exception.Message)" }
+            }
+            return @{ status = 'ok'; details = "Recreated empty folder: $path" }
+        }
+        'refresh_readme'         {
+            # refresh_readme actions overwrote a drifted README with the
+            # template. The original drift content was NOT captured in the
+            # journal, so undo cannot restore it.
+            $path = [string]$Entry.path
+            return @{ status = 'skip'; details = "refresh_readme is not undoable (original drift content not captured): $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }

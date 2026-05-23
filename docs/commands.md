@@ -229,7 +229,7 @@ Default behavior (no `--target`): walk every reversible journal entry, prompting
 |---|---|
 | (none) | Interactive walkthrough of all reversible categories |
 | `--target identity` | Remove per-folder git identity only |
-| `--target readmes` | Remove seeded folder READMEs (`seed_readme` actions). Preserves user-edited READMEs by SHA256-comparing against the template; only removes byte-identical copies. |
+| `--target readmes` | Remove seeded folder READMEs (`seed_readme` actions). Preserves user-edited READMEs by SHA256-comparing against the template; only removes byte-identical copies. (`refresh_readme` overwrites are listed but not undoable — original drift content not captured.) |
 | `--target repos` | Remove cloned repos (per-repo confirm) |
 | `--target repos:<slug>` | Remove one specific cloned repo |
 | `--target workspace` | Remove the workspace folder if empty |
