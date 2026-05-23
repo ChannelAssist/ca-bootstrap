@@ -120,6 +120,19 @@ Describe 'Repair — folder-renames' {
         (Test-Path $legacy) | Should -BeTrue  # NEVER renamed on quit
     }
 
+    It 'bails to manual when a regular file collides at the new-path' {
+        $newCollision = Join-Path $script:tmpWs 'ca-experiments'
+        Set-Content -Path $newCollision -Value 'not a directory' -Encoding utf8
+        # Put a real legacy folder so the loop reaches the collision guard.
+        New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'experiments') -Force | Out-Null
+
+        $r = Invoke-CABRepairFolderRenames -Context $script:ctx
+        $r.status | Should -Be 'manual'
+        # The colliding file is preserved — safety contract: never destroy data.
+        (Test-Path $newCollision) | Should -BeTrue
+        (Get-Content -Raw $newCollision).Trim() | Should -Be 'not a directory'
+    }
+
     # ---------------------------------------------------------------------------
     # Failure-path tests — Move-Item / Remove-Item error propagation
     # ---------------------------------------------------------------------------

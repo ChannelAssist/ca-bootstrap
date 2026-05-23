@@ -255,7 +255,20 @@ function Invoke-CABRepairFolderRenames {
         $legacyExists = Test-Path $legacyPath -PathType Container
         $newExists    = Test-Path $newPath    -PathType Container
 
-        if (-not $legacyExists) { continue }
+        if (-not $legacyExists) {
+            # If a regular file sits at the legacy path, surface it; otherwise nothing to migrate.
+            if (Test-Path $legacyPath) {
+                $manuals.Add("'$($f.renamed_from)' exists but is not a directory — manual resolution required at $legacyPath.")
+            }
+            continue
+        }
+
+        # Safety contract: if $newPath exists as a non-directory (e.g. regular file), bail
+        # loudly rather than letting Move-Item -Force overwrite it.
+        if ((Test-Path $newPath) -and -not $newExists) {
+            $manuals.Add("'$($f.path)' exists but is not a directory — manual resolution required at $newPath.")
+            continue
+        }
 
         $legacyChildren = @(Get-ChildItem -Path $legacyPath -Force -ErrorAction SilentlyContinue)
         $newChildren    = if ($newExists) { @(Get-ChildItem -Path $newPath -Force -ErrorAction SilentlyContinue) } else { @() }
@@ -427,8 +440,13 @@ function Invoke-CABRepairFolderReadmes {
             continue
         }
 
-        $templateHash = (Get-FileHash -Path $template -Algorithm SHA256).Hash
-        $targetHash   = (Get-FileHash -Path $target   -Algorithm SHA256).Hash
+        try {
+            $templateHash = (Get-FileHash -Path $template -Algorithm SHA256 -ErrorAction Stop).Hash
+            $targetHash   = (Get-FileHash -Path $target   -Algorithm SHA256 -ErrorAction Stop).Hash
+        } catch {
+            Write-CABColor Yellow "    ⚠ Could not hash README at '$($f.path)' (template or target unreadable): $($_.Exception.Message)"
+            continue
+        }
         if ($templateHash -eq $targetHash) {
             $matched++
             continue
