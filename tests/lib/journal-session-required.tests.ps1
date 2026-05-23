@@ -142,8 +142,15 @@ Describe 'Static audit: every production caller of Add-CABJournalEntry is reacha
             ForEach-Object { Join-Path $script:repoRoot $_ }
         $callers = Get-ChildItem -Path $productionDirs -Filter '*.ps1' -Recurse |
             Where-Object {
+                # Path-separator-agnostic filter: the lib/journal.ps1
+                # definition site itself contains the function name and
+                # must be excluded. Normalize to forward slashes first
+                # so the same pattern works on Linux and Windows runners
+                # (Windows $_.FullName uses backslash; `-like '*lib/journal.ps1*'`
+                # would silently fail to match `D:\...\lib\journal.ps1`).
+                $relForwardSlash = $_.FullName.Replace('\','/')
                 (Select-String -Path $_.FullName -Pattern '\bAdd-CABJournalEntry\b' -SimpleMatch:$false -Quiet) -and
-                $_.FullName -notlike '*lib/journal.ps1'   # the definition site
+                $relForwardSlash -notlike '*lib/journal.ps1'
             } |
             ForEach-Object { $_.FullName.Substring($script:repoRoot.Length + 1).Replace('\','/') }
 
@@ -153,6 +160,7 @@ Describe 'Static audit: every production caller of Add-CABJournalEntry is reacha
         # list deliberately when adding a new journaling step.
         $expected = @(
             'commands/repair.ps1',
+            'lib/folder-readmes.ps1',
             'steps/20-prereqs.ps1',
             'steps/30-gh-auth.ps1',
             'steps/40-workspace.ps1',
@@ -175,6 +183,13 @@ tests/lib/journal-session-required.tests.ps1.
         # path in its switch.
         $setup  = Get-Content -Raw (Join-Path $script:repoRoot 'commands/setup.ps1')
         $repair = Get-Content -Raw (Join-Path $script:repoRoot 'commands/repair.ps1')
+        # Production steps that already prove reachable; they form the
+        # "trusted transitive set" for lib/ helpers dot-sourced by a step.
+        $reachableSteps = $callers | Where-Object { $_ -like 'steps/*' }
+        $stepContent = @{}
+        foreach ($s in $reachableSteps) {
+            $stepContent[$s] = Get-Content -Raw (Join-Path $script:repoRoot $s)
+        }
         foreach ($file in $callers) {
             if ($file -eq 'commands/repair.ps1') { continue }   # entry point itself
             $base = [System.IO.Path]::GetFileNameWithoutExtension($file)   # e.g. 20-prereqs
@@ -182,6 +197,18 @@ tests/lib/journal-session-required.tests.ps1.
                 ($setup  -match [regex]::Escape("id = '$base'")) -or
                 ($setup  -match [regex]::Escape($file))          -or
                 ($repair -match [regex]::Escape($file))
+            # lib/ helpers don't appear in setup's step discovery or
+            # repair's switch by literal path. They are reached
+            # transitively via a step that dot-sources them. Accept
+            # that linkage as long as the dot-sourcing step is itself
+            # in $callers (so its own session pairing is already
+            # verified above).
+            if (-not $reachable -and $file -like 'lib/*') {
+                $leaf = [System.IO.Path]::GetFileName($file)   # e.g. folder-readmes.ps1
+                foreach ($stepBody in $stepContent.Values) {
+                    if ($stepBody -match [regex]::Escape($leaf)) { $reachable = $true; break }
+                }
+            }
             $reachable | Should -BeTrue -Because "$file must be reachable from setup or repair so Start-CABSession is paired upstream"
         }
     }

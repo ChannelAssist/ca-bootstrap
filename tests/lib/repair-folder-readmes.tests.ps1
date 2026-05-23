@@ -18,6 +18,10 @@ Describe 'Repair — folder-readmes' {
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-repair-readme-state-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tmpState
         Reset-CABJournalState
+        # PR #80 contract: Add-CABJournalEntry now throws without an
+        # active session. Repair journals seed_readme actions, so we
+        # must start a session paired with the Reset.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' | Out-Null
         New-Item -ItemType Directory -Path $script:tmpWs -Force | Out-Null
         foreach ($p in 'ca-tools','ca-docs','ca-platform','cm-product','ca-training','ca-work-dirs') {
             New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $p) -Force | Out-Null
@@ -29,6 +33,8 @@ Describe 'Repair — folder-readmes' {
         Set-CABPromptMode -Unattended $false -Answers @{}
     }
     AfterEach {
+        try { Stop-Transcript | Out-Null } catch {}
+        try { Unlock-CABSession } catch {}
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }

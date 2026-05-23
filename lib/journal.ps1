@@ -397,13 +397,13 @@ function Add-CABJournalEntry {
         [hashtable]$Data = @{}
     )
     $session = Get-CABCurrentSession
-    # When no session is active (e.g. test harness or non-session
-    # context), silently skip journaling. The journal is an audit trail,
-    # not a hard dependency; production code paths always start a
-    # session before mutating.
-    if (-not $session) {
-        return $null
-    }
+    # No session active = bug, not a test convenience. A silent $null
+    # return creates invisible audit-trail gaps in production: the
+    # action looks like it journaled, the caller assumes success, but
+    # the audit record never materializes. Tests must opt in to a
+    # session via Start-CABSession (or seed one through Repair-).
+    # PR #80 + the journal-session-required.tests.ps1 suite pin this.
+    if (-not $session) { throw 'No active session — call Start-CABSession first.' }
 
     $entry = [ordered]@{
         id         = New-CABEntryId

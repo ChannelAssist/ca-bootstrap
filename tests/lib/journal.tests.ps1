@@ -79,15 +79,11 @@ Describe 'Journal round-trip' {
         @(Get-CABJournalEntry -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
     }
 
-    It 'silently returns $null when Add-CABJournalEntry is called without an active session' {
-        # BeforeEach already called Reset-CABJournalState (no Start-CABSession).
-        # Production code paths always call Start-CABSession before mutating;
-        # the no-session path is test-only and must be fully silent.
-        $r1 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/x' }
-        $r1 | Should -BeNullOrEmpty
-
-        # A second call must also return $null silently.
-        $r2 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/y' }
-        $r2 | Should -BeNullOrEmpty
-    }
+    # The "silently returns $null when Add-CABJournalEntry is called
+    # without an active session" test that used to live here pinned the
+    # exact regression PR #80 was opened to fix. The current contract
+    # (see tests/lib/journal-session-required.tests.ps1) is: throw
+    # "No active session" — a silent $null return creates invisible
+    # audit-trail gaps in production where prior sessions on disk would
+    # mask the missing Start-CABSession. The deletion is deliberate.
 }
