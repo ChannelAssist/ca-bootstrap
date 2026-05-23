@@ -34,6 +34,8 @@ function Get-CABClaudePluginsDir {
 # group has its own workspace folder declared in folders.yaml.) Falls
 # back to a hardcoded set if the manifest can't be read (e.g. unit
 # tests that exercise step 80 without RepoRoot wired in).
+# Keep the fallback list in lockstep with manifest/folders.yaml's required
+# entries (paths without optional: true).
 function Get-CABClonedReposFromWorkspace {
     [CmdletBinding()]
     param(
@@ -51,7 +53,7 @@ function Get-CABClonedReposFromWorkspace {
         }
     }
     if (-not $groups) {
-        $groups = @('docs','ca-platform','cm-product','ado-legacy','ca-training','experiments')
+        $groups = @('ca-tools', 'ca-docs', 'ca-platform', 'cm-product', 'ca-training', 'ca-work-dirs')
     }
     foreach ($group in $groups) {
         $groupDir = Join-Path $WorkspacePath $group

@@ -67,10 +67,7 @@ $script:TargetDescriptions = [ordered]@{
     'test'                   = 'Run Pester unit tests under tests/'
     'lint'                   = 'Run PSScriptAnalyzer and markdownlint-cli2 (if installed)'
     'format'                 = 'Apply PSScriptAnalyzer auto-fix'
-    'wiki-clone'             = 'Clone the GitHub wiki repo into ./wiki'
-    'wiki-sync'              = 'Mirror README + DESIGN + docs/ into ./wiki (no push)'
-    'wiki-push'              = 'Commit + push wiki changes'
-    'wiki-update'            = 'wiki-sync + wiki-push (typical workflow)'
+    'wiki-update'            = 'Clone-if-missing + sync + push the GitHub wiki in one shot'
     'clean'                  = 'Remove caches and ephemeral state'
     'release'                = 'Cut a release. -Version X.Y.Z required. See release.ps1 docs for flags.'
     'release-dry-run'        = 'release with -DryRun (no mutations)'
@@ -113,24 +110,33 @@ function Convert-TargetToFunctionName {
 # ---------------------------------------------------------------------------
 
 function Invoke-Help {
-    Write-Step 'ca-bootstrap make targets (Windows-native; mirror of the Makefile)'
+    $bar = '━' * 81
     Write-Host ''
-    $widest = ($script:TargetDescriptions.Keys | Measure-Object -Property Length -Maximum).Maximum
-    foreach ($name in $script:TargetDescriptions.Keys) {
-        $padded = $name.PadRight($widest)
-        Write-Host ("  ") -NoNewline
-        Write-Host $padded -ForegroundColor Yellow -NoNewline
-        Write-Host ("  " + $script:TargetDescriptions[$name])
+    Write-Host $bar -ForegroundColor Cyan
+    Write-Host '  ca-bootstrap — Available Make Targets' -ForegroundColor Cyan
+    Write-Host $bar -ForegroundColor Cyan
+    Write-Host ''
+
+    $sections = [ordered]@{
+        'Workspace'        = @{ targets = @('setup','doctor','repair','undo','nuke','install-commit-hooks'); color = 'Green'   }
+        'Tools'            = @{ targets = @('tool-list','tool-install','tool-update','tool-remove');         color = 'Blue'    }
+        'Manifest'         = @{ targets = @('manifest-drift','manifest-edit');                                color = 'Blue'    }
+        'Quality'          = @{ targets = @('test','lint','format');                                          color = 'Green'   }
+        'Smoke & Cleanup'  = @{ targets = @('smoke','smoke-clean','clean');                                   color = 'Yellow'  }
+        'Wiki'             = @{ targets = @('wiki-update');                                                   color = 'Cyan'    }
+        'Releases'         = @{ targets = @('release','release-dry-run','release-full','release-full-dry-run','tag'); color = 'Magenta' }
     }
+    foreach ($name in $sections.Keys) {
+        Write-Host "${name}:" -ForegroundColor $sections[$name].color
+        foreach ($t in $sections[$name].targets) {
+            $desc = $script:TargetDescriptions[$t]
+            if (-not $desc) { continue }  # target not yet documented; skip silently
+            Write-Host ('  {0,-22} {1}' -f $t, $desc) -ForegroundColor Yellow
+        }
+        Write-Host ''
+    }
+    Write-Host $bar -ForegroundColor Cyan
     Write-Host ''
-    Write-Host 'Usage:'
-    Write-Host '  ./make.ps1 <target> [-FlagsPerTarget ...]'
-    Write-Host ''
-    Write-Host 'Examples:'
-    Write-Host '  ./make.ps1 smoke'
-    Write-Host '  ./make.ps1 tool-install -Tool dotnet-10'
-    Write-Host '  ./make.ps1 repair -All'
-    Write-Host '  ./make.ps1 release -Version 1.5.0'
 }
 
 function Invoke-Smoke {
@@ -403,32 +409,15 @@ Get-ChildItem -Recurse -Include *.ps1,*.psm1 | ForEach-Object {
     Write-Ok 'Formatted'
 }
 
-function Invoke-Wikiclone {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath clone
-    exit $LASTEXITCODE
-}
-
-function Invoke-Wikisync {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath sync
-    exit $LASTEXITCODE
-}
-
-function Invoke-Wikipush {
-    $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath push
-    exit $LASTEXITCODE
-}
-
 function Invoke-Wikiupdate {
-    # Call as separate child pwsh runs so each sub-script's exit doesn't
-    # tear down our own dispatcher mid-sequence.
+    Write-Host '[INFO] Updating GitHub Wiki...' -ForegroundColor Blue
     $scriptPath = Join-Path $script:Root 'scripts' 'wiki-sync.ps1'
-    & $script:Pwsh -NoLogo -File $scriptPath sync
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $script:Pwsh -NoLogo -File $scriptPath push
-    exit $LASTEXITCODE
+    & $script:Pwsh -NoLogo -File $scriptPath full
+    if ($LASTEXITCODE -ne 0) {
+        Write-Bad "Wiki update failed (exit $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
+    Write-Host '[OK]   Wiki updated' -ForegroundColor Green
 }
 
 function Invoke-Clean {
