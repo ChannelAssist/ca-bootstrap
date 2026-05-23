@@ -23,8 +23,9 @@ $Script:CABJournalState        = $null   # full in-memory representation of the 
 # sharing an id would be marked undone together — see the format
 # documented on New-CABEntryId below.
 $Script:CABEntryIdSequence     = 0
-# One-time-per-process-since-reset flag: ensures the no-session warning in
-# Add-CABJournalEntry fires once until Reset-CABJournalState is called.
+# One-time warning flag, reset by Reset-CABJournalState. In production
+# (no Reset), fires at most once per process; in tests (Reset between
+# cases), fires at most once per test that hits the no-session path.
 $Script:CABJournalEntrySessionWarningEmitted = $false
 
 # ---------------------------------------------------------------------------
