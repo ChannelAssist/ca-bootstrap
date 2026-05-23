@@ -39,15 +39,15 @@ Describe 'Doctor — folder-rename check' {
     It 'omits the check when neither legacy nor new exists' {
         $checks = Invoke-CABDoctorCheck -Context $script:ctx
         $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
-        # No legacy folder + no new folder → status ok (or no row at all).
-        if ($hit) { $hit.status | Should -Be 'ok' }
+        # No legacy folder + no new folder → no check entry should be emitted at all.
+        $hit | Should -BeNullOrEmpty -Because 'no legacy folder present: no check entry should be emitted'
     }
 
     It 'is silent when only ca-experiments exists' {
         New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'ca-experiments') -Force | Out-Null
         $checks = Invoke-CABDoctorCheck -Context $script:ctx
         $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
-        if ($hit) { $hit.status | Should -Be 'ok' }
+        $hit | Should -BeNullOrEmpty -Because 'only the new path exists: no check entry should be emitted'
     }
 
     It 'warns when only legacy experiments/ exists' {

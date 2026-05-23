@@ -153,12 +153,9 @@ function Cmd-Sync {
     # Footer text must match the bash peer (scripts/wiki-sync.sh) byte-for-byte
     # — this string is committed into the wiki and gets rewritten on every sync,
     # so any divergence between peers causes churn when sync runs from different
-    # platforms.
-    $footer = @"
-
----
-*Last synced from ``main`` at $stamp UTC. Edit source under ``docs/`` and run ``make wiki-update`` (or ``./make.ps1 wiki-update`` on Windows).*
-"@
+    # platforms. Use single-quoted string concatenation to avoid PS backtick
+    # escaping inside here-strings, which would produce doubled backticks.
+    $footer = "`n---`n" + '*Last synced from `main` at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*'
     Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -Value $footer
 
     Write-Ok 'Wiki working tree synced.'

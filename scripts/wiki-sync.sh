@@ -113,7 +113,8 @@ cmd_sync() {
         echo '- [[DESIGN]]'
         echo ''
         echo '## Reference'
-        for f in "$WIKI_DIR"/*.md; do
+        # Sort case-insensitively to match the PowerShell peer's Sort-Object Name.
+        for f in $(printf '%s\n' "$WIKI_DIR"/*.md | LC_ALL=C sort); do
             base=$(basename "$f" .md)
             case "$base" in
                 Home|DESIGN|_Sidebar|_Footer) continue ;;
