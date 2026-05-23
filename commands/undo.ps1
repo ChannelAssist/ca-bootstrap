@@ -170,8 +170,8 @@ function Invoke-CABUndoEntry {
         'clone_repo'             { return Invoke-CABUndoCloneRepo -Entry $Entry -Force:$Force }
         'create_folder'          { return Invoke-CABUndoCreateFolder -Entry $Entry -IncludeFolders:$IncludeFolders -Force:$Force }
         'seed_readme'            {
-            $path = [string]$Entry.data.path
-            $template = [string]$Entry.data.template
+            $path = [string]$Entry.path
+            $template = [string]$Entry.template
             if (-not (Test-Path $path)) {
                 return @{ status = 'noop'; details = "README already absent: $path" }
             }
