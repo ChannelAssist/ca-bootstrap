@@ -113,11 +113,13 @@ cmd_sync() {
         echo '- [[DESIGN]]'
         echo ''
         echo '## Reference'
-        # Stable, whitespace-safe, case-insensitive sort to match the
-        # PowerShell peer's Sort-Object Name (case-insensitive on Windows).
-        find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' -print0 2>/dev/null \
-            | LC_ALL=C sort -fzs \
-            | while IFS= read -r -d '' f; do
+        # Case-insensitive stable sort to match the PowerShell peer's
+        # Sort-Object Name. -z (NUL-terminated) is GNU-only and unavailable
+        # on macOS BSD sort; wiki page names are not expected to contain
+        # newlines, so newline-delimited output is safe on both platforms.
+        find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' 2>/dev/null \
+            | LC_ALL=C sort -fs \
+            | while IFS= read -r f; do
                 base=$(basename "$f" .md)
                 case "$base" in
                     Home|DESIGN|_Sidebar|_Footer) continue ;;

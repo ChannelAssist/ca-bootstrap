@@ -124,7 +124,7 @@ function Select-CABUndoEntry {
         'identity'  { return $Entries | Where-Object { $_.action -eq 'configure_git_identity' } }
         'repos'     { return $Entries | Where-Object { $_.action -eq 'clone_repo' } }
         'workspace' { return $Entries | Where-Object { $_.is_workspace_root } }
-        'folders'   { return $Entries | Where-Object { $_.action -in 'create_folder','rename_folder','remove_empty_folder' -and -not $_.is_workspace_root } }
+        'folders'   { return $Entries | Where-Object { ($_.action -in 'create_folder','rename_folder','remove_empty_folder') -and -not $_.is_workspace_root } }
         'readmes'   { return $Entries | Where-Object { $_.action -in 'seed_readme','refresh_readme' } }
         'gh-auth'   { return $Entries | Where-Object { $_.action -eq 'gh_auth_login' } }
         default     { return $Entries | Where-Object { $_.tool -eq $bare -or $_.action -eq "install_$bare" } }

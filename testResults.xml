@@ -1,0 +1,317 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<test-results xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="nunit_schema_2.5.xsd" name="Pester" total="177" errors="0" failures="42" not-run="0" inconclusive="0" ignored="0" skipped="5" invalid="0" date="2026-05-23" time="12:42:19">
+  <environment user="runner" os-version="6.17.0-1013-azure" cwd="/tmp/workspace/ChannelAssist/ca-bootstrap" platform="Linux" user-domain="" nunit-version="2.5.8.0" machine-name="runnervmg397c" clr-version="8.0.26" />
+  <culture-info current-culture="" current-uiculture="" />
+  <test-suite type="TestFixture" name="Pester" executed="True" result="Failure" success="False" time="76.2525" asserts="0" description="Pester">
+    <results>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/answers.tests.ps1" executed="True" result="Success" success="True" time="0.6482" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/answers.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Convert-CABAnswersToFlat" executed="True" result="Success" success="True" time="0.2941" asserts="0" description="Convert-CABAnswersToFlat">
+            <results>
+              <test-case description="always sets welcome.continue to true" name="Convert-CABAnswersToFlat.always sets welcome.continue to true" time="0.1414" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps prerequisites.install_missing into prereqs.install_choice" name="Convert-CABAnswersToFlat.maps prerequisites.install_missing into prereqs.install_choice" time="0.0388" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="expands prerequisites.selections into per-tool keys" name="Convert-CABAnswersToFlat.expands prerequisites.selections into per-tool keys" time="0.0154" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps clone.groups all/none into Y/n" name="Convert-CABAnswersToFlat.maps clone.groups all/none into Y/n" time="0.0155" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="sets per-repo overrides from clone.exclude" name="Convert-CABAnswersToFlat.sets per-repo overrides from clone.exclude" time="0.011" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="plumbs git_identity name/email through env vars" name="Convert-CABAnswersToFlat.plumbs git_identity name/email through env vars" time="0.02" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/commit-hooks.tests.ps1" executed="True" result="Success" success="True" time="0.5974" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/commit-hooks.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Test-CABHasCommitlintConfig" executed="True" result="Success" success="True" time="0.2297" asserts="0" description="Test-CABHasCommitlintConfig">
+            <results>
+              <test-case description="detects commitlint.config.js" name="Test-CABHasCommitlintConfig.detects commitlint.config.js" time="0.0168" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects each modern variant (.{js,mjs,cjs,ts})" name="Test-CABHasCommitlintConfig.detects each modern variant (.{js,mjs,cjs,ts})" time="0.0211" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects each .commitlintrc variant (json/yml/yaml/cjs/mjs/ts)" name="Test-CABHasCommitlintConfig.detects each .commitlintrc variant (json/yml/yaml/cjs/mjs/ts)" time="0.0725" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="detects a commitlint key in package.json" name="Test-CABHasCommitlintConfig.detects a commitlint key in package.json" time="0.0338" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false for a directory with no commitlint config" name="Test-CABHasCommitlintConfig.returns false for a directory with no commitlint config" time="0.0138" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false on a malformed package.json (does not throw)" name="Test-CABHasCommitlintConfig.returns false on a malformed package.json (does not throw)" time="0.0644" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Test-CABHookIsOurs" executed="True" result="Success" success="True" time="0.3517" asserts="0" description="Test-CABHookIsOurs">
+            <results>
+              <test-case description="returns true for a hook with the marker line" name="Test-CABHookIsOurs.returns true for a hook with the marker line" time="0.0383" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles CRLF line endings correctly" name="Test-CABHookIsOurs.handles CRLF line endings correctly" time="0.0293" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false for a foreign hook" name="Test-CABHookIsOurs.returns false for a foreign hook" time="0.0133" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false for a missing hook" name="Test-CABHookIsOurs.returns false for a missing hook" time="0.0101" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Test-CABHookInvokesCommitlint" executed="True" result="Success" success="True" time="0.3966" asserts="0" description="Test-CABHookInvokesCommitlint">
+            <results>
+              <test-case description="returns true for our installed hook" name="Test-CABHookInvokesCommitlint.returns true for our installed hook" time="0.0129" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns true for a different hook that invokes commitlint" name="Test-CABHookInvokesCommitlint.returns true for a different hook that invokes commitlint" time="0.0126" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns false for a hook that does NOT mention commitlint" name="Test-CABHookInvokesCommitlint.returns false for a hook that does NOT mention commitlint" time="0.0113" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Get-CABRelativePath" executed="True" result="Success" success="True" time="0.4853" asserts="0" description="Get-CABRelativePath">
+            <results>
+              <test-case description="returns &quot;.&quot; when path equals base" name="Get-CABRelativePath.returns &quot;.&quot; when path equals base" time="0.0243" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="strips the base prefix for a descendant" name="Get-CABRelativePath.strips the base prefix for a descendant" time="0.0258" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns absolute path unchanged when not a descendant of base" name="Get-CABRelativePath.returns absolute path unchanged when not a descendant of base" time="0.0123" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="does NOT consult the current working directory (regression for Copilot review on PR #57)" name="Get-CABRelativePath.does NOT consult the current working directory (regression for Copilot review on PR #57)" time="0.0182" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Get-CABCommitlintRepos" executed="True" result="Success" success="True" time="0.5445" asserts="0" description="Get-CABCommitlintRepos">
+            <results>
+              <test-case description="discovers a flat-layout repo (workspace/repo/.git)" name="Get-CABCommitlintRepos.discovers a flat-layout repo (workspace/repo/.git)" time="0.0183" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="discovers a 2-level layout repo (workspace/group/repo/.git)" name="Get-CABCommitlintRepos.discovers a 2-level layout repo (workspace/group/repo/.git)" time="0.0132" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="skips a directory that has no .git anywhere" name="Get-CABCommitlintRepos.skips a directory that has no .git anywhere" time="0.0178" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/doctor-folder-rename.tests.ps1" executed="True" result="Success" success="True" time="1.8116" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/doctor-folder-rename.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Doctor — folder-rename check" executed="True" result="Success" success="True" time="1.506" asserts="0" description="Doctor — folder-rename check">
+            <results>
+              <test-case description="omits the check when neither legacy nor new exists" name="Doctor — folder-rename check.omits the check when neither legacy nor new exists" time="0.3615" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="is silent when only ca-experiments exists" name="Doctor — folder-rename check.is silent when only ca-experiments exists" time="0.1501" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="warns when only legacy experiments/ exists" name="Doctor — folder-rename check.warns when only legacy experiments/ exists" time="0.1382" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="warns when both exist and both are empty" name="Doctor — folder-rename check.warns when both exist and both are empty" time="0.1434" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails when both exist and at least one has contents" name="Doctor — folder-rename check.fails when both exist and at least one has contents" time="0.1319" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails when folder content enumeration errors" name="Doctor — folder-rename check.fails when folder content enumeration errors" time="0.2205" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails when the legacy rename path exists as a non-directory" name="Doctor — folder-rename check.fails when the legacy rename path exists as a non-directory" time="0.1905" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="fails when the new rename path exists as a non-directory" name="Doctor — folder-rename check.fails when the new rename path exists as a non-directory" time="0.1642" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/encoding-and-paths.tests.ps1" executed="True" result="Success" success="True" time="0.6662" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/encoding-and-paths.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Workspace path with spaces and non-ASCII chars" executed="True" result="Success" success="True" time="0.0333" asserts="0" description="Workspace path with spaces and non-ASCII chars">
+            <results>
+              <test-case description="ConvertTo-CABAbsolutePath accepts a path with spaces" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABAbsolutePath accepts a path with spaces" time="0.0144" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="ConvertTo-CABAbsolutePath accepts a path with non-ASCII characters" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABAbsolutePath accepts a path with non-ASCII characters" time="0.006" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="ConvertTo-CABGitdirPattern handles spaces in paths" name="Workspace path with spaces and non-ASCII chars.ConvertTo-CABGitdirPattern handles spaces in paths" time="0.0084" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 70 — UTF-8 encoding (regression v1.2.0)" executed="True" result="Success" success="True" time="0.453" asserts="0" description="Step 70 — UTF-8 encoding (regression v1.2.0)">
+            <results>
+              <test-case description="workspace .gitconfig is valid UTF-8 with non-ASCII name" name="Step 70 — UTF-8 encoding (regression v1.2.0).workspace .gitconfig is valid UTF-8 with non-ASCII name" time="0.257" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="global .gitconfig still parses with non-ASCII path content" name="Step 70 — UTF-8 encoding (regression v1.2.0).global .gitconfig still parses with non-ASCII path content" time="0.1579" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Step 70 — re-run idempotency under UTF-8 (encoding round-trip)" executed="True" result="Success" success="True" time="0.6127" asserts="0" description="Step 70 — re-run idempotency under UTF-8 (encoding round-trip)">
+            <results>
+              <test-case description="re-running step 70 does not duplicate the includeIf block" name="Step 70 — re-run idempotency under UTF-8 (encoding round-trip).re-running step 70 does not duplicate the includeIf block" time="0.1543" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/extras-vscode.tests.ps1" executed="True" result="Success" success="True" time="0.6209" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/extras-vscode.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Invoke-CABStep80 end-to-end — workspace .vscode/ defaults" executed="True" result="Success" success="True" time="0.479" asserts="0" description="Invoke-CABStep80 end-to-end — workspace .vscode/ defaults">
+            <results>
+              <test-case description="copies all 4 templates and emits one create_file journal entry per file" name="Invoke-CABStep80 end-to-end — workspace .vscode/ defaults.copies all 4 templates and emits one create_file journal entry per file" time="0.1815" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="preserves a pre-existing settings.json (no overwrite, no journal entry for it)" name="Invoke-CABStep80 end-to-end — workspace .vscode/ defaults.preserves a pre-existing settings.json (no overwrite, no journal entry for it)" time="0.1661" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="skips the .vscode/ block (warn) when Context.RepoRoot is null" name="Invoke-CABStep80 end-to-end — workspace .vscode/ defaults.skips the .vscode/ block (warn) when Context.RepoRoot is null" time="0.1271" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="create_file building blocks" executed="True" result="Success" success="True" time="0.5691" asserts="0" description="create_file building blocks">
+            <results>
+              <test-case description="Copy-Item -ErrorAction Stop throws on a write failure" name="create_file building blocks.Copy-Item -ErrorAction Stop throws on a write failure" time="0.0413" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Invoke-CABUndoCreateFile removes the recorded file" name="create_file building blocks.Invoke-CABUndoCreateFile removes the recorded file" time="0.0141" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Invoke-CABUndoCreateFile returns noop when the file is already gone" name="create_file building blocks.Invoke-CABUndoCreateFile returns noop when the file is already gone" time="0.0119" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Invoke-CABUndoEntry routes create_file to the reverser" name="create_file building blocks.Invoke-CABUndoEntry routes create_file to the reverser" time="0.0186" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/folders-yaml-grammar.tests.ps1" executed="True" result="Failure" success="False" time="4.1855" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/folders-yaml-grammar.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="manifest/folders.yaml: renamed_from grammar" executed="True" result="Failure" success="False" time="2.8919" asserts="0" description="manifest/folders.yaml: renamed_from grammar">
+            <results>
+              <test-case description="preserves renamed_from on round-trip" name="manifest/folders.yaml: renamed_from grammar.preserves renamed_from on round-trip" time="2.8881" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Read-CABManifest, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:37
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/folders-yaml-grammar.tests.ps1:33</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="manifest/folders.yaml: actual repo manifest" executed="True" result="Failure" success="False" time="4.1638" asserts="0" description="manifest/folders.yaml: actual repo manifest">
+            <results>
+              <test-case description="no longer has a folder named `experiments`" name="manifest/folders.yaml: actual repo manifest.no longer has a folder named `experiments`" time="0" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>This test should run but it did not. Most likely a setup in some parent block failed.</message>
+                  <stack-trace />
+                </failure>
+              </test-case>
+              <test-case description="declares ca-experiments with renamed_from: experiments" name="manifest/folders.yaml: actual repo manifest.declares ca-experiments with renamed_from: experiments" time="0" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>This test should run but it did not. Most likely a setup in some parent block failed.</message>
+                  <stack-trace />
+                </failure>
+              </test-case>
+              <test-case description="declares ca-work-dirs as required" name="manifest/folders.yaml: actual repo manifest.declares ca-work-dirs as required" time="0" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>This test should run but it did not. Most likely a setup in some parent block failed.</message>
+                  <stack-trace />
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/identity-recreate.tests.ps1" executed="True" result="Failure" success="False" time="2.6446" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/identity-recreate.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Test-CABStep70 — structured recreate flag" executed="True" result="Success" success="True" time="0.0951" asserts="0" description="Test-CABStep70 — structured recreate flag">
+            <results>
+              <test-case description="returns ok status when both includeIf AND workspace .gitconfig exist" name="Test-CABStep70 — structured recreate flag.returns ok status when both includeIf AND workspace .gitconfig exist" time="0.0403" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns pending + flag when includeIf exists but workspace .gitconfig is missing" name="Test-CABStep70 — structured recreate flag.returns pending + flag when includeIf exists but workspace .gitconfig is missing" time="0.0193" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns pending without recreate flag when no includeIf exists at all" name="Test-CABStep70 — structured recreate flag.returns pending without recreate flag when no includeIf exists at all" time="0.0318" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Invoke-CABStep70 — restore from journal honors workspace scope" executed="True" result="Failure" success="False" time="2.6144" asserts="0" description="Invoke-CABStep70 — restore from journal honors workspace scope">
+            <results>
+              <test-case description="restores name/email from the matching journal entry without prompting" name="Invoke-CABStep70 — restore from journal honors workspace scope.restores name/email from the matching journal entry without prompting" time="1.3343" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Save-CABJournal, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/journal.ps1:289
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/identity-recreate.tests.ps1:120</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="ignores journal entries from a DIFFERENT workspace" name="Invoke-CABStep70 — restore from journal honors workspace scope.ignores journal entries from a DIFFERENT workspace" time="1.1815" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Save-CABJournal, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/journal.ps1:289
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/identity-recreate.tests.ps1:146</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/journal.tests.ps1" executed="True" result="Failure" success="False" time="2.4552" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/journal.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Journal round-trip" executed="True" result="Failure" success="False" time="2.4338" asserts="0" description="Journal round-trip">
+            <results>
+              <test-case description="writes a parseable journal on first save" name="Journal round-trip.writes a parseable journal on first save" time="1.1144" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Save-CABJournal, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/journal.ps1:289
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/journal.tests.ps1:34</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="accumulates sessions across saves" name="Journal round-trip.accumulates sessions across saves" time="1.0622" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Save-CABJournal, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/journal.ps1:289
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/journal.tests.ps1:47</stack-trace>
+                </failure>
+              </test-case>
+              <test-case description="filters Get-CABJournalEntry by Action and Step" name="Journal round-trip.filters Get-CABJournalEntry by Action and Step" time="0.1221" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="Set-CABEntryUndone updates the entry and excludes it from default queries" name="Journal round-trip.Set-CABEntryUndone updates the entry and excludes it from default queries" time="0.1194" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="emits a one-time warning when Add-CABJournalEntry is called without an active session" name="Journal round-trip.emits a one-time warning when Add-CABJournalEntry is called without an active session" time="0.0119" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/lockfile.tests.ps1" executed="True" result="Success" success="True" time="0.96" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/lockfile.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Lock-CABSession / Unlock-CABSession" executed="True" result="Success" success="True" time="0.9358" asserts="0" description="Lock-CABSession / Unlock-CABSession">
+            <results>
+              <test-case description="acquires the lock when no other session holds it" name="Lock-CABSession / Unlock-CABSession.acquires the lock when no other session holds it" time="0.0094" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="rejects a second concurrent acquire (via subprocess)" name="Lock-CABSession / Unlock-CABSession.rejects a second concurrent acquire (via subprocess)" time="0.9137" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="releases the lock so a subsequent run can acquire" name="Lock-CABSession / Unlock-CABSession.releases the lock so a subsequent run can acquire" time="0.0101" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-consistency.tests.ps1" executed="True" result="Failure" success="False" time="1.0291" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-consistency.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="manifest/repos.yaml + manifest/folders.yaml consistency" executed="True" result="Failure" success="False" time="0" asserts="0" description="manifest/repos.yaml + manifest/folders.yaml consistency">
+            <results>
+              <test-case description="every into: prefix in repos.yaml is declared in folders.yaml" name="manifest/repos.yaml + manifest/folders.yaml consistency.every into: prefix in repos.yaml is declared in folders.yaml" time="0" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>This test should run but it did not. Most likely a setup in some parent block failed.</message>
+                  <stack-trace />
+                </failure>
+              </test-case>
+              <test-case description="every folders.yaml entry has a non-empty path" name="manifest/repos.yaml + manifest/folders.yaml consistency.every folders.yaml entry has a non-empty path" time="0" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>This test should run but it did not. Most likely a setup in some parent block failed.</message>
+                  <stack-trace />
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-drift-cmd.tests.ps1" executed="True" result="Success" success="True" time="4.1039" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-drift-cmd.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="Get-CABSuggestedGroup heuristic" executed="True" result="Success" success="True" time="0.0169" asserts="0" description="Get-CABSuggestedGroup heuristic">
+            <results>
+              <test-case description="maps ca-* prefix to ca-platform" name="Get-CABSuggestedGroup heuristic.maps ca-* prefix to ca-platform" time="0.0038" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps cm-* prefix and channel-manager to cm-product" name="Get-CABSuggestedGroup heuristic.maps cm-* prefix and channel-manager to cm-product" time="0.0037" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="maps .github* and Keystone to docs" name="Get-CABSuggestedGroup heuristic.maps .github* and Keystone to docs" time="0.0043" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="falls back to &quot;unsorted&quot; for unknown patterns" name="Get-CABSuggestedGroup heuristic.falls back to &quot;unsorted&quot; for unknown patterns" time="0.0027" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Invoke-CABCommandManifestDrift diff buckets" executed="True" result="Success" success="True" time="4.0832" asserts="0" description="Invoke-CABCommandManifestDrift diff buckets">
+            <results>
+              <test-case description="computes missing/stale/archived buckets and exits 0 via JSON path" name="Invoke-CABCommandManifestDrift diff buckets.computes missing/stale/archived buckets and exits 0 via JSON path" time="0.5393" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="preserves a non-drift exit code when gh auth fails" name="Invoke-CABCommandManifestDrift diff buckets.preserves a non-drift exit code when gh auth fails" time="3.5251" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-drift.tests.ps1" executed="True" result="Failure" success="False" time="0.665" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-drift.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="manifest/tools.yaml regex sanity" executed="True" result="Failure" success="False" time="0.6537" asserts="0" description="manifest/tools.yaml regex sanity">
+            <results>
+              <test-case description="all installed tools detect cleanly (no fail/error from regex drift)" name="manifest/tools.yaml regex sanity.all installed tools detect cleanly (no fail/error from regex drift)" time="0.6517" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>RuntimeException: Failed to install powershell-yaml: Package 'powershell-yaml' failed to download.</message>
+                  <stack-trace>at Initialize-CABYaml, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:26
+at Read-CABManifest, /tmp/workspace/ChannelAssist/ca-bootstrap/lib/yaml.ps1:37
+at &lt;ScriptBlock&gt;, /tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-drift.tests.ps1:22</stack-trace>
+                </failure>
+              </test-case>
+            </results>
+          </test-suite>
+        </results>
+      </test-suite>
+      <test-suite type="TestFixture" name="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-edit.tests.ps1" executed="True" result="Failure" success="False" time="3.4221" asserts="0" description="/tmp/workspace/ChannelAssist/ca-bootstrap/tests/lib/manifest-edit.tests.ps1">
+        <results>
+          <test-suite type="TestFixture" name="ConvertTo-CABManifestRepoLine" executed="True" result="Success" success="True" time="0.0093" asserts="0" description="ConvertTo-CABManifestRepoLine">
+            <results>
+              <test-case description="renders a non-opt-in entry as a single-line compact-flow" name="ConvertTo-CABManifestRepoLine.renders a non-opt-in entry as a single-line compact-flow" time="0.0057" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="appends opt_in: true when the entry is opt-in" name="ConvertTo-CABManifestRepoLine.appends opt_in: true when the entry is opt-in" time="0.0021" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Find-CABGroupInsertIndex" executed="True" result="Success" success="True" time="0.0344" asserts="0" description="Find-CABGroupInsertIndex">
+            <results>
+              <test-case description="returns the index just before the trailing blank line of a middle group" name="Find-CABGroupInsertIndex.returns the index just before the trailing blank line of a middle group" time="0.0192" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns just before EOF blank line for the last group" name="Find-CABGroupInsertIndex.returns just before EOF blank line for the last group" time="0.0022" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="returns $null for an unknown group" name="Find-CABGroupInsertIndex.returns $null for an unknown group" time="0.0019" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Edit-CABManifestText" executed="True" result="Success" success="True" time="0.0672" asserts="0" description="Edit-CABManifestText">
+            <results>
+              <test-case description="adds a new entry to the requested group" name="Edit-CABManifestText.adds a new entry to the requested group" time="0.0113" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="removes a single-line entry by slug" name="Edit-CABManifestText.removes a single-line entry by slug" time="0.0065" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="refuses to remove a multi-line entry (warns, leaves it intact)" name="Edit-CABManifestText.refuses to remove a multi-line entry (warns, leaves it intact)" time="0.0046" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="handles add + remove in a single call (atomic batch)" name="Edit-CABManifestText.handles add + remove in a single call (atomic batch)" time="0.0042" asserts="0" success="True" result="Success" executed="True" />
+              <test-case description="preserves group structure (group names + comments survive)" name="Edit-CABManifestText.preserves group structure (group names + comments survive)" time="0.0046" asserts="0" success="True" result="Success" executed="True" />
+            </results>
+          </test-suite>
+          <test-suite type="TestFixture" name="Invoke-CABCommandManifestEdit auto-queues archived for removal" executed="True" result="Failure" success="False" time="3.3929" asserts="0" description="Invoke-CABCommandManifestEdit auto-queues archived for removal">
+            <results>
+              <test-case description="auto-queues archived-in-manifest entries on startup, then quits cleanly when &quot;q&quot; is the first answer" name="Invoke-CABCommandManifestEdit auto-queues archived for removal.auto-queues archived-in-manifest entries on startup, then quits cleanly when &quot;q&quot; is the first answer" time="3.3239" asserts="0" success="False" result="Failure" executed="True">
+                <failure>
+                  <message>Expected regular expression 'Auto-queued.*archived' to match '
+==============================
+  ca-bootstrap manifest-edit
+==============================
+  Org:      ChannelAssist
+  Manifest: /tmp/cab-medit-arch-358215905/manifest/repos.yaml
+  Querying gh for org repos... 2 found.
