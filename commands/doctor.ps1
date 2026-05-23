@@ -63,7 +63,7 @@ function Invoke-CABDoctorCheck {
     $workspaceEntries = @(Get-CABJournalEntry -Action 'select_workspace' -Step '40-workspace')
     if ($workspaceEntries.Count -eq 0) {
         $workspaceEntries = @(Get-CABJournalEntry -Action 'create_folder' -Step '40-workspace' |
-            Where-Object { $_.is_workspace_root })
+            Where-Object { $_.PSObject.Properties['is_workspace_root'] -and $_.is_workspace_root })
     }
     if ($workspaceEntries.Count -gt 0) {
         $workspace = [string]$workspaceEntries[-1].path
@@ -94,7 +94,9 @@ function Invoke-CABDoctorCheck {
     # ----- Folders -----
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
-        $expected = @($manifest.folders | Where-Object { -not $_.optional })
+        $expected = @($manifest.folders | Where-Object {
+            -not ($_.PSObject.Properties['optional'] -and $_.optional)
+        })
         $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
         $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
         if ($missing.Count -eq 0) {
@@ -116,7 +118,9 @@ function Invoke-CABDoctorCheck {
     # both with content → bail to manual.
     if (Test-Path $workspace) {
         $foldersManifest = if ($manifest) { $manifest } else { Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet }
-        $renamed = @($foldersManifest.folders | Where-Object { $_.renamed_from })
+        $renamed = @($foldersManifest.folders | Where-Object {
+            $_.PSObject.Properties['renamed_from'] -and $_.renamed_from
+        })
         foreach ($f in $renamed) {
             $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
             $newPath    = Join-Path $workspace ([string]$f.path)
@@ -229,7 +233,9 @@ function Invoke-CABDoctorCheck {
     # ----- Repositories (compare journal expectations vs disk) -----
     if (Test-Path $workspace) {
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/repos.yaml') -Quiet
-        $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object { -not $_.opt_in })
+        $expectedRepos = @($manifest.groups | ForEach-Object { $_.repos } | Where-Object {
+            -not ($_.PSObject.Properties['opt_in'] -and $_.opt_in)
+        })
         $expectedRepoSlugs = @($expectedRepos | ForEach-Object { $_.repo })
         $missingRepos = New-Object System.Collections.Generic.List[string]
         $okRepos = 0
