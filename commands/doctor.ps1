@@ -117,8 +117,34 @@ function Invoke-CABDoctorCheck {
             if (-not $legacyExists) { continue }
 
             $id = "folder-rename:$($f.renamed_from)"
+
+            # Enumerate both paths; if either enumeration fails, emit a fail
+            # check entry and skip the rest of the state machine for this
+            # rename pair — we can't safely classify what we can't read.
             $legacyHasContent = $false
-            $newHasContent    = $false
+            try {
+                $legacyHasContent = (Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null
+            } catch {
+                $checks.Add([ordered]@{
+                    id      = $id
+                    status  = 'fail'
+                    details = "Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required."
+                })
+                continue
+            }
+            $newHasContent = $false
+            if ($newExists) {
+                try {
+                    $newHasContent = (Get-ChildItem -Path $newPath -Force -ErrorAction Stop | Select-Object -First 1) -ne $null
+                } catch {
+                    $checks.Add([ordered]@{
+                        id      = $id
+                        status  = 'fail'
+                        details = "Cannot enumerate '$($f.path)/' contents ($($_.Exception.Message)) — manual resolution required."
+                    })
+                    continue
+                }
+            }
 
             if (-not $newExists) {
                 $checks.Add([ordered]@{
