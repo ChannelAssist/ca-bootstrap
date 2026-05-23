@@ -46,12 +46,25 @@ function Invoke-CABSeedFolderReadme {
     $template = Join-Path $RepoRoot 'templates/folder-readmes' $FolderPath 'README.md'
     $target = Join-Path $WorkspacePath $FolderPath 'README.md'
 
-    if (-not (Test-Path $template)) {
-        Write-CABColor Yellow "    ⚠ No README template for $FolderPath — skipping seed"
+    # Template: must be a file. Missing template → manifest/templates drift; warn.
+    # Non-file at template path → corrupted templates dir; warn loudly.
+    if (-not (Test-Path $template -PathType Leaf)) {
+        if (Test-Path $template) {
+            Write-CABColor Yellow "    ⚠ Template path exists but is not a file: $template — skipping seed for $FolderPath"
+        } else {
+            Write-CABColor Yellow "    ⚠ No README template for $FolderPath — skipping seed"
+        }
         return 'no-template'
     }
-    if (Test-Path $target) {
+
+    # Target: if it's already a file, leave it alone (idempotent).
+    # If it's a directory, that's a workspace anomaly — warn and skip.
+    if (Test-Path $target -PathType Leaf) {
         return 'kept'
+    }
+    if (Test-Path $target) {
+        Write-CABColor Yellow "    ⚠ Target path exists but is not a file: $target — skipping seed for $FolderPath"
+        return 'failed'
     }
     try {
         Copy-Item -Path $template -Destination $target -ErrorAction Stop
