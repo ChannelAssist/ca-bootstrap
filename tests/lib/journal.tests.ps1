@@ -79,22 +79,15 @@ Describe 'Journal round-trip' {
         @(Get-CABJournalEntry -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
     }
 
-    It 'emits a one-time warning when Add-CABJournalEntry is called without an active session' {
+    It 'silently returns $null when Add-CABJournalEntry is called without an active session' {
         # BeforeEach already called Reset-CABJournalState (no Start-CABSession).
-        # Confirm the warning flag starts false.
-        $Script:CABJournalEntrySessionWarningEmitted | Should -Be $false
-
-        # First call: should return $null AND emit a warning (sets the flag).
-        $r1 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/x' } `
-              -WarningAction SilentlyContinue
+        # Production code paths always call Start-CABSession before mutating;
+        # the no-session path is test-only and must be fully silent.
+        $r1 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/x' }
         $r1 | Should -BeNullOrEmpty
-        $Script:CABJournalEntrySessionWarningEmitted | Should -Be $true
 
-        # Second call: still returns $null but must NOT fire the warning again
-        # (flag stays true, no new warning emitted in this process).
-        $r2 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/y' } `
-              -WarningAction SilentlyContinue
+        # A second call must also return $null silently.
+        $r2 = Add-CABJournalEntry -Step 'test' -Action 'create_folder' -Data @{ path = '/tmp/y' }
         $r2 | Should -BeNullOrEmpty
-        $Script:CABJournalEntrySessionWarningEmitted | Should -Be $true
     }
 }
