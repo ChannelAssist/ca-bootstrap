@@ -92,6 +92,6 @@ Describe 'Doctor — folder-rename check' {
         $checks = Invoke-CABDoctorCheck -Context $script:ctx
         $hit = $checks | Where-Object { $_.id -eq 'folder-rename:experiments' }
         $hit.status | Should -Be 'fail'
-        $hit.details | Should -Match 'Unable to inspect folder contents'
+        $hit.details | Should -Match 'Cannot enumerate'
     }
 }
