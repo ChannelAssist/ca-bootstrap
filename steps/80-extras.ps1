@@ -51,7 +51,7 @@ function Get-CABClonedReposFromWorkspace {
         }
     }
     if (-not $groups) {
-        $groups = @('docs','ca-platform','cm-product','ado-legacy','ca-training','experiments')
+        $groups = @('docs','ca-platform','cm-product','ado-legacy','ca-training','ca-experiments')
     }
     foreach ($group in $groups) {
         $groupDir = Join-Path $WorkspacePath $group
