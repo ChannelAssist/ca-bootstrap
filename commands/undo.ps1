@@ -231,13 +231,85 @@ function Invoke-CABUndoEntry {
             return @{ status = 'ok'; details = "Recreated empty folder: $path" }
         }
         'refresh_readme'         {
-            # refresh_readme actions overwrote a drifted README with the
-            # template. The original drift content was NOT captured in the
-            # journal, so undo cannot restore it. Returning 'noop' marks the
-            # entry undone so it doesn't reappear in subsequent undo runs.
-            # ('skip' would leave it open; 'noop' signals "handled — move on".)
+            # refresh_readme overwrote a drifted README with the template.
+            # If the pre-overwrite content was captured (base64-encoded in
+            # `previous_content`), restore it byte-for-byte. If not (legacy
+            # entries from before this PR landed, or files that exceeded the
+            # capture cap at write time), fall back to noop so the entry is
+            # closed out rather than re-attempted forever — the dev-side
+            # behavior before this PR landed.
             $path = [string]$Entry.path
-            return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
+            # The parameter is [hashtable]; use ContainsKey directly. The
+            # earlier PSObject.Properties branch was dead code under the
+            # current signature. Capture detection is split into three
+            # cases:
+            #   - key absent              → legacy entry, noop
+            #   - key present, value null → corrupt entry (YAML emitted
+            #                                `previous_content:` with no
+            #                                value), fail loudly so the
+            #                                operator notices instead of
+            #                                silently writing a 0-byte file
+            #   - key present, value set  → restore (empty string is OK,
+            #                                base64 of a 0-byte README)
+            if (-not $Entry.ContainsKey('previous_content')) {
+                return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
+            }
+            $rawValue = $Entry['previous_content']
+            if ($null -eq $rawValue) {
+                return @{ status = 'fail'; details = "refresh_readme previous_content key is present but null for $path — likely a corrupt journal entry; resolve manually." }
+            }
+            $b64 = [string]$rawValue
+            try {
+                $bytes = [Convert]::FromBase64String($b64)
+            } catch {
+                return @{ status = 'fail'; details = "refresh_readme previous_content is not valid base64 for $path : $($_.Exception.Message)" }
+            }
+            try {
+                $parent = Split-Path -Parent $path
+                if ($parent -and -not (Test-Path $parent -PathType Container)) {
+                    return @{ status = 'skip'; details = "Parent folder no longer exists; cannot restore $path" }
+                }
+                # Divergence guard: if the README on disk has been
+                # edited since repair overwrote it, the unconditional
+                # restore would clobber the user's work. Mirror the
+                # seed_readme arm's discipline exactly:
+                #   - template path missing in entry → skip (can't
+                #     verify; preserving the file is safer than
+                #     overwriting blind)
+                #   - target README missing → no divergence possible,
+                #     restoration is safe
+                #   - both present → hash comparison; mismatch → skip,
+                #     match → proceed
+                #   - hash compute fails → fail (refuse blind write
+                #     rather than treat unknown state as "no
+                #     divergence" — PR #83 cycle-6 review)
+                # The cycle-4 "fall back to write when template
+                # missing" branch was wrong: an absent template +
+                # present target = user edited and the comparator
+                # got destroyed, exactly the case to refuse. PR #83
+                # cycle-7 review aligned with seed_readme.
+                $template = [string]$Entry['template']
+                $targetPresent = Test-Path $path -PathType Leaf
+                if ($targetPresent) {
+                    if (-not $template -or -not (Test-Path $template -PathType Leaf)) {
+                        return @{ status = 'skip'; details = "Template no longer at recorded path ('$template'); preserving current README (cannot verify it still matches the post-repair content): $path" }
+                    }
+                    try {
+                        $currentHash  = (Get-FileHash -Algorithm SHA256 -Path $path     -ErrorAction Stop).Hash
+                        $templateHash = (Get-FileHash -Algorithm SHA256 -Path $template -ErrorAction Stop).Hash
+                    } catch {
+                        return @{ status = 'fail'; details = "Could not compare README to template before restoring '$path' ($($_.Exception.Message)); refusing to risk overwriting user edits. Resolve the read/permission issue or remove the README manually + rerun undo." }
+                    }
+                    if ($currentHash -ne $templateHash) {
+                        return @{ status = 'skip'; details = "README at '$path' has been edited since repair overwrote it (hash mismatch with template '$template'); refusing to restore over user edits. Resolve manually or back up + delete the current README and rerun undo." }
+                    }
+                }
+                # Target absent OR target matches template → restore is safe.
+                [System.IO.File]::WriteAllBytes($path, $bytes)
+            } catch {
+                return @{ status = 'fail'; details = "Failed to restore pre-overwrite README at '$path': $($_.Exception.Message)" }
+            }
+            return @{ status = 'ok'; details = "Restored pre-overwrite README content: $path" }
         }
         'create_workspace_file'  { return Invoke-CABUndoWorkspaceFile -Entry $Entry }
         'create_file'            { return Invoke-CABUndoCreateFile -Entry $Entry }

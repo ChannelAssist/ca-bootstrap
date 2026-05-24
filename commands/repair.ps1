@@ -504,12 +504,73 @@ function Invoke-CABRepairFolderReadmes {
             $skippedDrift++
             continue
         }
+        # Capture a base64 snapshot of the pre-overwrite content so undo can
+        # restore the user's drift. Size-capped at 64KB of source bytes;
+        # larger files keep the legacy noop-undo behavior so we don't bloat
+        # the journal with megabytes of content.
+        $previousContent  = $null
+        $captureSkipped   = $false
+        $captureSucceeded = $false
+        try {
+            # Check file size FIRST via FileInfo.Length — don't
+            # ReadAllBytes a multi-MB drifted README into memory just
+            # to discover it's over cap. ReadAllBytes only runs on
+            # under-cap files, so the byte[] allocation is bounded by
+            # 64KB + ε regardless of the on-disk drift. PR #83 cycle-3.
+            $preInfo = [System.IO.FileInfo]::new($target)
+            if ($preInfo.Length -gt 65536) {
+                $captureSkipped = $true
+                Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot skipped for '$($f.path)/README.md' ($($preInfo.Length) bytes > 64KB cap); undo will not be able to restore drift content."
+            } else {
+                $preBytes = [System.IO.File]::ReadAllBytes($target)
+                # Scan for credentials BEFORE base64-encoding. The
+                # journal's existing sensitive-data guard only scans
+                # raw string values via Hide-CABSensitive — base64
+                # would round-trip secrets past it. Decode under MULTIPLE
+                # encodings (UTF-8, UTF-16LE, UTF-16BE) so an ASCII
+                # token embedded in a UTF-16 README isn't masked by
+                # interleaved 0x00 bytes that a single UTF-8 decode
+                # would interpret as control characters. If ANY decode
+                # surfaces a sensitive token, skip capture. PR #83
+                # cycles 1 + 4 review.
+                $sensitive = $false
+                foreach ($enc in @(
+                    [System.Text.Encoding]::UTF8,
+                    [System.Text.Encoding]::Unicode,        # UTF-16LE
+                    [System.Text.Encoding]::BigEndianUnicode # UTF-16BE
+                )) {
+                    $decoded = $null
+                    try { $decoded = $enc.GetString($preBytes) } catch { $decoded = $null }
+                    if ($decoded -and (Test-CABContainsSensitive $decoded)) {
+                        $sensitive = $true
+                        break
+                    }
+                }
+                if ($sensitive) {
+                    $captureSkipped = $true
+                    Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot for '$($f.path)/README.md' contains credential-shaped tokens; capture skipped to avoid persisting secrets to the journal."
+                } else {
+                    $previousContent  = [Convert]::ToBase64String($preBytes)
+                    $captureSucceeded = $true
+                }
+            }
+        } catch {
+            $captureSkipped = $true
+            Write-CABColor Yellow "    ⚠ Could not capture pre-overwrite snapshot for '$($f.path)/README.md': $($_.Exception.Message)"
+        }
+
         try {
             Copy-Item -Path $template -Destination $target -Force -ErrorAction Stop
         } catch {
             return @{ status = 'fail'; details = "Failed to overwrite README at '$target': $($_.Exception.Message)" }
         }
-        Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data @{ path = $target; template = $template } | Out-Null
+        $journalData = @{ path = $target; template = $template }
+        # Track capture by the explicit success flag, NOT by truthiness
+        # of $previousContent — base64 of a 0-byte README is an empty
+        # string, and an empty README must still be restorable on undo.
+        if ($captureSucceeded) { $journalData['previous_content'] = $previousContent }
+        if ($captureSkipped)   { $journalData['previous_content_captured'] = $false }
+        Add-CABJournalEntry -Step 'repair' -Action 'refresh_readme' -Data $journalData | Out-Null
         $overwritten++
     }
 

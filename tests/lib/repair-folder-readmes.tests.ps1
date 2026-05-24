@@ -109,4 +109,119 @@ Describe 'Repair — folder-readmes' {
         # Failure path tested manually; cross-platform test injection deferred.
         Set-ItResult -Skipped -Because 'Cross-platform Copy-Item overwrite failure injection deferred; try/catch verified by code review (see comment in test file)'
     }
+
+    It 'skips snapshot capture when a UTF-16LE README contains a credential-shaped token' {
+        # PR #83 cycle-4 review pinned: the cycle-1 sensitive-content
+        # guard decoded as UTF-8 only. A UTF-16LE README with an ASCII
+        # token has interleaved 0x00 bytes between the ASCII chars
+        # after UTF-8 decode, masking the contiguous regex pattern —
+        # so secrets would have base64-journaled. The scan now tries
+        # UTF-8, UTF-16LE, AND UTF-16BE; any match skips capture.
+        $targetDir = Join-Path $script:tmpWs 'ca-tools'
+        $target    = Join-Path $targetDir 'README.md'
+
+        # Build a UTF-16LE README containing a GitHub fine-grained PAT
+        # pattern. Test-CABContainsSensitive in lib/journal.ps1 matches
+        # \bgithub_pat_[A-Za-z0-9_]{20,}.
+        $content = "# README`r`n`r`ntoken: github_pat_AAAAAAAAAAAAAAAAAAAAA_REDACTED`r`n"
+        $bytes = [System.Text.Encoding]::Unicode.GetPreamble() + [System.Text.Encoding]::Unicode.GetBytes($content)
+        [System.IO.File]::WriteAllBytes($target, $bytes)
+
+        # Answer key matches commands/repair.ps1:482 — singular
+        # `folder-readme` (not `folder-readmes`) per the prompt scope.
+        Set-CABPromptMode -Unattended $true -Answers @{
+            'folder-readme.ca-tools.overwrite' = 'y'
+        }
+
+        $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
+        $r.status | Should -Be 'ok'
+
+        # The ca-tools refresh_readme entry should NOT carry
+        # previous_content (secrets-scan caught the embedded token)
+        # and should carry previous_content_captured: $false.
+        $entry = Get-CABJournalEntry -Action 'refresh_readme' -IncludeUndone |
+            Where-Object { ([string]$_.path) -like '*ca-tools*README.md' } |
+            Select-Object -First 1
+        $entry | Should -Not -BeNullOrEmpty
+        $entry.ContainsKey('previous_content') | Should -BeFalse
+        $entry['previous_content_captured'] | Should -Be $false
+    }
+
+    It 'captures a non-sensitive under-cap drifted README and the base64 decodes back to the original bytes' {
+        # PR #83 cycle-5 review pinned the missing happy-path coverage:
+        # a non-sensitive, under-cap drifted README must (a) cause the
+        # repair journal entry to carry a `previous_content` key, AND
+        # (b) the value must decode losslessly back to the operator's
+        # original drift content. Without this end-to-end pin the
+        # capture branch is only indirectly exercised by the undo tests
+        # (which feed synthesised entries) — a regression in the
+        # repair-side ToBase64String step would not have been caught.
+        $targetDir = Join-Path $script:tmpWs 'ca-tools'
+        $target    = Join-Path $targetDir 'README.md'
+
+        # UTF-8 README, no credential-shaped tokens, comfortably under
+        # the 64KB cap. Include CRLF + trailing whitespace so the
+        # round-trip equality is meaningful (anything that mangles
+        # EOLs would show up here).
+        $original      = "# ca-tools (operator-edited)`r`n`r`nSome notes with trailing space.   `r`n"
+        $originalBytes = [System.Text.Encoding]::UTF8.GetBytes($original)
+        [System.IO.File]::WriteAllBytes($target, $originalBytes)
+
+        Set-CABPromptMode -Unattended $true -Answers @{
+            'folder-readme.ca-tools.overwrite' = 'y'
+        }
+
+        $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
+        $r.status | Should -Be 'ok'
+
+        $entry = Get-CABJournalEntry -Action 'refresh_readme' -IncludeUndone |
+            Where-Object { ([string]$_.path) -like '*ca-tools*README.md' } |
+            Select-Object -First 1
+        $entry | Should -Not -BeNullOrEmpty
+        $entry.ContainsKey('previous_content') | Should -BeTrue
+        # previous_content_captured marker is only written on skip;
+        # absence here means capture succeeded.
+        $entry.ContainsKey('previous_content_captured') | Should -BeFalse
+
+        # Decode round-trip must be byte-for-byte identical to the
+        # original drift.
+        $decoded = [Convert]::FromBase64String([string]$entry['previous_content'])
+        $decoded.Length | Should -Be $originalBytes.Length
+        for ($i = 0; $i -lt $originalBytes.Length; $i++) {
+            $decoded[$i] | Should -Be $originalBytes[$i]
+        }
+    }
+
+    It 'skips snapshot capture when the drifted README is over the 64KB cap' {
+        # PR #83 cycle-5 review pinned: the >64KB path should omit
+        # previous_content AND write previous_content_captured:$false
+        # so undo can distinguish "intentionally skipped (too large)"
+        # from "never captured (pre-PR-83 entry)". Cycle-3 also fixed
+        # this to use FileInfo.Length so no multi-MB byte[] is
+        # allocated for the cap check itself; this test exercises
+        # the dispatch path end-to-end.
+        $targetDir = Join-Path $script:tmpWs 'ca-tools'
+        $target    = Join-Path $targetDir 'README.md'
+
+        # 64KB cap = 65536 source bytes. Build a 70KB drift so the
+        # cap check fires cleanly and ReadAllBytes is never called
+        # on this path (verified by cycle-3 fix; this test pins the
+        # observable journal state).
+        $bigContent = "# big drift`r`n" + ('x' * 70000)
+        [System.IO.File]::WriteAllBytes($target, [System.Text.Encoding]::UTF8.GetBytes($bigContent))
+
+        Set-CABPromptMode -Unattended $true -Answers @{
+            'folder-readme.ca-tools.overwrite' = 'y'
+        }
+
+        $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
+        $r.status | Should -Be 'ok'
+
+        $entry = Get-CABJournalEntry -Action 'refresh_readme' -IncludeUndone |
+            Where-Object { ([string]$_.path) -like '*ca-tools*README.md' } |
+            Select-Object -First 1
+        $entry | Should -Not -BeNullOrEmpty
+        $entry.ContainsKey('previous_content') | Should -BeFalse
+        $entry['previous_content_captured'] | Should -Be $false
+    }
 }
