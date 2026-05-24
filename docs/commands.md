@@ -29,7 +29,7 @@ If `<command>` is omitted, `setup` runs.
 | `make tool-remove TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 undo --target tool.<id> -IncludeTools -Force`. Implicitly destructive — uninstall the named tool. Still prompts once per tool ("Other projects may depend on it") — that confirmation is deliberately not bypassable. |
 | `make test` | Full Pester suite. |
 | `make smoke` | End-to-end smoke test against a /tmp workspace. |
-| `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
+| `make wiki-update` | GitHub Wiki workflow — clone the wiki repo if missing, mirror docs/ into it, push. Single public target for wiki sync. |
 | `make release VERSION=X.Y.Z` | Promote `dev` → `main` (ff), tag GPG-signed, push, create GH release. Requires the version constant on `dev` to already equal X.Y.Z — bump it via a PR to `dev` first. |
 | `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
 | `make release-full VERSION=X.Y.Z` | One-shot: auto-bump dev's version (admin-merged PR, no review), then run `make release`. Skips review on the bump itself; for hotfixes / single-maintainer flows. |
@@ -112,7 +112,7 @@ Diagnostic-only. Runs every step's detection function but never modifies anythin
 ca-bootstrap doctor — 2026-05-15 09:32
 
 Workspace                    ✓  exists
-Folder structure             ✓  4/4 folders present
+Folder structure             ✓  6/6 folders present
 Prerequisites
   git                        ✓  2.43.0
   ...
@@ -122,7 +122,7 @@ Prerequisites
 
 ```
 ✓ workspace
-✓ folders (4/4)
+✓ folders (6/6)
 ✓ git 2.43.0
 ⚠ node-20 v18.18.0 (older)
 ✗ cm-shared-libs missing
@@ -189,6 +189,8 @@ You **must** specify either `--all` or `--target` — there is no default to pre
 | `--target gh-auth` | Re-run `gh auth login` |
 | `--target folders` | Recreate any missing top-level folders |
 | `--target journal` | Rebuild the journal from on-disk state |
+| `--target folder-renames` | Migrate workspace folders to their renamed paths (safety-contract compliant) |
+| `--target folder-readmes` | Re-sync `templates/folder-readmes/` into the workspace (prompts before overwriting drift) |
 
 ### Flags
 
@@ -227,6 +229,7 @@ Default behavior (no `--target`): walk every reversible journal entry, prompting
 |---|---|
 | (none) | Interactive walkthrough of all reversible categories |
 | `--target identity` | Remove per-folder git identity only |
+| `--target readmes` | Remove seeded folder READMEs (`seed_readme` actions). Preserves user-edited READMEs by SHA256-comparing against the template; only removes byte-identical copies. (`refresh_readme` overwrites are listed but not undoable — original drift content not captured.) |
 | `--target repos` | Remove cloned repos (per-repo confirm) |
 | `--target repos:<slug>` | Remove one specific cloned repo |
 | `--target workspace` | Remove the workspace folder if empty |

@@ -78,4 +78,12 @@ Describe 'Journal round-trip' {
         @(Get-CABJournalEntry -Action 'clone_repo').Count                 | Should -Be 0
         @(Get-CABJournalEntry -Action 'clone_repo' -IncludeUndone).Count | Should -Be 1
     }
+
+    # The "silently returns $null when Add-CABJournalEntry is called
+    # without an active session" test that used to live here pinned the
+    # exact regression PR #80 was opened to fix. The current contract
+    # (see tests/lib/journal-session-required.tests.ps1) is: throw
+    # "No active session" — a silent $null return creates invisible
+    # audit-trail gaps in production where prior sessions on disk would
+    # mask the missing Start-CABSession. The deletion is deliberate.
 }

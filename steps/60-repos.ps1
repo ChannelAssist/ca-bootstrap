@@ -1,6 +1,11 @@
 ﻿#requires -Version 7.0
 # steps/60-repos.ps1 — clone repos group by group.
 
+# Source the README-seed helper (used here + in step 50 + in repair).
+if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '../lib/folder-readmes.ps1')
+}
+
 function Test-CABStep60 {
     [CmdletBinding()]
     param([hashtable]$Context)
@@ -225,6 +230,31 @@ function Invoke-CABStep60 {
         Write-CABColor Yellow "    everything this session tracked. Re-run setup to re-clone."
         Write-Host ''
     }
+    # After cloning, optional workspace folders (e.g. ca-experiments/) may
+    # have been created as a side-effect of cloning repos that live inside
+    # them. Step 50 only seeds READMEs for optional folders that existed at
+    # step-50 time — which for opt-in groups is never (they didn't exist yet).
+    # Seed them now for any that exist on disk.
+    $foldersManifestPath = Join-Path $Context.RepoRoot 'manifest/folders.yaml'
+    if (Test-Path $foldersManifestPath) {
+        $fManifest = Read-CABManifest -Path $foldersManifestPath -Quiet
+        $optionalFolders = @($fManifest.folders | Where-Object { $_.optional })
+        foreach ($f in $optionalFolders) {
+            $full = Join-Path $Context.WorkspacePath $f.path
+            if (-not (Test-Path $full -PathType Container)) {
+                if (Test-Path $full) {
+                    Write-CABColor Yellow "    ⚠ Optional folder path '$full' exists but is not a directory — skipping README seed"
+                }
+                continue
+            }
+            Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath $f.path `
+                -StepName '60-repos' | Out-Null
+        }
+    }
+
     $summary = "$totalCloned cloned, $totalFetched already-present (fetched), $totalSkipped skipped, $totalMismatch mismatched, $totalFailed failed"
     if ($totalFailed -gt 0) {
         return @{ status = 'fail'; details = "$summary. Errors:`n  $($failedDetails -join "`n  ")" }

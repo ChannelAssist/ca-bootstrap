@@ -62,8 +62,8 @@ groups:
       - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main }
       - { repo: ChannelAssist/agentic-ai-lab,                     into: ca-training/agentic-ai-lab,                     branch: main }
 
-  - name: experiments
+  - name: ca-experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
     repos:
-      - { repo: ChannelAssist/command-center, into: experiments/command-center, branch: dev, opt_in: true }
+      - { repo: ChannelAssist/command-center, into: ca-experiments/command-center, branch: dev, opt_in: true }
 

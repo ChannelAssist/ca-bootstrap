@@ -1548,4 +1548,14 @@ Larger than the original 3200-line estimate because `doctor`/`repair`/`undo` add
 
 ---
 
+### Folder taxonomy + README templates (2026-05)
+
+The workspace folder set is declared in `manifest/folders.yaml`. Every top-level folder receives a `README.md` from `templates/folder-readmes/<folder>/README.md` on creation (step 50), and a per-folder safety contract prevents `ca-bootstrap` from ever deleting a folder that contains sub-folders or non-empty content without explicit user confirmation — sub-folders may belong to other tools (Claude Code worktrees, Claude Cowork sessions, IDE scratch).
+
+Renames are tracked declaratively via a `renamed_from:` field on the folder entry. `doctor` detects drift and points at `repair --target folder-renames`, which performs the migration safely.
+
+Full spec: [`docs/specs/2026-05-22-folder-taxonomy-design.md`](docs/specs/2026-05-22-folder-taxonomy-design.md).
+
+---
+
 *End of design specification. Comments welcome via PR or issue on the ca-bootstrap repo (once created).*

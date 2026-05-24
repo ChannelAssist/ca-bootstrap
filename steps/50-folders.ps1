@@ -1,6 +1,11 @@
 ﻿#requires -Version 7.0
 # steps/50-folders.ps1 — create the standard folder skeleton in the workspace.
 
+# Source the README-seed helper (used here + in step 60 + in repair).
+if (-not (Get-Command 'Invoke-CABSeedFolderReadme' -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot '../lib/folder-readmes.ps1')
+}
+
 function Test-CABStep50 {
     [CmdletBinding()]
     param([hashtable]$Context)
@@ -86,45 +91,88 @@ function Invoke-CABStep50 {
     $created = 0
     $kept = 0
     $renamed = 0
+    $seededReadmes = 0
     foreach ($f in $required) {
         $full = Join-Path $Context.WorkspacePath $f.path
-        if (Test-Path $full) {
+        if (Test-Path $full -PathType Container) {
             $kept++
-            continue
-        }
-        # Walk renamed_from (most-recent → oldest). If a predecessor
-        # still exists on disk, rename it into place instead of
-        # creating a new empty folder — operators who skipped a
-        # previous rename get caught up safely.
-        $predecessor = $null
-        foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
-            $candidate = Join-Path $Context.WorkspacePath $p
-            if (Test-Path $candidate) { $predecessor = $candidate; break }
-        }
-        if ($predecessor) {
-            try {
-                Move-Item -LiteralPath $predecessor -Destination $full -ErrorAction Stop
-                Add-CABJournalEntry -Step '50-folders' -Action 'rename_folder' -Data @{
-                    from = $predecessor
-                    to   = $full
-                } | Out-Null
-                $renamed++
-                continue
-            } catch {
-                return @{ status = 'fail'; details = "Failed to rename $predecessor → $full : $($_.Exception.Message)" }
+        } elseif (Test-Path $full) {
+            # Path exists but isn't a directory — fail clearly rather than silently
+            # mis-categorising or trying to seed a README under a non-directory.
+            return @{ status = 'fail'; details = "Path '$full' exists but is not a directory; resolve manually." }
+        } else {
+            # Folder is missing. Walk renamed_from (most-recent → oldest)
+            # first so an operator who skipped a previous rename gets
+            # caught up safely — moving the predecessor into place
+            # preserves any user data inside. Fall back to fresh create
+            # only when no predecessor exists on disk.
+            $predecessor = $null
+            foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
+                $candidate = Join-Path $Context.WorkspacePath $p
+                if (Test-Path $candidate -PathType Container) { $predecessor = $candidate; break }
+            }
+            if ($predecessor) {
+                try {
+                    Move-Item -LiteralPath $predecessor -Destination $full -ErrorAction Stop
+                    Add-CABJournalEntry -Step '50-folders' -Action 'rename_folder' -Data @{
+                        from = $predecessor
+                        to   = $full
+                    } | Out-Null
+                    $renamed++
+                } catch {
+                    return @{ status = 'fail'; details = "Failed to rename $predecessor → $full : $($_.Exception.Message)" }
+                }
+            } else {
+                try {
+                    [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
+                    Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
+                    $created++
+                } catch {
+                    return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+                }
             }
         }
-        try {
-            [void](New-Item -ItemType Directory -Path $full -Force -ErrorAction Stop)
-            Add-CABJournalEntry -Step '50-folders' -Action 'create_folder' -Data @{ path = $full } | Out-Null
-            $created++
-        } catch {
-            return @{ status = 'fail'; details = "Failed to create $full : $($_.Exception.Message)" }
+
+        # README seeding: idempotent, never overwrites a user-edited README.
+        # Missing template → warn (signals the manifest is out of sync with templates/).
+        # Copy failure → warn and continue (non-fatal). Runs for kept,
+        # created, AND renamed folders so the seed catches operators
+        # who landed here through any path.
+        if (Test-Path $full -PathType Container) {
+            $result = Invoke-CABSeedFolderReadme `
+                -RepoRoot $Context.RepoRoot `
+                -WorkspacePath $Context.WorkspacePath `
+                -FolderPath $f.path `
+                -StepName '50-folders'
+            if ($result -eq 'seeded') { $seededReadmes++ }
         }
+    }
+
+    # Seed READMEs for OPTIONAL folders that exist on disk. Optional folders
+    # are not created by this step (they're created later by step 60 when their
+    # repo group is cloned, or manually by the user). We only seed when the
+    # folder already exists — never create folders here that the user didn't
+    # ask for. Required folders were handled by the loop above.
+    $optional = @($manifest.folders | Where-Object { $_.optional })
+    foreach ($f in $optional) {
+        $full = Join-Path $Context.WorkspacePath $f.path
+        if (-not (Test-Path $full -PathType Container)) {
+            if (Test-Path $full) {
+                Write-CABColor Yellow "    ⚠ Optional folder path '$full' exists but is not a directory — skipping README seed"
+            }
+            continue
+        }
+        $result = Invoke-CABSeedFolderReadme `
+            -RepoRoot $Context.RepoRoot `
+            -WorkspacePath $Context.WorkspacePath `
+            -FolderPath $f.path `
+            -StepName '50-folders'
+        if ($result -eq 'seeded') { $seededReadmes++ }
     }
 
     $summary = "$created created, $kept kept"
     if ($renamed -gt 0) { $summary += ", $renamed renamed" }
+    $summary += ", $seededReadmes README(s) seeded"
     return @{ status = 'ok'; details = $summary }
 }
 

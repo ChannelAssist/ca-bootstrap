@@ -46,7 +46,7 @@ cmd_clone() {
     if ! git clone "$WIKI_URL_HTTPS" "$WIKI_DIR" 2>/dev/null; then
         color_yellow "Wiki clone failed — the wiki may not be initialized yet."
         color_yellow "Visit https://github.com/ChannelAssist/ca-bootstrap/wiki and create the first page,"
-        color_yellow "then re-run 'make wiki-clone'."
+        color_yellow "then re-run 'make wiki-update'."
         exit 1
     fi
     color_green "Wiki cloned to $WIKI_DIR"
@@ -74,7 +74,7 @@ transform_links() {
 
 cmd_sync() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-clone' first."
+        color_red "Wiki not cloned. Run './scripts/wiki-sync.sh clone' first (or 'full' / 'make wiki-update' for the end-to-end flow)."
         exit 1
     fi
 
@@ -113,30 +113,55 @@ cmd_sync() {
         echo '- [[DESIGN]]'
         echo ''
         echo '## Reference'
-        for f in "$WIKI_DIR"/*.md; do
-            base=$(basename "$f" .md)
-            case "$base" in
-                Home|DESIGN|_Sidebar|_Footer) continue ;;
-            esac
-            echo "- [[$base]]"
-        done
+        # Case-insensitive stable sort to match the PowerShell peer's
+        # Sort-Object Name. -z (NUL-terminated) is GNU-only and unavailable
+        # on macOS BSD sort; wiki page names are not expected to contain
+        # newlines, so newline-delimited output is safe on both platforms.
+        find "$WIKI_DIR" -maxdepth 1 -type f -name '*.md' 2>/dev/null \
+            | LC_ALL=C sort -fs \
+            | while IFS= read -r f; do
+                base=$(basename "$f" .md)
+                case "$base" in
+                    Home|DESIGN|_Sidebar|_Footer) continue ;;
+                esac
+                echo "- [[$base]]"
+            done
     } > "$WIKI_DIR/_Sidebar.md"
 
     color_blue "Stamping footer..."
     {
         # Footer text must match the PowerShell peer (scripts/wiki-sync.ps1)
         # byte-for-byte — see that file's matching comment.
-        printf '\n---\n*Last synced from `main` at %s UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*\n' \
-            "$(date -u +'%Y-%m-%d %H:%M')"
+        local source_ref
+        source_ref=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')
+        local source_sha
+        source_sha=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo '0000000')
+        printf '\n---\n*Last synced from `%s` (`%s`) at %s UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*\n' \
+            "$source_ref" "$source_sha" "$(date -u +'%Y-%m-%d %H:%M')"
     } > "$WIKI_DIR/_Footer.md"
 
     color_green "Wiki working tree synced."
 }
 
+# cmd_full — single "do it all" entrypoint. Clones the wiki if absent,
+# then delegates to cmd_sync (which owns the fetch/reset) and cmd_push.
+# The redundant fetch/reset that used to live here was removed: cmd_sync
+# already does a fetch+reset at its start, so doing it twice created two
+# separate reset-points — the second (in cmd_sync) always wins, but the
+# gap between them is a silent failure surface if the first reset succeeds
+# and the second fails after further state mutation. One place owns the pull.
+cmd_full() {
+    if [[ ! -d "$WIKI_DIR/.git" ]]; then
+        cmd_clone
+    fi
+    cmd_sync
+    cmd_push
+}
+
 # Push with reconcile-on-divergence (same pattern as Keystone wiki-sync.sh).
 cmd_push() {
     if [[ ! -d "$WIKI_DIR/.git" ]]; then
-        color_red "Wiki not cloned. Run 'make wiki-clone' first."
+        color_red "Wiki not cloned. Run './scripts/wiki-sync.sh clone' first (or 'full' / 'make wiki-update' for the end-to-end flow)."
         exit 1
     fi
     cd "$WIKI_DIR"
@@ -179,14 +204,15 @@ main() {
     local cmd="${1:-help}"
     case "$cmd" in
         clone) cmd_clone ;;
-        sync)  cmd_sync ;;
-        push)  cmd_push ;;
+        sync)  cmd_sync  ;;
+        push)  cmd_push  ;;
+        full)  cmd_full  ;;
         help|--help|-h)
-            echo "Usage: $0 {clone|sync|push}"
+            echo "Usage: $0 {clone|sync|push|full}"
             ;;
         *)
             color_red "Unknown command: $cmd"
-            echo "Usage: $0 {clone|sync|push}"
+            echo "Usage: $0 {clone|sync|push|full}"
             exit 1
             ;;
     esac

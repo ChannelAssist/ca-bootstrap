@@ -24,7 +24,7 @@ Reference: https://github.com/ChannelAssist/Keystone/blob/dev/content/docs/adr/0
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('clone', 'sync', 'push', 'help')]
+    [ValidateSet('clone', 'sync', 'push', 'full', 'help')]
     [string]$Command = 'help'
 )
 
@@ -65,7 +65,7 @@ function Cmd-Clone {
     if ($LASTEXITCODE -ne 0) {
         Write-Warn2 'Wiki clone failed — the wiki may not be initialized yet.'
         Write-Warn2 'Visit https://github.com/ChannelAssist/ca-bootstrap/wiki and create the first page,'
-        Write-Warn2 "then re-run './make.ps1 wiki-clone'."
+        Write-Warn2 "then re-run './make.ps1 wiki-update'."
         exit 1
     }
     Write-Ok "Wiki cloned to $($script:WikiDir)"
@@ -87,7 +87,7 @@ function Transform-Links {
 
 function Cmd-Sync {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-clone' first."
+        Write-Bad "Wiki not cloned. Run './scripts/wiki-sync.ps1 clone' first (or 'full' / './make.ps1 wiki-update' for the end-to-end flow)."
         exit 1
     }
 
@@ -140,33 +140,35 @@ function Cmd-Sync {
     $sidebarLines.Add('')
     $sidebarLines.Add('## Reference')
     Get-ChildItem -Path $script:WikiDir -Filter '*.md' -File |
-        Sort-Object Name | ForEach-Object {
+        Sort-Object -Property Name -CaseSensitive:$false | ForEach-Object {
             $base = [IO.Path]::GetFileNameWithoutExtension($_.Name)
             if ($base -notin @('Home', 'DESIGN', '_Sidebar', '_Footer')) {
                 $sidebarLines.Add("- [[$base]]")
             }
         }
-    Set-Content -Path (Join-Path $script:WikiDir '_Sidebar.md') -Value ($sidebarLines -join "`n")
+    $sidebar = ($sidebarLines -join "`n") + "`n"
+    Set-Content -Path (Join-Path $script:WikiDir '_Sidebar.md') -NoNewline -Value $sidebar
 
     Write-Info 'Stamping footer...'
+    $sourceRef = & git -C $script:RepoRoot rev-parse --abbrev-ref HEAD 2>$null
+    if (-not $sourceRef -or $LASTEXITCODE -ne 0) { $sourceRef = 'unknown' }
+    $sourceSha = & git -C $script:RepoRoot rev-parse --short HEAD 2>$null
+    if (-not $sourceSha -or $LASTEXITCODE -ne 0) { $sourceSha = '0000000' }
     $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm')
     # Footer text must match the bash peer (scripts/wiki-sync.sh) byte-for-byte
     # — this string is committed into the wiki and gets rewritten on every sync,
     # so any divergence between peers causes churn when sync runs from different
-    # platforms.
-    $footer = @"
-
----
-*Last synced from ``main`` at $stamp UTC. Edit source under ``docs/`` and run ``make wiki-update`` (or ``./make.ps1 wiki-update`` on Windows).*
-"@
-    Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -Value $footer
+    # platforms. Use single-quoted string concatenation to avoid PS backtick
+    # escaping inside here-strings, which would produce doubled backticks.
+    $footer = "`n---`n" + '*Last synced from `' + $sourceRef + '` (`' + $sourceSha + '`) at ' + $stamp + ' UTC. Edit source under `docs/` and run `make wiki-update` (or `./make.ps1 wiki-update` on Windows).*' + "`n"
+    Set-Content -Path (Join-Path $script:WikiDir '_Footer.md') -NoNewline -Value $footer
 
     Write-Ok 'Wiki working tree synced.'
 }
 
 function Cmd-Push {
     if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
-        Write-Bad "Wiki not cloned. Run './make.ps1 wiki-clone' first."
+        Write-Bad "Wiki not cloned. Run './scripts/wiki-sync.ps1 clone' first (or 'full' / './make.ps1 wiki-update' for the end-to-end flow)."
         exit 1
     }
 
@@ -225,14 +227,29 @@ function Cmd-Push {
     }
 }
 
+function Cmd-Full {
+    # Clones the wiki if absent, then delegates to Cmd-Sync (which owns the
+    # fetch/reset) and Cmd-Push. The redundant fetch/reset that used to live
+    # here was removed: Cmd-Sync already does a fetch+reset at its start, so
+    # doing it twice created two separate reset-points — the second (in
+    # Cmd-Sync) always wins, but the gap between them is a silent failure
+    # surface. One place owns the pull.
+    if (-not (Test-Path (Join-Path $script:WikiDir '.git'))) {
+        Cmd-Clone
+    }
+    Cmd-Sync
+    Cmd-Push
+}
+
 function Cmd-Help {
-    Write-Host 'Usage: ./scripts/wiki-sync.ps1 {clone|sync|push}'
+    Write-Host 'Usage: ./scripts/wiki-sync.ps1 {clone|sync|push|full}'
 }
 
 switch ($Command) {
     'clone' { Cmd-Clone }
     'sync'  { Cmd-Sync }
     'push'  { Cmd-Push }
+    'full'  { Cmd-Full }
     'help'  { Cmd-Help }
     default {
         Write-Bad "Unknown command: $Command"
