@@ -117,7 +117,13 @@ function Invoke-CABDoctorCheck {
         # diverge on a blocking collision. PR #82 cycle-3 review.
         $present     = New-Object System.Collections.Generic.List[hashtable]
         $collisions  = New-Object System.Collections.Generic.List[string]
-        $candidates  = New-Object System.Collections.Generic.List[hashtable]
+        # $candidates holds the original folder entries from the
+        # manifest. They can be PSCustomObject (test mocks),
+        # OrderedDictionary (powershell-yaml output), or hashtable
+        # depending on the caller — Generic.List[hashtable] would
+        # throw on .Add() whenever a folder genuinely was missing.
+        # PR #82 cycle-4 review.
+        $candidates  = New-Object System.Collections.Generic.List[object]
         foreach ($f in $expected) {
             $target = Join-Path $workspace $f.path
             if (Test-Path $target -PathType Container) {

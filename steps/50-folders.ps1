@@ -22,7 +22,11 @@ function Test-CABStep50 {
     # in the diagnostic — but Invoke-CABStep50 would actually fail with
     # "exists but is not a directory" before the rename could fire.
     $collisions   = New-Object System.Collections.Generic.List[string]
-    $missing      = New-Object System.Collections.Generic.List[hashtable]
+    # $missing holds the original folder entries from the manifest —
+    # PSCustomObject in tests, OrderedDictionary from powershell-yaml,
+    # hashtable when built by hand. Generic.List[hashtable] would
+    # throw on .Add() the moment a real missing folder showed up.
+    $missing      = New-Object System.Collections.Generic.List[object]
     $presentCount = 0
     foreach ($f in $expected) {
         $target = Join-Path $Context.WorkspacePath $f.path
