@@ -8,6 +8,12 @@ BeforeAll {
     . (Join-Path $script:repoRoot 'lib/yaml.ps1')
     . (Join-Path $script:repoRoot 'lib/journal.ps1')
     . (Join-Path $script:repoRoot 'lib/prompts.ps1')
+    # PR #82 cycle-2 made Invoke-CABRepairFolderRenames iterate
+    # Get-CABFolderRenamedFrom so list-valued renamed_from chains are
+    # walked instead of cast to a malformed scalar. The orchestrator
+    # already loads lib/folders.ps1 alongside the rest of lib/; tests
+    # driving repair directly must dot-source it explicitly.
+    . (Join-Path $script:repoRoot 'lib/folders.ps1')
     . (Join-Path $script:repoRoot 'commands/repair.ps1')
 }
 
@@ -203,5 +209,46 @@ Describe 'Repair — folder-renames' {
         # code review and manual testing.
         Set-ItResult -Skipped -Because 'Reliable cross-platform Remove-Item failure injection deferred; try/catch + post-condition verified by code review'
         # Failure path tested manually; cross-platform test injection deferred.
+    }
+
+    It 'iterates every predecessor in a renamed_from list, repairing each in turn' {
+        # PR #82 cycle-2 review pinned: the previous impl cast
+        # [string]$f.renamed_from to a scalar, joining list elements
+        # with a space — so for renamed_from: [legacy-one, legacy-two]
+        # the legacy path became "legacy-one legacy-two" and matched
+        # nothing on disk. Now Invoke-CABRepairFolderRenames walks
+        # Get-CABFolderRenamedFrom (the same chain doctor uses) and
+        # repairs each predecessor that's on disk.
+        $ws = $script:tmpWs
+        New-Item -ItemType Directory -Path (Join-Path $ws 'legacy-one') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $ws 'legacy-two') -Force | Out-Null
+
+        # Override the mocked folders manifest for this test so renamed_from
+        # is a list, not a scalar.
+        Mock -CommandName Read-CABManifest -MockWith {
+            if ($Path -like '*folders.yaml') {
+                return [pscustomobject]@{
+                    folders = @(
+                        [pscustomobject]@{
+                            path         = 'ca-experiments'
+                            renamed_from = @('legacy-one','legacy-two')
+                            optional     = $true
+                        }
+                    )
+                }
+            }
+            return [pscustomobject]@{ groups = @() }
+        }
+
+        $r = Invoke-CABRepairFolderRenames -Context $script:ctx
+        # Both legacy folders should have been processed. First one renames
+        # to ca-experiments (only-legacy + empty → silent rename). Second
+        # one finds ca-experiments now exists → both-exist + both-empty
+        # → remove empty legacy.
+        $r.status | Should -Be 'ok'
+        $r.details | Should -Match 'Renamed/cleaned 2'
+        (Test-Path (Join-Path $ws 'legacy-one'))    | Should -BeFalse
+        (Test-Path (Join-Path $ws 'legacy-two'))    | Should -BeFalse
+        (Test-Path (Join-Path $ws 'ca-experiments') -PathType Container) | Should -BeTrue
     }
 }

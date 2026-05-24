@@ -9,6 +9,11 @@ BeforeAll {
     . (Join-Path $script:repoRoot 'lib/yaml.ps1')
     . (Join-Path $script:repoRoot 'lib/journal.ps1')
     . (Join-Path $script:repoRoot 'lib/prompts.ps1')
+    # PR #82 wired Get-CABFolderRenamedFrom into step 50's preview
+    # block and create-or-rename branch. The orchestrator loads
+    # lib/folders.ps1 alongside the rest of lib/; tests that exercise
+    # step 50 directly must dot-source it explicitly.
+    . (Join-Path $script:repoRoot 'lib/folders.ps1')
     . (Join-Path $script:repoRoot 'steps/50-folders.ps1')
 }
 

@@ -264,7 +264,15 @@ function Invoke-CABRepairFolderRenames {
     $manuals = New-Object System.Collections.Generic.List[string]
 
     foreach ($f in $renamed) {
-        $legacyPath = Join-Path $ws ([string]$f.renamed_from)
+      # PR #82 generalized renamed_from to scalar-or-list; iterate
+      # Get-CABFolderRenamedFrom (the same chain walker doctor uses)
+      # so a list of predecessors is processed one by one. The
+      # scalar cast `[string]$legacyName` would have joined list
+      # elements with spaces and missed every predecessor, leaving
+      # doctor-emitted folder-rename:<legacy> checks orphaned with
+      # nothing to repair them.
+      foreach ($legacyName in @(Get-CABFolderRenamedFrom -Folder $f)) {
+        $legacyPath = Join-Path $ws $legacyName
         $newPath    = Join-Path $ws ([string]$f.path)
         $legacyExists = Test-Path $legacyPath -PathType Container
         $newExists    = Test-Path $newPath    -PathType Container
@@ -272,7 +280,7 @@ function Invoke-CABRepairFolderRenames {
         if (-not $legacyExists) {
             # If a regular file sits at the legacy path, surface it; otherwise nothing to migrate.
             if (Test-Path $legacyPath) {
-                $manuals.Add("'$($f.renamed_from)' exists but is not a directory — manual resolution required at $legacyPath.")
+                $manuals.Add("'$legacyName' exists but is not a directory — manual resolution required at $legacyPath.")
             }
             continue
         }
@@ -287,7 +295,7 @@ function Invoke-CABRepairFolderRenames {
         try {
             $legacyChildren = @(Get-ChildItem -Path $legacyPath -Force -ErrorAction Stop)
         } catch {
-            $manuals.Add("Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required.")
+            $manuals.Add("Cannot enumerate '$legacyName/' contents ($($_.Exception.Message)) — manual resolution required.")
             continue
         }
         $newChildren = if ($newExists) {
@@ -322,9 +330,9 @@ function Invoke-CABRepairFolderRenames {
         # State: only legacy, non-empty → prompt before rename.
         if (-not $newExists -and -not $legacyEmpty) {
             $summary = "$($legacyChildren.Count) entries; first: $(($legacyChildren | Select-Object -First 3 -ExpandProperty Name) -join ', ')"
-            $proceed = Read-CABConfirm -Question "Move '$($f.renamed_from)/' → '$($f.path)/' (preserves all contents: $summary)?" `
+            $proceed = Read-CABConfirm -Question "Move '$legacyName/' → '$($f.path)/' (preserves all contents: $summary)?" `
                                        -Default $true `
-                                       -AnswerKey "folder-rename.$($f.renamed_from)"
+                                       -AnswerKey "folder-rename.$legacyName"
             # Quit aborts the whole folder-renames repair — matches undo.ps1's
             # per-action quit behavior (line ~333): return immediately rather
             # than continuing to the next folder in the loop.
@@ -383,9 +391,9 @@ function Invoke-CABRepairFolderRenames {
         # State: both exist, new empty + legacy has content → prompt to move children + remove empty legacy.
         if ($newExists -and $newEmpty -and -not $legacyEmpty) {
             $summary = "$($legacyChildren.Count) entries"
-            $proceed = Read-CABConfirm -Question "Move children of '$($f.renamed_from)/' into '$($f.path)/' (then remove empty '$($f.renamed_from)/'): $summary?" `
+            $proceed = Read-CABConfirm -Question "Move children of '$legacyName/' into '$($f.path)/' (then remove empty '$legacyName/'): $summary?" `
                                        -Default $true `
-                                       -AnswerKey "folder-rename.$($f.renamed_from).remove-empty-legacy"
+                                       -AnswerKey "folder-rename.$legacyName.remove-empty-legacy"
             # Quit aborts the whole folder-renames repair — matches undo.ps1's
             # per-action quit behavior (line ~333): return immediately rather
             # than continuing to the next folder in the loop.
@@ -419,7 +427,8 @@ function Invoke-CABRepairFolderRenames {
         }
 
         # State: both exist, both have content → manual merge.
-        $manuals.Add("$($f.renamed_from)/ and $($f.path)/ both contain files — inspect, decide which side to keep, then rerun.")
+        $manuals.Add("$legacyName/ and $($f.path)/ both contain files — inspect, decide which side to keep, then rerun.")
+      }
     }
 
     if ($manuals.Count -gt 0) {

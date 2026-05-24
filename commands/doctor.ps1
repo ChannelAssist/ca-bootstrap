@@ -18,9 +18,10 @@
 # The main orchestrator loads all libs before dot-sourcing this file, so
 # these guards are no-ops in that path.
 foreach ($__libDep in @(
-    @{ cmd = 'Get-CABOSFamily';    file = 'platform.ps1' }
-    @{ cmd = 'Get-CABToolReport';  file = 'tools.ps1'    }
-    @{ cmd = 'Test-CABRepoCloned'; file = 'git-ops.ps1'  }
+    @{ cmd = 'Get-CABOSFamily';          file = 'platform.ps1' }
+    @{ cmd = 'Get-CABToolReport';        file = 'tools.ps1'    }
+    @{ cmd = 'Test-CABRepoCloned';       file = 'git-ops.ps1'  }
+    @{ cmd = 'Get-CABFolderRenamedFrom'; file = 'folders.ps1'  }
 )) {
     if (-not (Get-Command $__libDep.cmd -ErrorAction SilentlyContinue)) {
         $__p = Join-Path $PSScriptRoot "../lib/$($__libDep.file)"
@@ -93,19 +94,107 @@ function Invoke-CABDoctorCheck {
 
     # ----- Folders -----
     if (Test-Path $workspace) {
+        # Union of both branches:
+        # - dev's Read-CABManifest -Quiet (suppress chatty load output)
+        # - dev's try/catch on the .optional filter (defensive against
+        #   missing key in a contributor-authored folders.yaml)
+        # - dev's -PathType Container check (folder, not file)
+        # - this branch's renamed_from chain walk so doctor can
+        #   distinguish a skipped migration from genuine missing folders
         $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet
         $expected = @($manifest.folders | Where-Object {
             try { -not $_.optional } catch { $true }
         })
-        $present = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
-        $missing = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
-        if ($missing.Count -eq 0) {
+        # Classify each required folder into one of three buckets,
+        # mirroring Invoke-CABStep50's execution branches in priority
+        # order: (a) present as directory, (b) collision — exists but
+        # NOT a directory, (c) genuinely missing. Without distinguishing
+        # collisions from missing, a regular file at the required path
+        # would land in $missing → the predecessor walk would render
+        # `folder(s) need rename` + `repair --target folders` as a safe
+        # fix, but Invoke-CABStep50 would fail before renaming with
+        # "exists but is not a directory". Doctor and step would
+        # diverge on a blocking collision. PR #82 cycle-3 review.
+        $present     = New-Object System.Collections.Generic.List[hashtable]
+        $collisions  = New-Object System.Collections.Generic.List[string]
+        # $candidates holds the original folder entries from the
+        # manifest. They can be PSCustomObject (test mocks),
+        # OrderedDictionary (powershell-yaml output), or hashtable
+        # depending on the caller — Generic.List[hashtable] would
+        # throw on .Add() whenever a folder genuinely was missing.
+        # PR #82 cycle-4 review.
+        $candidates  = New-Object System.Collections.Generic.List[object]
+        foreach ($f in $expected) {
+            $target = Join-Path $workspace $f.path
+            if (Test-Path $target -PathType Container) {
+                $present.Add(@{ path = [string]$f.path }) | Out-Null
+            } elseif (Test-Path $target) {
+                $collisions.Add([string]$f.path) | Out-Null
+            } else {
+                $candidates.Add($f) | Out-Null
+            }
+        }
+
+        # Of the genuinely-missing candidates, see which have a
+        # predecessor on disk via renamed_from (scalar or list, walked
+        # most-recent → oldest). Those become "needs rename"; the rest
+        # stay missing. Repair walks the same chain.
+        $renames      = New-Object System.Collections.Generic.List[hashtable]
+        $stillMissing = New-Object System.Collections.Generic.List[string]
+        foreach ($f in $candidates) {
+            $predecessors = @(Get-CABFolderRenamedFrom -Folder $f)
+            $found = $null
+            foreach ($prev in $predecessors) {
+                if (Test-Path (Join-Path $workspace $prev) -PathType Container) { $found = $prev; break }
+            }
+            if ($found) {
+                $renames.Add(@{ path = [string]$f.path; from = $found })
+            } else {
+                $stillMissing.Add([string]$f.path)
+            }
+        }
+
+        if ($collisions.Count -eq 0 -and $stillMissing.Count -eq 0 -and $renames.Count -eq 0) {
             $checks.Add([ordered]@{ id = 'folders'; status = 'ok'; details = "$($present.Count)/$($expected.Count) present" })
-        } else {
+        } elseif ($collisions.Count -gt 0) {
+            # Collisions are always 'fail' — Invoke-CABStep50 cannot
+            # repair them, so flagging this as anything softer would
+            # mis-advertise the recovery path.
+            $detail = "$($collisions.Count) collision(s) (exists but not a directory): $($collisions -join ', ')"
+            if ($stillMissing.Count -gt 0) {
+                $detail += "; $($stillMissing.Count) missing: $($stillMissing -join ', ')"
+            }
+            if ($renames.Count -gt 0) {
+                $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+                $detail += "; $($renames.Count) need rename: $renameSummary"
+            }
             $checks.Add([ordered]@{
                 id = 'folders'; status = 'fail'
-                details = "$($missing.Count)/$($expected.Count) missing: $(($missing.path) -join ', ')"
+                details = $detail
+                # Deliberately no `fix` field — collisions require
+                # manual resolution before any repair target applies.
+                collisions = $collisions.ToArray()
+                renames    = $renames.ToArray()
+            })
+        } elseif ($stillMissing.Count -eq 0) {
+            $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+            $checks.Add([ordered]@{
+                id = 'folders'; status = 'warn'
+                details = "$($renames.Count) folder(s) need rename: $renameSummary"
                 fix = 'repair --target folders'
+                renames = $renames.ToArray()
+            })
+        } else {
+            $detail = "$($stillMissing.Count)/$($expected.Count) missing: $($stillMissing -join ', ')"
+            if ($renames.Count -gt 0) {
+                $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+                $detail += "; $($renames.Count) need rename: $renameSummary"
+            }
+            $checks.Add([ordered]@{
+                id = 'folders'; status = 'fail'
+                details = $detail
+                fix = 'repair --target folders'
+                renames = $renames.ToArray()
             })
         }
     }
@@ -116,26 +205,35 @@ function Invoke-CABDoctorCheck {
     # `repair --target folder-renames` for the safe fix. Repair honors the
     # safety contract: empty legacy → silent rename; non-empty → prompt;
     # both with content → bail to manual.
+    #
+    # PR #82 generalized `renamed_from` to scalar-or-list (a chain of
+    # historical names, most-recent → oldest). The cleanup check below
+    # iterates the full chain via Get-CABFolderRenamedFrom, emitting one
+    # check per predecessor still on disk. A direct `[string]$f.renamed_from`
+    # cast would have produced "a b" for a list and silently failed to
+    # detect any leftover, including the case where the new path already
+    # exists but an older predecessor lingers.
     if (Test-Path $workspace) {
         $foldersManifest = if ($manifest) { $manifest } else { Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet }
         $renamed = @($foldersManifest.folders | Where-Object {
             try { [bool]$_.renamed_from } catch { $false }
         })
         foreach ($f in $renamed) {
-            $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
+          foreach ($legacyName in @(Get-CABFolderRenamedFrom -Folder $f)) {
+            $legacyPath = Join-Path $workspace $legacyName
             $newPath    = Join-Path $workspace ([string]$f.path)
             $legacyPathExists = Test-Path $legacyPath
             $newPathExists    = Test-Path $newPath
             $legacyExists     = Test-Path $legacyPath -PathType Container
             $newExists        = Test-Path $newPath    -PathType Container
 
-            $id = "folder-rename:$($f.renamed_from)"
+            $id = "folder-rename:$legacyName"
 
             if ($legacyPathExists -and -not $legacyExists) {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "'$($f.renamed_from)/' exists but is not a directory — manual resolution required."
+                    details = "'$legacyName/' exists but is not a directory — manual resolution required."
                 })
                 continue
             }
@@ -159,7 +257,7 @@ function Invoke-CABDoctorCheck {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required."
+                    details = "Cannot enumerate '$legacyName/' contents ($($_.Exception.Message)) — manual resolution required."
                 })
                 continue
             }
@@ -181,23 +279,24 @@ function Invoke-CABDoctorCheck {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'warn'
-                    details = "Legacy folder '$($f.renamed_from)/' present, expected '$($f.path)/'."
+                    details = "Legacy folder '$legacyName/' present, expected '$($f.path)/'."
                     fix     = 'repair --target folder-renames'
                 })
             } elseif (-not $legacyHasContent -or -not $newHasContent) {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'warn'
-                    details = "Legacy folder '$($f.renamed_from)/' present alongside '$($f.path)/' — repair will merge."
+                    details = "Legacy folder '$legacyName/' present alongside '$($f.path)/' — repair will merge."
                     fix     = 'repair --target folder-renames'
                 })
             } else {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "Both '$($f.renamed_from)/' and '$($f.path)/' contain files — manual merge required."
+                    details = "Both '$legacyName/' and '$($f.path)/' contain files — manual merge required."
                 })
             }
+          }
         }
     }
 
