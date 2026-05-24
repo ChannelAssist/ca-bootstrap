@@ -93,9 +93,17 @@ Describe 'Undo README reversers' {
         # template over it. Undo decodes the snapshot and rewrites the
         # file with the original bytes — including custom line endings,
         # trailing whitespace, or user prose that the template overwrote.
+        #
+        # Per the cycle-7 safety contract: the divergence guard requires
+        # the template still be on disk AND the current README to
+        # match it. Seed both so this happy-path test pins the
+        # byte-for-byte fidelity of the restore step itself, not the
+        # safety-skip path.
         $target  = Join-Path $script:tmp 'README.md'
         $template = Join-Path $script:tmp 'tpl.md'
-        Set-Content -Path $target -Value '# template (overwritten)' -Encoding utf8
+        $templateContent = '# template (overwritten)'
+        Set-Content -Path $template -Value $templateContent -Encoding utf8 -NoNewline
+        Set-Content -Path $target   -Value $templateContent -Encoding utf8 -NoNewline
         $original = "# user drift`r`n`r`nThis paragraph had **markdown** and trailing whitespace.   `r`n"
         $originalBytes = [System.Text.Encoding]::UTF8.GetBytes($original)
         $b64 = [Convert]::ToBase64String($originalBytes)
@@ -129,9 +137,15 @@ Describe 'Undo README reversers' {
         # — so an empty drifted README was silently un-restorable.
         # Capture is detected by key presence now; empty content
         # round-trips.
+        # Per cycle-7 safety contract: divergence guard requires the
+        # template still be on disk AND current README to match. Seed
+        # both with identical content so the restore proceeds through
+        # the safe path and writes 0 bytes.
         $target  = Join-Path $script:tmp 'README.md'
         $template = Join-Path $script:tmp 'tpl.md'
-        Set-Content -Path $target -Value '# template (overwritten)' -Encoding utf8
+        $templateContent = '# template (overwritten)'
+        Set-Content -Path $template -Value $templateContent -Encoding utf8 -NoNewline
+        Set-Content -Path $target   -Value $templateContent -Encoding utf8 -NoNewline
 
         # Empty drift: 0 bytes → base64 of empty byte[] is "".
         $emptyBytes = [byte[]]@()
@@ -321,6 +335,65 @@ Describe 'Undo README reversers' {
         # would-be restored content.
         (Get-Content -Raw $target) | Should -Match '# template'
         (Get-Content -Raw $target) | Should -Not -Match 'would-be restored'
+    }
+
+    It 'refresh_readme returns skip when the recorded template is no longer on disk and the README is present' {
+        # PR #83 cycle-7 review pinned: my cycle-4 fallback of "if
+        # template missing, just write" was wrong. Without the
+        # template we have no signal about whether the current
+        # README still matches the post-repair content, so we have
+        # to assume divergence is possible and refuse to overwrite.
+        # Matches the seed_readme arm at undo.ps1:178-180 exactly.
+        $target  = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'absent-template.md'
+        Set-Content -Path $target -Value '# user might have edited this' -Encoding utf8 -NoNewline
+        # NOTE: $template path NOT written to disk.
+
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('# would-be restored drift'))
+        $entry = [ordered]@{
+            id                = 11
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'skip'
+        $r.details | Should -Match 'Template no longer at recorded path'
+        # The user's potentially-edited content must be preserved.
+        (Get-Content -Raw $target) | Should -Match 'user might have edited'
+        (Get-Content -Raw $target) | Should -Not -Match 'would-be restored'
+    }
+
+    It 'refresh_readme proceeds with restore when the README target file does not exist at all' {
+        # Companion to the template-missing-skip test: when the target
+        # README is absent, no divergence is possible — there is no
+        # current content to clobber, only an empty file slot to fill.
+        # Restore should proceed without requiring the template
+        # comparator. (This is the "operator manually deleted the
+        # README after repair" path; restoring the captured drift
+        # is the right behavior.)
+        $target  = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'absent-template.md'
+        # Neither target nor template on disk.
+
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('# restored drift'))
+        $entry = [ordered]@{
+            id                = 12
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'ok'
+        (Get-Content -Raw $target) | Should -Match 'restored drift'
     }
 }
 

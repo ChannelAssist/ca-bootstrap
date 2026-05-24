@@ -271,25 +271,29 @@ function Invoke-CABUndoEntry {
                 }
                 # Divergence guard: if the README on disk has been
                 # edited since repair overwrote it, the unconditional
-                # restore would clobber the user's work. The
-                # seed_readme arm uses the same template-hash check
-                # before deleting; refresh_readme mirrors it. We can
-                # only do this when the original template is still on
-                # disk — if the operator has since deleted/moved it,
-                # we have no signal about divergence and fall back to
-                # the original write-and-restore behavior (better to
-                # let undo succeed than block restoration entirely
-                # when the comparator is unavailable).
+                # restore would clobber the user's work. Mirror the
+                # seed_readme arm's discipline exactly:
+                #   - template path missing in entry → skip (can't
+                #     verify; preserving the file is safer than
+                #     overwriting blind)
+                #   - target README missing → no divergence possible,
+                #     restoration is safe
+                #   - both present → hash comparison; mismatch → skip,
+                #     match → proceed
+                #   - hash compute fails → fail (refuse blind write
+                #     rather than treat unknown state as "no
+                #     divergence" — PR #83 cycle-6 review)
+                # The cycle-4 "fall back to write when template
+                # missing" branch was wrong: an absent template +
+                # present target = user edited and the comparator
+                # got destroyed, exactly the case to refuse. PR #83
+                # cycle-7 review aligned with seed_readme.
                 $template = [string]$Entry['template']
-                if ($template -and (Test-Path $path -PathType Leaf) -and (Test-Path $template -PathType Leaf)) {
-                    # -ErrorAction Stop so a transient read/permission
-                    # failure never silently leaves $null hashes that
-                    # would compare equal and bypass the divergence
-                    # guard — clobbering user edits. On failure we
-                    # refuse the restore (fail status) rather than
-                    # falling through, since "we don't know if the
-                    # file diverged" is not safe to treat as "no
-                    # divergence." PR #83 cycle-6 review.
+                $targetPresent = Test-Path $path -PathType Leaf
+                if ($targetPresent) {
+                    if (-not $template -or -not (Test-Path $template -PathType Leaf)) {
+                        return @{ status = 'skip'; details = "Template no longer at recorded path ('$template'); preserving current README (cannot verify it still matches the post-repair content): $path" }
+                    }
                     try {
                         $currentHash  = (Get-FileHash -Algorithm SHA256 -Path $path     -ErrorAction Stop).Hash
                         $templateHash = (Get-FileHash -Algorithm SHA256 -Path $template -ErrorAction Stop).Hash
@@ -300,6 +304,7 @@ function Invoke-CABUndoEntry {
                         return @{ status = 'skip'; details = "README at '$path' has been edited since repair overwrote it (hash mismatch with template '$template'); refusing to restore over user edits. Resolve manually or back up + delete the current README and rerun undo." }
                     }
                 }
+                # Target absent OR target matches template → restore is safe.
                 [System.IO.File]::WriteAllBytes($path, $bytes)
             } catch {
                 return @{ status = 'fail'; details = "Failed to restore pre-overwrite README at '$path': $($_.Exception.Message)" }
