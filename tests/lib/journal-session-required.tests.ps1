@@ -235,6 +235,7 @@ Describe 'Static audit: every production caller of Add-CABJournalEntry is reacha
         $expected = @(
             'commands/repair.ps1',
             'lib/folder-readmes.ps1',
+            'lib/folder-tree-refresh.ps1',
             'steps/20-prereqs.ps1',
             'steps/30-gh-auth.ps1',
             'steps/40-workspace.ps1',
