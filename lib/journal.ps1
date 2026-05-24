@@ -201,6 +201,17 @@ class CABSessionLockedException : System.Exception {
     }
 }
 
+# Thrown by Add-CABJournalEntry when no session was started this
+# process run. Typed to match the rest of this module (the lock-held
+# path uses CABSessionLockedException) so callers can distinguish
+# "concurrent run" from "missing Start-CABSession upstream" without
+# message-parsing. The base message is preserved verbatim — the
+# regression tests in tests/lib/journal-session-required.tests.ps1
+# still match it via Should -Throw -ExpectedMessage '*No active session*'.
+class CABNoActiveSessionException : System.Exception {
+    CABNoActiveSessionException() : base("No active session — call Start-CABSession first.") {}
+}
+
 function Unlock-CABSession {
     if ($Script:CABLockDirAcquired) {
         Remove-Item -Path $Script:CABLockDirAcquired -Recurse -Force -ErrorAction SilentlyContinue
@@ -305,7 +316,13 @@ function Start-CABSession {
         [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo','manifest-drift','manifest-edit')] [string]$Command,
         [Parameter(Mandatory)] [string]$Version,
         [string]$WorkspacePath,
-        [int]$LockTimeoutMs = 0
+        [int]$LockTimeoutMs = 0,
+        # When the orchestrator is in --json / --quiet mode for a mutating
+        # command, we still need the session (audit trail), but the banner
+        # Write-Host block would pollute stdout. -Quiet suppresses only
+        # the visible header; lock acquisition, journal load, transcript
+        # rotation, and session metadata recording all still happen.
+        [switch]$Quiet
     )
     # Refuse to run if another session is in progress. doctor is read-only
     # so we let it through without a lock.
@@ -352,14 +369,16 @@ function Start-CABSession {
     }
     Start-Transcript -Path $Script:CABootstrapTranscript -Force | Out-Null
 
-    Write-Host ''
-    Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId]"
-    Write-Host "  command : $Command"
-    Write-Host "  version : $Version"
-    Write-Host "  os      : $($Script:CABJournalState.host.os)"
-    Write-Host "  pwsh    : $($PSVersionTable.PSVersion)"
-    if ($WorkspacePath) { Write-Host "  ws      : $WorkspacePath" }
-    Write-Host ''
+    if (-not $Quiet) {
+        Write-Host ''
+        Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId]"
+        Write-Host "  command : $Command"
+        Write-Host "  version : $Version"
+        Write-Host "  os      : $($Script:CABJournalState.host.os)"
+        Write-Host "  pwsh    : $($PSVersionTable.PSVersion)"
+        if ($WorkspacePath) { Write-Host "  ws      : $WorkspacePath" }
+        Write-Host ''
+    }
 }
 
 function Stop-CABSession {
@@ -410,7 +429,7 @@ function Add-CABJournalEntry {
     # the audit record never materializes. Tests must opt in to a
     # session via Start-CABSession (or seed one through Repair-).
     # PR #80 + the journal-session-required.tests.ps1 suite pin this.
-    if (-not $session) { throw 'No active session — call Start-CABSession first.' }
+    if (-not $session) { throw [CABNoActiveSessionException]::new() }
 
     $entry = [ordered]@{
         id         = New-CABEntryId

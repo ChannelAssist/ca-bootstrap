@@ -83,6 +83,32 @@ sessions:
             Should -Throw -ExpectedMessage '*No active session*'
     }
 
+    It 'throws a typed CABNoActiveSessionException (not a plain string)' {
+        # Style consistency: the module already exposes typed exceptions
+        # (CABSessionLockedException for the lock-held path). A typed
+        # CABNoActiveSessionException lets callers distinguish "concurrent
+        # run" from "missing Start-CABSession upstream" without parsing
+        # the message string.
+        try {
+            Add-CABJournalEntry -Step '99-test' -Action 'pretend' | Out-Null
+            throw 'expected Add-CABJournalEntry to throw'
+        } catch [CABNoActiveSessionException] {
+            $_.Exception.Message | Should -Match 'No active session'
+        }
+    }
+
+    It 'Start-CABSession -Quiet suppresses the banner header but still records the session' {
+        # The orchestrator pipes -Quiet:$silent so --json / --quiet
+        # mutating commands stay clean on stdout. Verify both halves:
+        # (a) no banner Write-Host output, (b) session is still active
+        # (Add-CABJournalEntry succeeds).
+        $output = Start-CABSession -Command 'repair' -Version '0.0.0-test' -Quiet 6>&1 | Out-String
+        $output | Should -Not -Match '\[ca-bootstrap session'
+        # Sanity: with -Quiet, Add-CABJournalEntry should NOT throw.
+        $entry = Add-CABJournalEntry -Step '99-test' -Action 'pretend' -Data @{ foo = 'bar' }
+        $entry.action | Should -Be 'pretend'
+    }
+
     It 'does NOT silently return $null (which would mask audit gaps)' {
         # Regression guard: if a future change ever softens the contract
         # back to "silently return $null", this assertion fails so the

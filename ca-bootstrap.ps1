@@ -187,7 +187,11 @@ try {
         }
         $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
     } else {
-        Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+        # -Quiet:$silent so --json / --quiet mutating commands still
+        # get a real session (audit trail) without the banner output
+        # polluting stdout. Locks, journal I/O, and transcript rotation
+        # all still happen — only the visible header is suppressed.
+        Start-CABSession -Command $Command -Version $Script:CABootstrapVersion -Quiet:$silent
     }
 }
 catch [CABSessionLockedException] {
