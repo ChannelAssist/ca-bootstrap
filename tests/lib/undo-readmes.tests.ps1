@@ -156,6 +156,40 @@ Describe 'Undo README reversers' {
         ([System.IO.File]::ReadAllBytes($target)).Length | Should -Be 0
     }
 
+    It 'refresh_readme fails clearly when previous_content key is present but null' {
+        # PR #83 cycle-2 review pinned: a journal round-trip through
+        # powershell-yaml can produce `previous_content:` with no value,
+        # which deserializes to $null. The previous code path cast
+        # [string]$null → '' → treated it as a valid base64 of an empty
+        # README → silently overwrote the file with 0 bytes.
+        #
+        # Null is now treated as a corrupt entry: status=fail with a
+        # message naming the corruption so the operator can resolve it.
+        # The empty-string case (a legitimate captured empty README)
+        # still restores — that's the test above.
+        $target = Join-Path $script:tmp 'README.md'
+        Set-Content -Path $target -Value '# template (must survive)' -Encoding utf8
+
+        # Use a real hashtable so ContainsKey('previous_content') is
+        # true and the value-via-indexer is $null (mirrors the
+        # powershell-yaml deserialization of `previous_content:`).
+        $entry = @{
+            id                = 7
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = (Join-Path $script:tmp 'tpl.md')
+            previous_content  = $null
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'fail'
+        $r.details | Should -Match 'null'
+        # The file must NOT have been clobbered to 0 bytes.
+        (Get-Content -Raw $target) | Should -Match 'template \(must survive\)'
+    }
+
     It 'refresh_readme fails clearly when previous_content is malformed base64' {
         # A manually-edited journal entry could carry junk in
         # previous_content. Undo must surface that as 'fail' (so the

@@ -239,26 +239,26 @@ function Invoke-CABUndoEntry {
             # closed out rather than re-attempted forever — the dev-side
             # behavior before this PR landed.
             $path = [string]$Entry.path
-            # Detect capture by key presence, NOT truthiness. The base64
-            # of a 0-byte README is the empty string ""; truthiness
-            # collapses "missing key" and "captured empty file" into the
-            # same noop branch, so empty drift would be silently
-            # un-restorable. Walk the entry's exposed property names
-            # robustly across hashtable and ordered-dictionary shapes.
-            $hasContentKey = $false
-            $b64 = $null
-            try {
-                if ($Entry -is [System.Collections.IDictionary]) {
-                    $hasContentKey = $Entry.Contains('previous_content')
-                } else {
-                    $hasContentKey = $null -ne ($Entry.PSObject.Properties['previous_content'])
-                }
-                if ($hasContentKey) { $b64 = [string]$Entry['previous_content'] }
-            } catch { $hasContentKey = $false }
-
-            if (-not $hasContentKey) {
+            # The parameter is [hashtable]; use ContainsKey directly. The
+            # earlier PSObject.Properties branch was dead code under the
+            # current signature. Capture detection is split into three
+            # cases:
+            #   - key absent              → legacy entry, noop
+            #   - key present, value null → corrupt entry (YAML emitted
+            #                                `previous_content:` with no
+            #                                value), fail loudly so the
+            #                                operator notices instead of
+            #                                silently writing a 0-byte file
+            #   - key present, value set  → restore (empty string is OK,
+            #                                base64 of a 0-byte README)
+            if (-not $Entry.ContainsKey('previous_content')) {
                 return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
             }
+            $rawValue = $Entry['previous_content']
+            if ($null -eq $rawValue) {
+                return @{ status = 'fail'; details = "refresh_readme previous_content key is present but null for $path — likely a corrupt journal entry; resolve manually." }
+            }
+            $b64 = [string]$rawValue
             try {
                 $bytes = [Convert]::FromBase64String($b64)
             } catch {
