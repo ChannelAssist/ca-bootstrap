@@ -122,6 +122,40 @@ Describe 'Undo README reversers' {
         }
     }
 
+    It 'refresh_readme restores a 0-byte (empty) README rather than silently noop-ing' {
+        # PR #83 cycle-1 review pinned: base64 of an empty byte[] is
+        # an empty string, and the previous `if (-not $b64) { noop }`
+        # branch collapsed "missing key" with "captured empty file"
+        # — so an empty drifted README was silently un-restorable.
+        # Capture is detected by key presence now; empty content
+        # round-trips.
+        $target  = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'tpl.md'
+        Set-Content -Path $target -Value '# template (overwritten)' -Encoding utf8
+
+        # Empty drift: 0 bytes → base64 of empty byte[] is "".
+        $emptyBytes = [byte[]]@()
+        $emptyB64   = [Convert]::ToBase64String($emptyBytes)
+        $emptyB64 | Should -BeExactly ''
+
+        $entry = [ordered]@{
+            id                = 6
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $emptyB64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'ok'
+        $r.details | Should -Match 'Restored'
+        # File exists, length is 0.
+        (Test-Path $target -PathType Leaf) | Should -BeTrue
+        ([System.IO.File]::ReadAllBytes($target)).Length | Should -Be 0
+    }
+
     It 'refresh_readme fails clearly when previous_content is malformed base64' {
         # A manually-edited journal entry could carry junk in
         # previous_content. Undo must surface that as 'fail' (so the

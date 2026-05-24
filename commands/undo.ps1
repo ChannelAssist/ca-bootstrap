@@ -239,9 +239,24 @@ function Invoke-CABUndoEntry {
             # closed out rather than re-attempted forever — the dev-side
             # behavior before this PR landed.
             $path = [string]$Entry.path
-            $b64  = $null
-            try { $b64 = [string]$Entry['previous_content'] } catch { $b64 = $null }
-            if (-not $b64) {
+            # Detect capture by key presence, NOT truthiness. The base64
+            # of a 0-byte README is the empty string ""; truthiness
+            # collapses "missing key" and "captured empty file" into the
+            # same noop branch, so empty drift would be silently
+            # un-restorable. Walk the entry's exposed property names
+            # robustly across hashtable and ordered-dictionary shapes.
+            $hasContentKey = $false
+            $b64 = $null
+            try {
+                if ($Entry -is [System.Collections.IDictionary]) {
+                    $hasContentKey = $Entry.Contains('previous_content')
+                } else {
+                    $hasContentKey = $null -ne ($Entry.PSObject.Properties['previous_content'])
+                }
+                if ($hasContentKey) { $b64 = [string]$Entry['previous_content'] }
+            } catch { $hasContentKey = $false }
+
+            if (-not $hasContentKey) {
                 return @{ status = 'noop'; details = "refresh_readme is not auto-reversible (original drift content not captured); marked undone: $path" }
             }
             try {
