@@ -253,12 +253,26 @@ function Invoke-CABFolderTreeRefresh {
         $folderPath = [string]$folder.path
         if (-not $folderPath) { continue }
         $readme = Join-Path $Context.WorkspacePath $folderPath 'README.md'
+        $isOptional = $false
+        if ($folder.PSObject.Properties.Name -contains 'optional') {
+            $rawOptional = $folder.optional
+            if ($rawOptional -is [bool]) {
+                $isOptional = $rawOptional
+            } elseif ($null -ne $rawOptional) {
+                $isOptional = "$rawOptional".Trim().ToLowerInvariant() -eq 'true'
+            }
+        }
 
         if (-not (Test-Path $readme -PathType Leaf)) {
-            # No README on disk is expected for optional folders that
-            # weren't created. Don't escalate — record as skipped so the
-            # report stays informative.
-            $skipped.Add($folderPath) | Out-Null
+            if ($isOptional) {
+                # No README on disk is expected for optional folders that
+                # weren't created. Don't escalate — record as skipped so the
+                # report stays informative.
+                $skipped.Add($folderPath) | Out-Null
+            } else {
+                Write-CABColor Yellow "    ⚠ Missing README for required folder ${folderPath}"
+                $failed.Add($folderPath) | Out-Null
+            }
             continue
         }
 
