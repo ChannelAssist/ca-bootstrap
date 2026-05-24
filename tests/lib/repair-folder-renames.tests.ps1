@@ -17,6 +17,10 @@ Describe 'Repair — folder-renames' {
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-repair-state-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tmpState
         Reset-CABJournalState
+        # PR #80 contract: Add-CABJournalEntry now throws without an
+        # active session. Repair journals folder_rename actions, so
+        # we must start a session paired with the Reset.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' | Out-Null
         New-Item -ItemType Directory -Path $script:tmpWs -Force | Out-Null
         $script:ctx = @{
             RepoRoot      = $script:repoRoot
@@ -29,6 +33,8 @@ Describe 'Repair — folder-renames' {
         Set-CABPromptMode -Unattended $false -Answers @{}
     }
     AfterEach {
+        try { Stop-Transcript | Out-Null } catch {}
+        try { Unlock-CABSession } catch {}
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }
