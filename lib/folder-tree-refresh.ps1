@@ -118,10 +118,23 @@ function Update-CABFolderReadmeTree {
     $raw = Get-Content -Raw -Path $ReadmePath
     if ($null -eq $raw) { $raw = '' }
 
-    # Locate the "## Tree" heading (must be a heading line — start-of-line,
-    # exactly two hashes, then a space, then "Tree", then end-of-line or
-    # trailing whitespace). Anything more permissive risks matching prose.
-    $headingPattern = '(?m)^##[ \t]+Tree[ \t]*$'
+    # Detect the line-ending style up front so the rewrite preserves
+    # it. Windows-authored READMEs are CRLF; macOS/Linux are LF. Mixed
+    # files default to whatever appears first; an empty/unterminated
+    # file defaults to LF (the repo convention).
+    $useCrlf = $false
+    $crlfIdx = $raw.IndexOf("`r`n")
+    if ($crlfIdx -ge 0) {
+        $lfIdx = $raw.IndexOf("`n")
+        $useCrlf = ($lfIdx -lt 0) -or ($crlfIdx -le $lfIdx)
+    }
+    $nl = if ($useCrlf) { "`r`n" } else { "`n" }
+
+    # Locate the "## Tree" heading. The trailing `\r?$` makes the
+    # anchor robust to CRLF line endings — without it, a Windows
+    # README would have "## Tree`r" on the heading line and the
+    # regex would never match (the `\r` falls outside `[ \t]*`).
+    $headingPattern = '(?m)^##[ \t]+Tree[ \t]*\r?$'
     $headingMatch = [regex]::Match($raw, $headingPattern)
     if (-not $headingMatch.Success) {
         return 'no-section'
@@ -132,14 +145,25 @@ function Update-CABFolderReadmeTree {
     # fence so we can reuse it for the rewrite). We don't require a
     # language tag — none of the existing templates use one — but we
     # tolerate it so future templates may add `text` or similar.
+    # Both `\r?$` on the closing fence and `(?<=\r?\n)` before the
+    # trailing-whitespace tolerance make the body capture stable
+    # across LF and CRLF input.
     $tail = $raw.Substring($headingMatch.Index + $headingMatch.Length)
-    $fencePattern = '(?ms)^[ \t]*(```+)[^\n]*\n(?<body>.*?)(?<=\n)[ \t]*\1[ \t]*$'
+    $fencePattern = '(?ms)^[ \t]*(```+)[^\r\n]*\r?\n(?<body>.*?)(?<=\r?\n)[ \t]*\1[ \t]*\r?$'
     $fenceMatch = [regex]::Match($tail, $fencePattern)
     if (-not $fenceMatch.Success) {
         return 'no-fence'
     }
 
-    $newBody = ($Tree.TrimEnd("`r","`n")) + "`n"
+    # Build the replacement body in the file's native EOL so the
+    # idempotency check below is reliable across platforms. Without
+    # the EOL normalization step, a CRLF file would always be flagged
+    # as "needs rewrite" because the captured $existingBody still has
+    # `\r\n` while the freshly built $newBody has `\n` only — every
+    # run would touch the file.
+    $treeNormalized = $Tree -replace "`r`n", "`n" -replace "`r", "`n"
+    $treeLines = $treeNormalized.TrimEnd("`n") -split "`n"
+    $newBody = (($treeLines -join $nl)) + $nl
     $existingBody = $fenceMatch.Groups['body'].Value
     if ($existingBody -eq $newBody) {
         return 'kept'
@@ -153,9 +177,27 @@ function Update-CABFolderReadmeTree {
     $absBodyEnd   = $absBodyStart + $bodyLenInTail
     $rewritten = $raw.Substring(0, $absBodyStart) + $newBody + $raw.Substring($absBodyEnd)
 
-    # Preserve any pre-existing UTF-8 BOM by reading bytes; otherwise
-    # write plain UTF-8 (no BOM), matching the rest of the repo.
-    Set-Content -Path $ReadmePath -Value $rewritten -Encoding utf8 -NoNewline
+    # Preserve a pre-existing UTF-8 BOM. Get-Content -Raw strips the
+    # BOM from $raw, so we have to peek at the raw bytes instead.
+    # PowerShell 7's `utf8BOM` / `utf8NoBOM` encodings give us
+    # round-trip fidelity; falling back to plain `utf8` would
+    # silently strip a BOM that was there to begin with.
+    $hadBom = $false
+    try {
+        $fs = [System.IO.File]::OpenRead($ReadmePath)
+        try {
+            $head = New-Object byte[] 3
+            $n = $fs.Read($head, 0, 3)
+            $hadBom = ($n -eq 3 -and $head[0] -eq 0xEF -and $head[1] -eq 0xBB -and $head[2] -eq 0xBF)
+        } finally {
+            $fs.Dispose()
+        }
+    } catch {
+        # Best-effort BOM detection; if the read fails, default to no BOM.
+        $hadBom = $false
+    }
+    $encoding = if ($hadBom) { 'utf8BOM' } else { 'utf8NoBOM' }
+    Set-Content -Path $ReadmePath -Value $rewritten -Encoding $encoding -NoNewline
     return 'updated'
 }
 
@@ -175,9 +217,13 @@ function Invoke-CABFolderTreeRefresh {
     where updated/kept/skipped/failed are arrays of folder paths.
 
     Status mapping:
-      ok    — every readable README either matched or was rewritten
-      warn  — at least one README was skipped (missing section/fence)
-      fail  — at least one rewrite raised an exception
+      ok    — at least one README was rewritten or kept; any skipped
+              READMEs (missing file, missing section, missing fence)
+              are reported in `skipped` but don't downgrade the run.
+      warn  — *nothing* could be touched: every candidate README was
+              skipped (e.g., none had a "## Tree" section yet, or
+              none exist on disk).
+      fail  — at least one rewrite raised an exception.
 
     .PARAMETER Context
     Standard ca-bootstrap context hashtable. Requires RepoRoot and

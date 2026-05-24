@@ -106,6 +106,57 @@ Describe 'Update-CABFolderReadmeTree' {
         Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree $newTree | Should -Be 'kept'
     }
 
+    It 'updates a CRLF-line-ended README and is idempotent on the second run' {
+        # Regression test for the CRLF handling bug PR #81 cycle-1
+        # review identified. Without `\r?$` in the heading/fence
+        # regexes (and without EOL-aware body rewriting), Windows-
+        # authored READMEs failed to match at all and never updated.
+        $crlfContent = (@(
+            '# ca-platform',
+            '',
+            'Intro paragraph.',
+            '',
+            '## Tree',
+            '',
+            '```',
+            'ca-platform/',
+            '└── stale-only/',
+            '```',
+            '',
+            'Trailing prose.'
+        ) -join "`r`n")
+        Set-Content -Path $script:readme -Value $crlfContent -NoNewline
+
+        $newTree = "ca-platform/`n├── repo-a/`n└── repo-b/"
+
+        Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree $newTree | Should -Be 'updated'
+        $after = Get-Content -Raw -Path $script:readme
+        $after | Should -Match 'repo-a/'
+        $after | Should -Not -Match 'stale-only/'
+        # The native line ending must be preserved — without the EOL
+        # detection, the rewrite would have normalized to LF and broken
+        # idempotency on the next run.
+        $after | Should -Match "`r`n"
+
+        # Second run reports kept (no double-rewrite).
+        Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree $newTree | Should -Be 'kept'
+    }
+
+    It 'preserves an existing UTF-8 BOM on rewrite' {
+        # The function's contract claims BOM preservation. Verify the
+        # output bytes start with EF BB BF when the input did, and that
+        # a non-BOM input round-trips without acquiring one.
+        $bom = [byte[]](0xEF, 0xBB, 0xBF)
+        $content = "# title`n`n## Tree`n`n```````nold/`n```````n"
+        $bytes = $bom + [System.Text.Encoding]::UTF8.GetBytes($content)
+        [System.IO.File]::WriteAllBytes($script:readme, $bytes)
+
+        Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree 'new/' | Should -Be 'updated'
+        $afterBytes = [System.IO.File]::ReadAllBytes($script:readme)
+        # First three bytes must still be the BOM.
+        $afterBytes[0..2] | Should -Be @(0xEF, 0xBB, 0xBF)
+    }
+
     It 'leaves a later fenced block untouched (only the one under ## Tree is rewritten)' {
         $content = @(
             '## Tree',
