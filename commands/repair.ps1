@@ -506,13 +506,30 @@ function Invoke-CABRepairFolderReadmes {
                 Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot skipped for '$($f.path)/README.md' ($($preInfo.Length) bytes > 64KB cap); undo will not be able to restore drift content."
             } else {
                 $preBytes = [System.IO.File]::ReadAllBytes($target)
-                # Scan decoded UTF-8 text for credentials BEFORE encoding.
-                # The journal's existing sensitive-data guard only scans
-                # raw string values via Hide-CABSensitive — base64 would
-                # round-trip secrets past it. PR #83 cycle-1 review.
-                $preText = $null
-                try { $preText = [System.Text.Encoding]::UTF8.GetString($preBytes) } catch { $preText = $null }
-                if ($preText -and (Test-CABContainsSensitive $preText)) {
+                # Scan for credentials BEFORE base64-encoding. The
+                # journal's existing sensitive-data guard only scans
+                # raw string values via Hide-CABSensitive — base64
+                # would round-trip secrets past it. Decode under MULTIPLE
+                # encodings (UTF-8, UTF-16LE, UTF-16BE) so an ASCII
+                # token embedded in a UTF-16 README isn't masked by
+                # interleaved 0x00 bytes that a single UTF-8 decode
+                # would interpret as control characters. If ANY decode
+                # surfaces a sensitive token, skip capture. PR #83
+                # cycles 1 + 4 review.
+                $sensitive = $false
+                foreach ($enc in @(
+                    [System.Text.Encoding]::UTF8,
+                    [System.Text.Encoding]::Unicode,        # UTF-16LE
+                    [System.Text.Encoding]::BigEndianUnicode # UTF-16BE
+                )) {
+                    $decoded = $null
+                    try { $decoded = $enc.GetString($preBytes) } catch { $decoded = $null }
+                    if ($decoded -and (Test-CABContainsSensitive $decoded)) {
+                        $sensitive = $true
+                        break
+                    }
+                }
+                if ($sensitive) {
                     $captureSkipped = $true
                     Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot for '$($f.path)/README.md' contains credential-shaped tokens; capture skipped to avoid persisting secrets to the journal."
                 } else {

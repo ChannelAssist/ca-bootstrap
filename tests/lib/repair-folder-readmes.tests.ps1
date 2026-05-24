@@ -109,4 +109,41 @@ Describe 'Repair — folder-readmes' {
         # Failure path tested manually; cross-platform test injection deferred.
         Set-ItResult -Skipped -Because 'Cross-platform Copy-Item overwrite failure injection deferred; try/catch verified by code review (see comment in test file)'
     }
+
+    It 'skips snapshot capture when a UTF-16LE README contains a credential-shaped token' {
+        # PR #83 cycle-4 review pinned: the cycle-1 sensitive-content
+        # guard decoded as UTF-8 only. A UTF-16LE README with an ASCII
+        # token has interleaved 0x00 bytes between the ASCII chars
+        # after UTF-8 decode, masking the contiguous regex pattern —
+        # so secrets would have base64-journaled. The scan now tries
+        # UTF-8, UTF-16LE, AND UTF-16BE; any match skips capture.
+        $targetDir = Join-Path $script:tmpWs 'ca-tools'
+        $target    = Join-Path $targetDir 'README.md'
+
+        # Build a UTF-16LE README containing a GitHub fine-grained PAT
+        # pattern. Test-CABContainsSensitive in lib/journal.ps1 matches
+        # \bgithub_pat_[A-Za-z0-9_]{20,}.
+        $content = "# README`r`n`r`ntoken: github_pat_AAAAAAAAAAAAAAAAAAAAA_REDACTED`r`n"
+        $bytes = [System.Text.Encoding]::Unicode.GetPreamble() + [System.Text.Encoding]::Unicode.GetBytes($content)
+        [System.IO.File]::WriteAllBytes($target, $bytes)
+
+        # Answer key matches commands/repair.ps1:482 — singular
+        # `folder-readme` (not `folder-readmes`) per the prompt scope.
+        Set-CABPromptMode -Unattended $true -Answers @{
+            'folder-readme.ca-tools.overwrite' = 'y'
+        }
+
+        $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
+        $r.status | Should -Be 'ok'
+
+        # The ca-tools refresh_readme entry should NOT carry
+        # previous_content (secrets-scan caught the embedded token)
+        # and should carry previous_content_captured: $false.
+        $entry = Get-CABJournalEntry -Action 'refresh_readme' -IncludeUndone |
+            Where-Object { ([string]$_.path) -like '*ca-tools*README.md' } |
+            Select-Object -First 1
+        $entry | Should -Not -BeNullOrEmpty
+        $entry.ContainsKey('previous_content') | Should -BeFalse
+        $entry['previous_content_captured'] | Should -Be $false
+    }
 }

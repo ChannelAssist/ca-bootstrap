@@ -212,5 +212,69 @@ Describe 'Undo README reversers' {
         $r.status | Should -Be 'fail'
         $r.details | Should -Match 'base64'
     }
+
+    It 'refresh_readme returns skip when the README has diverged from the template (user edited after repair)' {
+        # PR #83 cycle-4 review pinned: an unconditional restore would
+        # clobber user edits made after the repair overwrote the
+        # README. seed_readme already uses a template-hash check
+        # before reversing; refresh_readme now matches that pattern.
+        $target   = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'tpl.md'
+
+        # Seed: template on disk + the file diverges from it (operator
+        # edited after repair). Pre-overwrite content captured.
+        Set-Content -Path $template -Value '# template (canonical)' -Encoding utf8 -NoNewline
+        Set-Content -Path $target   -Value '# template with USER EDIT after repair' -Encoding utf8 -NoNewline
+
+        # Pre-overwrite content the operator would lose if we forced restore.
+        $originalDrift = '# original drift before repair'
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($originalDrift))
+
+        $entry = [ordered]@{
+            id                = 8
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'skip'
+        $r.details | Should -Match 'edited since repair'
+        # Preserve the user's edit — must NOT have been overwritten.
+        (Get-Content -Raw $target) | Should -Match 'USER EDIT'
+        (Get-Content -Raw $target) | Should -Not -Match 'original drift'
+    }
+
+    It 'refresh_readme proceeds with restore when the README still matches the template (no user edit)' {
+        # Companion to the diverged test above: when current README
+        # hash == template hash, no user has edited since repair, so
+        # the restore is safe and proceeds normally.
+        $target   = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'tpl.md'
+
+        $templateContent = '# template (canonical)'
+        Set-Content -Path $template -Value $templateContent -Encoding utf8 -NoNewline
+        Set-Content -Path $target   -Value $templateContent -Encoding utf8 -NoNewline
+
+        $originalDrift = '# original drift'
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($originalDrift))
+
+        $entry = [ordered]@{
+            id                = 9
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'ok'
+        (Get-Content -Raw $target) | Should -Match 'original drift'
+    }
 }
 

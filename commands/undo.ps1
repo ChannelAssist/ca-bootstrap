@@ -269,6 +269,25 @@ function Invoke-CABUndoEntry {
                 if ($parent -and -not (Test-Path $parent -PathType Container)) {
                     return @{ status = 'skip'; details = "Parent folder no longer exists; cannot restore $path" }
                 }
+                # Divergence guard: if the README on disk has been
+                # edited since repair overwrote it, the unconditional
+                # restore would clobber the user's work. The
+                # seed_readme arm uses the same template-hash check
+                # before deleting; refresh_readme mirrors it. We can
+                # only do this when the original template is still on
+                # disk — if the operator has since deleted/moved it,
+                # we have no signal about divergence and fall back to
+                # the original write-and-restore behavior (better to
+                # let undo succeed than block restoration entirely
+                # when the comparator is unavailable).
+                $template = [string]$Entry['template']
+                if ($template -and (Test-Path $path -PathType Leaf) -and (Test-Path $template -PathType Leaf)) {
+                    $currentHash  = (Get-FileHash -Algorithm SHA256 -Path $path).Hash
+                    $templateHash = (Get-FileHash -Algorithm SHA256 -Path $template).Hash
+                    if ($currentHash -ne $templateHash) {
+                        return @{ status = 'skip'; details = "README at '$path' has been edited since repair overwrote it (hash mismatch with template '$template'); refusing to restore over user edits. Resolve manually or back up + delete the current README and rerun undo." }
+                    }
+                }
                 [System.IO.File]::WriteAllBytes($path, $bytes)
             } catch {
                 return @{ status = 'fail'; details = "Failed to restore pre-overwrite README at '$path': $($_.Exception.Message)" }
