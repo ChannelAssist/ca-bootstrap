@@ -282,8 +282,20 @@ function Invoke-CABUndoEntry {
                 # when the comparator is unavailable).
                 $template = [string]$Entry['template']
                 if ($template -and (Test-Path $path -PathType Leaf) -and (Test-Path $template -PathType Leaf)) {
-                    $currentHash  = (Get-FileHash -Algorithm SHA256 -Path $path).Hash
-                    $templateHash = (Get-FileHash -Algorithm SHA256 -Path $template).Hash
+                    # -ErrorAction Stop so a transient read/permission
+                    # failure never silently leaves $null hashes that
+                    # would compare equal and bypass the divergence
+                    # guard — clobbering user edits. On failure we
+                    # refuse the restore (fail status) rather than
+                    # falling through, since "we don't know if the
+                    # file diverged" is not safe to treat as "no
+                    # divergence." PR #83 cycle-6 review.
+                    try {
+                        $currentHash  = (Get-FileHash -Algorithm SHA256 -Path $path     -ErrorAction Stop).Hash
+                        $templateHash = (Get-FileHash -Algorithm SHA256 -Path $template -ErrorAction Stop).Hash
+                    } catch {
+                        return @{ status = 'fail'; details = "Could not compare README to template before restoring '$path' ($($_.Exception.Message)); refusing to risk overwriting user edits. Resolve the read/permission issue or remove the README manually + rerun undo." }
+                    }
                     if ($currentHash -ne $templateHash) {
                         return @{ status = 'skip'; details = "README at '$path' has been edited since repair overwrote it (hash mismatch with template '$template'); refusing to restore over user edits. Resolve manually or back up + delete the current README and rerun undo." }
                     }

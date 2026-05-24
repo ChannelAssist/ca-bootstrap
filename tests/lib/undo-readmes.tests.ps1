@@ -276,5 +276,51 @@ Describe 'Undo README reversers' {
         $r.status | Should -Be 'ok'
         (Get-Content -Raw $target) | Should -Match 'original drift'
     }
+
+    It 'refresh_readme returns fail when the divergence-guard hash compute errors (never silently proceeds)' {
+        # PR #83 cycle-6 review pinned: Get-FileHash defaults to
+        # -ErrorAction Continue, so a transient read/permission
+        # failure on EITHER side of the divergence check would
+        # produce $null hashes; $null -ne $null evaluates to false,
+        # and the guard would have advertised "no divergence" → the
+        # restore would proceed and clobber user edits.
+        #
+        # Now: -ErrorAction Stop on both Get-FileHash calls, wrapped
+        # in try/catch. Hash failure → status=fail with a message
+        # naming the comparator failure + the recovery recipe. The
+        # restore is refused, so user edits remain intact.
+        $target   = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'tpl.md'
+        Set-Content -Path $template -Value '# template' -Encoding utf8 -NoNewline
+        Set-Content -Path $target   -Value '# template' -Encoding utf8 -NoNewline
+
+        # Force Get-FileHash to throw the same way a transient I/O
+        # failure would. The mock matches the SPECIFIC parameter
+        # filter on the actual undo call (-Path $target with -Stop)
+        # so we don't break unrelated Get-FileHash usage in the same
+        # process.
+        Mock -CommandName Get-FileHash -MockWith { throw 'access denied (simulated)' } -ParameterFilter {
+            $Path -eq $target
+        }
+
+        $b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes('# would-be restored drift'))
+        $entry = [ordered]@{
+            id                = 10
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
+        }
+
+        $r = Invoke-CABUndoEntry -Entry $entry
+        $r.status | Should -Be 'fail'
+        $r.details | Should -Match 'compare README to template'
+        # Critical: the file must NOT have been overwritten with the
+        # would-be restored content.
+        (Get-Content -Raw $target) | Should -Match '# template'
+        (Get-Content -Raw $target) | Should -Not -Match 'would-be restored'
+    }
 }
 
