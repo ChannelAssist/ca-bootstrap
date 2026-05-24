@@ -14,15 +14,31 @@ function Test-CABStep50 {
     }
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
     $expected = @($manifest.folders | Where-Object { -not $_.optional })
-    # -PathType Container ensures Test- mirrors Invoke- semantics: a
-    # regular file squatting on a required-folder path counts as
-    # missing, not as "present but wrong type". Same discipline on the
-    # predecessor walk below — a non-directory predecessor isn't
-    # renameable by Invoke-CABStep50 and must not be reported as one.
-    $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $Context.WorkspacePath $_.path) -PathType Container) })
-    if ($missing.Count -eq 0) {
+
+    # Classify each required folder into one of three buckets, mirroring
+    # Invoke-CABStep50's execution branches exactly. Without distinguishing
+    # collisions (path exists as non-directory) from genuinely missing
+    # folders, a collision would be reported as "missing" + "renameable"
+    # in the diagnostic — but Invoke-CABStep50 would actually fail with
+    # "exists but is not a directory" before the rename could fire.
+    $collisions   = New-Object System.Collections.Generic.List[string]
+    $missing      = New-Object System.Collections.Generic.List[hashtable]
+    $presentCount = 0
+    foreach ($f in $expected) {
+        $target = Join-Path $Context.WorkspacePath $f.path
+        if (Test-Path $target -PathType Container) {
+            $presentCount++
+        } elseif (Test-Path $target) {
+            $collisions.Add([string]$f.path) | Out-Null
+        } else {
+            $missing.Add($f) | Out-Null
+        }
+    }
+
+    if ($collisions.Count -eq 0 -and $missing.Count -eq 0) {
         return @{ status = 'ok'; details = "$($expected.Count)/$($expected.Count) folders present" }
     }
+
     $renamePairs = New-Object System.Collections.Generic.List[string]
     $stillMissing = New-Object System.Collections.Generic.List[string]
     foreach ($f in $missing) {
@@ -33,7 +49,9 @@ function Test-CABStep50 {
         if ($prev) { $renamePairs.Add("$prev → $($f.path)") }
         else       { $stillMissing.Add([string]$f.path) }
     }
+
     $parts = @()
+    if ($collisions.Count -gt 0)   { $parts += "$($collisions.Count) collision(s) (exists but not a directory): $($collisions -join ', ')" }
     if ($stillMissing.Count -gt 0) { $parts += "$($stillMissing.Count) folder(s) missing: $($stillMissing -join ', ')" }
     if ($renamePairs.Count -gt 0)  { $parts += "$($renamePairs.Count) need rename: $($renamePairs -join ', ')" }
     return @{ status = 'pending'; details = ($parts -join '; ') }
@@ -63,15 +81,28 @@ function Invoke-CABStep50 {
     # rename predecessor on disk → ↻ (Yellow, will-rename). Missing
     # outright → + (Cyan, will-create).
     foreach ($f in $required) {
-        # Use -PathType Container everywhere predecessors are classified
-        # so the preview matches what Invoke-CABStep50 will actually do
-        # — Invoke-CABStep50 only renames directories, so a regular file
-        # squatting on the predecessor path must NOT show up as a yellow
-        # "↻ rename" in the preview (it would fall through to create).
-        $present = Test-Path (Join-Path $Context.WorkspacePath $f.path) -PathType Container
-        if ($present) {
+        # Preview ordering must match Invoke-CABStep50's execution
+        # branches exactly. The three categories in priority order:
+        #   1. ✓ Present (path exists as directory) — no-op.
+        #   2. ✗ Collision (path exists but is NOT a directory) —
+        #      Invoke-CABStep50 will fail with "exists but is not a
+        #      directory". Must not be rendered as "↻ rename" even if
+        #      a predecessor directory is sitting on disk; the rename
+        #      branch would fail before it ever fires.
+        #   3. Missing entirely — predecessor walk decides between
+        #      "↻ rename" and "+ create".
+        $target = Join-Path $Context.WorkspacePath $f.path
+        $targetIsDir  = Test-Path $target -PathType Container
+        $targetExists = Test-Path $target
+        if ($targetIsDir) {
             $icon, $color = '✓', 'Green'
             $desc = $f.description
+        } elseif ($targetExists) {
+            # Non-directory squatter at the required path. Render as
+            # a red collision so the operator knows the run will fail
+            # at this step and they need to resolve manually.
+            $icon, $color = '✗', 'Red'
+            $desc = "path exists but is not a directory ($($f.description))"
         } else {
             $prev = $null
             foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {

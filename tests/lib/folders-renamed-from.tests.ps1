@@ -146,4 +146,32 @@ Describe 'Invoke-CABStep50 — walks renamed_from chain' {
         $r.details | Should -Not -Match 'renamed'
         Test-Path (Join-Path $workspace 'ca-prototypes') | Should -BeTrue
     }
+
+    It 'Test-CABStep50 reports a collision (not a pending rename) when a regular file sits at the required path' {
+        # PR #82 cycle-2 review pinned: a regular file squatting on
+        # the required path used to be collapsed into the "missing"
+        # bucket via -PathType Container, then the predecessor walk
+        # would render "↻ rename predecessor → required-path" in
+        # both the preview and the diagnostic. But Invoke-CABStep50
+        # would have failed at this row with "exists but is not a
+        # directory" before the rename ever fired — preview and
+        # action diverged.
+        #
+        # Both the preview (Invoke-CABStep50 row rendering) and the
+        # diagnostic (Test-CABStep50) now distinguish the collision
+        # bucket explicitly. This test exercises Test-CABStep50.
+        Set-Content -Path (Join-Path $workspace 'ca-prototypes') -Value 'not a directory'
+        # Add a predecessor directory to confirm the collision wins
+        # over the predecessor-walk path.
+        New-Item -ItemType Directory -Path (Join-Path $workspace 'ca-experiments') | Out-Null
+
+        $r = Test-CABStep50 -Context @{
+            RepoRoot = $repoRoot; WorkspacePath = $workspace
+        }
+        $r.status | Should -Be 'pending'
+        $r.details | Should -Match 'collision'
+        $r.details | Should -Match 'ca-prototypes'
+        # Must NOT misclassify as a pending rename.
+        $r.details | Should -Not -Match 'ca-experiments\s*→'
+    }
 }
