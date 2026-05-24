@@ -495,11 +495,17 @@ function Invoke-CABRepairFolderReadmes {
         $captureSkipped   = $false
         $captureSucceeded = $false
         try {
-            $preBytes = [System.IO.File]::ReadAllBytes($target)
-            if ($preBytes.Length -gt 65536) {
+            # Check file size FIRST via FileInfo.Length — don't
+            # ReadAllBytes a multi-MB drifted README into memory just
+            # to discover it's over cap. ReadAllBytes only runs on
+            # under-cap files, so the byte[] allocation is bounded by
+            # 64KB + ε regardless of the on-disk drift. PR #83 cycle-3.
+            $preInfo = [System.IO.FileInfo]::new($target)
+            if ($preInfo.Length -gt 65536) {
                 $captureSkipped = $true
-                Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot skipped for '$($f.path)/README.md' ($($preBytes.Length) bytes > 64KB cap); undo will not be able to restore drift content."
+                Write-CABColor Yellow "    ⚠ Pre-overwrite snapshot skipped for '$($f.path)/README.md' ($($preInfo.Length) bytes > 64KB cap); undo will not be able to restore drift content."
             } else {
+                $preBytes = [System.IO.File]::ReadAllBytes($target)
                 # Scan decoded UTF-8 text for credentials BEFORE encoding.
                 # The journal's existing sensitive-data guard only scans
                 # raw string values via Hide-CABSensitive — base64 would
