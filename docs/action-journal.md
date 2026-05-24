@@ -77,6 +77,108 @@ Listed in the order steps typically produce them.
 
 For workspace-root folders the entry also carries `is_workspace_root: true`. That field is what `undo --target workspace` keys off of, and it stays in `create_folder` only when step 40 actually mkdirs — for the per-run "which workspace did setup pick" record (emitted whether the folder was created or already existed), see [`select_workspace`](#select_workspace) below.
 
+### `seed_readme`
+
+```yaml
+- id: ...
+  step: 50-folders
+  action: seed_readme
+  path: C:\…\ChannelAssistDev\ca-tools\README.md
+  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools\README.md
+  reversible: true
+  undone: false
+```
+
+**Used by**: step 50 (and `repair --target folder-readmes`) when copying a folder's canonical `README.md` from `templates/folder-readmes/<folder>/README.md` into the workspace. Idempotent — never overwrites a pre-existing file.
+
+**Undone by**: `Remove-Item -Path <path>` only if the current file still hashes equal to the template recorded at journal time. If the user has edited the README since seeding, the file is preserved (`status: skip`) so a deliberate edit isn't silently destroyed.
+
+### `refresh_readme`
+
+```yaml
+- id: ...
+  step: repair
+  action: refresh_readme
+  path: C:\…\ChannelAssistDev\ca-tools\README.md
+  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools\README.md
+  previous_content: SGVsbG8gd29ybGQh                    # base64 of pre-overwrite bytes (≤64KB)
+  reversible: true
+  undone: false
+```
+
+**Used by**: `repair --target folder-readmes` when overwriting a drifted README with the canonical template (after explicit user confirmation per the safety contract). Captures the pre-overwrite content into `previous_content` as base64 so undo can restore it byte-for-byte.
+
+**Capture rules** (set in `Invoke-CABRepairFolderReadmes`):
+
+- File ≤ 64KB of source bytes → `previous_content` written, no `previous_content_captured` marker.
+- File > 64KB → no `previous_content` field, plus `previous_content_captured: false` so undo can distinguish "intentionally skipped (too large)" from "never captured (pre-v1.9.0 entry)".
+- Pre-overwrite content matches a credential-shaped token under UTF-8 / UTF-16LE / UTF-16BE decode (GH/AWS/Slack/JWT/PEM prefixes per `Test-CABContainsSensitive`) → no `previous_content`, `previous_content_captured: false`, yellow warning. Secrets in a drifted README can't round-trip into the journal via base64.
+
+**Undone by**:
+
+- If `previous_content` key is absent → `status: noop` (legacy entry from before the capture path landed, or a skipped-capture entry; the entry is closed without action).
+- If `previous_content` is present:
+  - Target README missing → restore the captured bytes (no divergence possible).
+  - Target README present AND template still on disk AND `SHA256(README) == SHA256(template)` → restore proceeds.
+  - Target present, hash mismatch → `status: skip` ("README has been edited since repair overwrote it"); user edits preserved.
+  - Target present, template missing on disk → `status: skip` ("Template no longer at recorded path; cannot verify content match"); user edits preserved.
+  - Hash compute throws (transient I/O / permissions) → `status: fail`; restore refused rather than silently proceeding on `$null` hashes.
+
+The divergence guard mirrors the `seed_readme` reverser's discipline exactly so the two README-touching actions behave consistently when the operator may have edited the file after ca-bootstrap last wrote to it.
+
+### `rename_folder`
+
+```yaml
+- id: ...
+  step: 50-folders
+  action: rename_folder
+  from: C:\…\ChannelAssistDev\experiments
+  to:   C:\…\ChannelAssistDev\ca-experiments
+  mode: silent-empty                                    # or: merge-into-empty-new
+  reversible: true
+  undone: false
+```
+
+**Used by**: step 50 (`Invoke-CABStep50`) when a required folder is missing but a predecessor declared in its `renamed_from:` chain still exists on disk, AND by `repair --target folder-renames` when migrating legacy folders to renamed paths.
+
+The `mode` field records which branch of the safety-contract decision table the rename took: `silent-empty` (legacy was empty, renamed in place), `silent-with-content` (legacy had content, user explicitly confirmed), or `merge-into-empty-new` (both paths existed, legacy had content, new was empty, children moved + empty legacy removed).
+
+`renamed_from:` itself can be a scalar (single predecessor) or a list (multi-step rename history walked most-recent → oldest). See [`docs/specs/2026-05-22-folder-taxonomy-design.md`](specs/2026-05-22-folder-taxonomy-design.md).
+
+**Undone by**: `Move-Item -Path <to> -Destination <from>` after verifying both directories exist and `to` is empty (or `--force`).
+
+### `remove_empty_folder`
+
+```yaml
+- id: ...
+  step: repair
+  action: remove_empty_folder
+  path: C:\…\ChannelAssistDev\experiments                # always a legacy renamed_from path
+  reason: new-populated                                  # or: both-existed-both-empty
+  reversible: true
+  undone: false
+```
+
+**Used by**: `repair --target folder-renames` when the safety contract's both-exist-cleanup branches fire — the legacy folder is empty and the new folder is populated (or both are empty), so the legacy is removed.
+
+**Undone by**: `New-Item -ItemType Directory -Path <path>` (re-creating the empty legacy folder so a subsequent rerun would re-detect drift).
+
+### `refresh_folder_tree`
+
+```yaml
+- id: ...
+  step: repair
+  action: refresh_folder_tree
+  folder: ca-platform
+  path: C:\…\ChannelAssistDev\ca-platform\README.md
+  reversible: false
+  undone: false
+```
+
+**Used by**: `repair --target folder-tree-refresh` whenever it actually rewrites the `## Tree` fenced block in a folder's `README.md` (no-op runs don't journal anything). The rewrite preserves the file's native line endings (LF vs CRLF) and any pre-existing UTF-8 BOM; the fence search is bounded to the Tree section so an unfenced Tree + later fenced section (`## Examples`) can't cross-contaminate.
+
+**Undone by**: nothing. `reversible: false` because the previous tree content is not captured — the manifest is the source of truth, and any "undo" would re-run the same regenerate. If you want to revert, fix `manifest/repos.yaml` and re-run the target.
+
 ### `select_workspace`
 
 ```yaml
@@ -276,6 +378,18 @@ Each invocation of `setup` or `repair` starts a new session entry. The session c
 - All actions taken in that session.
 
 If a session is interrupted (Ctrl+C, crash), the partial session entry remains and is replayed by the next `doctor` run for accurate state reporting.
+
+#### Session-required contract (v1.9.0+)
+
+`Add-CABJournalEntry` throws `[CABNoActiveSessionException]` when no session has been started in the current process run. This is a hard contract:
+
+- Every production code path that mutates the workspace MUST be reached from `setup` or `repair` (which both call `Start-CABSession`).
+- The read-only commands `doctor` and `manifest-drift` may legitimately skip the session — they don't mutate, so they have no audit trail to write.
+- `--json` / `--quiet` modes for the read-only commands skip the session AND the banner; for mutating commands they keep the session (audit trail is preserved) and only suppress the banner via `Start-CABSession -Quiet:$silent` / `Stop-CABSession -Quiet:$silent`.
+
+The throw replaces an earlier silent `$null` return that caused invisible audit-trail gaps in production. A static-audit Pester suite (`tests/lib/journal-session-required.tests.ps1`) enforces the contract by walking every production `.ps1` for `Add-CABJournalEntry` callers and refusing to let new ones land without a paired `Start-CABSession` upstream.
+
+The active session is cached at `$Script:CABActiveSession` for O(1) `Get-CABCurrentSession` lookup. `Read-CABJournal` re-links the cache after any state-replacement (via the `Sync-CABActiveSession` helper) so mid-run reloads from disk — `commands/doctor.ps1` and `commands/undo.ps1` both do this for journal cross-checks — never orphan the cached reference.
 
 ### Marking entries as undone
 
