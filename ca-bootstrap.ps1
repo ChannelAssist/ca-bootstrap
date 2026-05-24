@@ -136,9 +136,28 @@ $context = @{
     TestReposFile = $env:CA_BOOTSTRAP_TEST_REPOS_FILE
 }
 
-# Banner + session start. Suppressed when --json or --quiet is set so the
-# JSON / one-line-summary output isn't polluted with banner text on stdout.
+# Banner suppression and session-start skipping are two separate gates:
+#
+#   $silent       = $Json -or $Quiet      → also suppresses the banner +
+#                                            -not-strictly-silent prints,
+#                                            so stdout stays clean for the
+#                                            JSON / one-line summary.
+#   $skipSession  = $silent -and          → ALSO skips Start-CABSession.
+#                   $readOnlyCommand        Only the read-only commands
+#                                            (doctor, manifest-drift) may
+#                                            skip it; mutating commands
+#                                            (setup, repair, undo,
+#                                            manifest-edit) must always
+#                                            pair Add-CABJournalEntry with
+#                                            a Start-CABSession upstream
+#                                            or the throw fires mid-run
+#                                            and the audit trail is lost.
+#                                            See the static caller audit
+#                                            in tests/lib/journal-session-
+#                                            required.tests.ps1.
+$readOnlyCommand = $Command -in @('doctor','manifest-drift')
 $silent = $Json -or $Quiet
+$skipSession = $silent -and $readOnlyCommand
 if ($context.TestMode -and -not $silent) {
     Write-CABColor Yellow '  ⚠ TEST MODE — gh auth, tool installs, and remote clones may be stubbed.'
 }
@@ -158,15 +177,21 @@ if ($ForceUnlock) {
 }
 
 try {
-    if ($silent) {
-        # JSON / quiet modes avoid stdout noise. manifest-drift is read-only,
-        # so its silent path can skip journal I/O entirely.
+    if ($skipSession) {
+        # JSON / quiet modes for the read-only commands avoid stdout noise.
+        # manifest-drift is read-only, so its silent path can skip journal
+        # I/O entirely; doctor still reads the journal to cross-check
+        # detected state against recorded actions.
         if ($Command -ne 'manifest-drift') {
             Read-CABJournal | Out-Null
         }
         $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
     } else {
-        Start-CABSession -Command $Command -Version $Script:CABootstrapVersion
+        # -Quiet:$silent so --json / --quiet mutating commands still
+        # get a real session (audit trail) without the banner output
+        # polluting stdout. Locks, journal I/O, and transcript rotation
+        # all still happen — only the visible header is suppressed.
+        Start-CABSession -Command $Command -Version $Script:CABootstrapVersion -Quiet:$silent
     }
 }
 catch [CABSessionLockedException] {
@@ -257,12 +282,16 @@ catch {
     $exitCode = 99
 }
 finally {
-    if ($silent) {
+    if ($skipSession) {
         if ($Command -ne 'manifest-drift') {
             Save-CABJournal
         }
     } else {
-        Stop-CABSession -ExitCode $exitCode
+        # -Quiet:$silent matches the Start-CABSession call upstream so
+        # --json / --quiet mutating commands stay clean on stdout for
+        # the full lifecycle. The session-end banner is suppressed;
+        # journal save, transcript stop, and lock release still run.
+        Stop-CABSession -ExitCode $exitCode -Quiet:$silent
     }
 }
 
