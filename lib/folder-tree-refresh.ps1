@@ -155,7 +155,7 @@ function Update-CABFolderReadmeTree {
     # trailing-whitespace tolerance make the body capture stable
     # across LF and CRLF input.
     $tail = $raw.Substring($headingMatch.Index + $headingMatch.Length)
-    $nextHeading = [regex]::Match($tail, '(?m)^##[ \t]')
+    $nextHeading = [regex]::Match($tail, '(?m)^#{1,2}[ \t]')
     if ($nextHeading.Success) {
         $tail = $tail.Substring(0, $nextHeading.Index)
     }
