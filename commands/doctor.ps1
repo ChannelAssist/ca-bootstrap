@@ -105,17 +105,37 @@ function Invoke-CABDoctorCheck {
         $expected = @($manifest.folders | Where-Object {
             try { -not $_.optional } catch { $true }
         })
-        $present  = @($expected | Where-Object { Test-Path (Join-Path $workspace $_.path) -PathType Container })
-        $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $workspace $_.path) -PathType Container) })
+        # Classify each required folder into one of three buckets,
+        # mirroring Invoke-CABStep50's execution branches in priority
+        # order: (a) present as directory, (b) collision — exists but
+        # NOT a directory, (c) genuinely missing. Without distinguishing
+        # collisions from missing, a regular file at the required path
+        # would land in $missing → the predecessor walk would render
+        # `folder(s) need rename` + `repair --target folders` as a safe
+        # fix, but Invoke-CABStep50 would fail before renaming with
+        # "exists but is not a directory". Doctor and step would
+        # diverge on a blocking collision. PR #82 cycle-3 review.
+        $present     = New-Object System.Collections.Generic.List[hashtable]
+        $collisions  = New-Object System.Collections.Generic.List[string]
+        $candidates  = New-Object System.Collections.Generic.List[hashtable]
+        foreach ($f in $expected) {
+            $target = Join-Path $workspace $f.path
+            if (Test-Path $target -PathType Container) {
+                $present.Add(@{ path = [string]$f.path }) | Out-Null
+            } elseif (Test-Path $target) {
+                $collisions.Add([string]$f.path) | Out-Null
+            } else {
+                $candidates.Add($f) | Out-Null
+            }
+        }
 
-        # Of the missing folders, see which ones have a predecessor on
-        # disk via renamed_from (scalar or list, walked most-recent →
-        # oldest). Those are flagged as "needs rename" so doctor can
-        # tell an operator who skipped a migration apart from one with
-        # genuine missing folders. Repair walks the same chain.
-        $renames   = New-Object System.Collections.Generic.List[hashtable]
+        # Of the genuinely-missing candidates, see which have a
+        # predecessor on disk via renamed_from (scalar or list, walked
+        # most-recent → oldest). Those become "needs rename"; the rest
+        # stay missing. Repair walks the same chain.
+        $renames      = New-Object System.Collections.Generic.List[hashtable]
         $stillMissing = New-Object System.Collections.Generic.List[string]
-        foreach ($f in $missing) {
+        foreach ($f in $candidates) {
             $predecessors = @(Get-CABFolderRenamedFrom -Folder $f)
             $found = $null
             foreach ($prev in $predecessors) {
@@ -128,8 +148,28 @@ function Invoke-CABDoctorCheck {
             }
         }
 
-        if ($stillMissing.Count -eq 0 -and $renames.Count -eq 0) {
+        if ($collisions.Count -eq 0 -and $stillMissing.Count -eq 0 -and $renames.Count -eq 0) {
             $checks.Add([ordered]@{ id = 'folders'; status = 'ok'; details = "$($present.Count)/$($expected.Count) present" })
+        } elseif ($collisions.Count -gt 0) {
+            # Collisions are always 'fail' — Invoke-CABStep50 cannot
+            # repair them, so flagging this as anything softer would
+            # mis-advertise the recovery path.
+            $detail = "$($collisions.Count) collision(s) (exists but not a directory): $($collisions -join ', ')"
+            if ($stillMissing.Count -gt 0) {
+                $detail += "; $($stillMissing.Count) missing: $($stillMissing -join ', ')"
+            }
+            if ($renames.Count -gt 0) {
+                $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
+                $detail += "; $($renames.Count) need rename: $renameSummary"
+            }
+            $checks.Add([ordered]@{
+                id = 'folders'; status = 'fail'
+                details = $detail
+                # Deliberately no `fix` field — collisions require
+                # manual resolution before any repair target applies.
+                collisions = $collisions.ToArray()
+                renames    = $renames.ToArray()
+            })
         } elseif ($stillMissing.Count -eq 0) {
             $renameSummary = ($renames | ForEach-Object { "$($_.from) → $($_.path)" }) -join ', '
             $checks.Add([ordered]@{

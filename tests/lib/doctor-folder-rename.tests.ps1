@@ -176,5 +176,54 @@ Describe 'Doctor — folder-rename check' {
         # Both should be warns (legacy exists alongside an empty new path).
         ($hits | ForEach-Object { $_.status }) | Should -Be @('warn','warn')
     }
+
+    It 'classifies the folders check as fail (collision) when a required path exists as a regular file' {
+        # PR #82 cycle-3 review pinned: a required-folder path that
+        # exists as a regular file used to land in the "missing" set
+        # via -PathType Container, and if a predecessor directory
+        # existed too the doctor `folders` check downgraded to warn
+        # with a `renames` action — but Invoke-CABStep50 would bail
+        # with "exists but is not a directory" before any rename
+        # could fire. Doctor and step diverged on a blocking collision.
+        #
+        # Required-path collisions are now detected BEFORE the
+        # predecessor walk and reported as fail with a `collisions`
+        # field. No `fix` recipe is advertised — the non-directory
+        # must be resolved manually.
+        $script:foldersManifest = [pscustomobject]@{
+            folders = @(
+                [pscustomobject]@{ path = 'ca-tools';      optional = $false }
+                [pscustomobject]@{ path = 'ca-docs';       optional = $false }
+                [pscustomobject]@{ path = 'ca-platform';   optional = $false }
+                [pscustomobject]@{ path = 'cm-product';    optional = $false }
+                [pscustomobject]@{ path = 'ca-training';   optional = $false }
+                [pscustomobject]@{
+                    path         = 'ca-prototypes'
+                    optional     = $false
+                    renamed_from = 'ca-experiments'
+                }
+                [pscustomobject]@{ path = 'ca-work-dirs';  optional = $false }
+            )
+        }
+        # Seed: every other required folder as a directory; ca-prototypes
+        # as a regular file (collision); ca-experiments as a directory
+        # so a predecessor would tempt the OLD code to render a rename.
+        foreach ($p in 'ca-tools','ca-docs','ca-platform','cm-product','ca-training','ca-work-dirs') {
+            New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $p) -Force | Out-Null
+        }
+        New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'ca-experiments') -Force | Out-Null
+        Set-Content -Path (Join-Path $script:tmpWs 'ca-prototypes') -Value 'not a directory' -Encoding utf8
+
+        $checks = Invoke-CABDoctorCheck -Context $script:ctx
+        $folders = $checks | Where-Object { $_.id -eq 'folders' }
+        $folders.status | Should -Be 'fail'
+        $folders.details | Should -Match 'collision'
+        $folders.details | Should -Match 'ca-prototypes'
+        # MUST NOT advertise `repair --target folders` for a collision —
+        # the step would fail before fixing anything.
+        $folders.PSObject.Properties.Name | Should -Not -Contain 'fix'
+        # MUST NOT report this as a pending rename either.
+        $folders.details | Should -Not -Match 'ca-experiments\s*→'
+    }
 }
 
