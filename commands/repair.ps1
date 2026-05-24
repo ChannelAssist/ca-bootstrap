@@ -15,6 +15,9 @@
 #   --target folders            recreate any missing top-level folders
 #   --target folder-renames     migrate legacy workspace folders to renamed paths (safety-contract compliant)
 #   --target folder-readmes     re-sync templates/folder-readmes/ into the workspace (prompts before overwriting drift)
+#   --target folder-tree-refresh regenerate the "## Tree" section of each
+#                               workspace folder's README from the live
+#                               manifest (idempotent; explicit-only)
 #   --target journal            rebuild the journal from on-disk state
 
 function Invoke-CABCommandRepair {
@@ -159,6 +162,11 @@ function Invoke-CABRepairTarget {
         'folder-readmes' {
             $r = Invoke-CABRepairFolderReadmes -Context $Context
             return @{ ok = ($r.status -in 'ok','noop'); details = $r.details }
+        }
+        'folder-tree-refresh' {
+            . (Join-Path $Context.RepoRoot 'lib/folder-tree-refresh.ps1')
+            $r = Invoke-CABFolderTreeRefresh -Context $Context
+            return @{ ok = ($r.status -in 'ok','warn'); details = $r.details }
         }
         'gh-auth' {
             . (Join-Path $Context.RepoRoot 'steps/30-gh-auth.ps1')
