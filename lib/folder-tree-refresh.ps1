@@ -264,15 +264,22 @@ function Invoke-CABFolderTreeRefresh {
         }
 
         if (-not (Test-Path $readme -PathType Leaf)) {
+            # Per docs/commands.md the documented contract for this
+            # target is "Skips folders whose README.md is missing …
+            # (warning, no error)". Treating a missing README for a
+            # required folder as `failed` would make `repair --target
+            # folder-tree-refresh` exit non-zero on a brand-new
+            # workspace that hasn't been seeded by `repair --target
+            # folder-readmes` yet — operators would mistake a missing
+            # README (informational) for a refresh exception (real
+            # error). Always classify as skipped; raise a sterner
+            # warning for required folders so operators still notice.
             if ($isOptional) {
-                # No README on disk is expected for optional folders that
-                # weren't created. Don't escalate — record as skipped so the
-                # report stays informative.
-                $skipped.Add($folderPath) | Out-Null
+                Write-Verbose "Skipping missing README for optional folder $folderPath"
             } else {
-                Write-CABColor Yellow "    ⚠ Missing README for required folder ${folderPath}"
-                $failed.Add($folderPath) | Out-Null
+                Write-CABColor Yellow "    ⚠ Missing README for required folder ${folderPath} — run 'repair --target folder-readmes' to seed it"
             }
+            $skipped.Add($folderPath) | Out-Null
             continue
         }
 
