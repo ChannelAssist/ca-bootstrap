@@ -1552,7 +1552,9 @@ Larger than the original 3200-line estimate because `doctor`/`repair`/`undo` add
 
 The workspace folder set is declared in `manifest/folders.yaml`. Every top-level folder receives a `README.md` from `templates/folder-readmes/<folder>/README.md` on creation (step 50), and a per-folder safety contract prevents `ca-bootstrap` from ever deleting a folder that contains sub-folders or non-empty content without explicit user confirmation — sub-folders may belong to other tools (Claude Code worktrees, Claude Cowork sessions, IDE scratch).
 
-Renames are tracked declaratively via a `renamed_from:` field on the folder entry. `doctor` detects drift and points at `repair --target folder-renames`, which performs the migration safely.
+Renames are tracked declaratively via a `renamed_from:` field on the folder entry. The field accepts either a **scalar** (single predecessor) or a **list** (multi-step rename history walked most-recent → oldest), so a folder that has been renamed twice — e.g. `experiments` → `ca-experiments` → `ca-prototypes` — still has a complete repair path from any predecessor on disk. `Get-CABFolderRenamedFrom` normalises both shapes into an ordered list; `doctor` emits one `folder-rename:<old>` check per predecessor still on disk, and `repair --target folder-renames` iterates each predecessor in turn through the safety contract's decision table.
+
+Once a folder has been seeded, `repair --target folder-tree-refresh` regenerates the `## Tree` fenced block in its `README.md` from the current `manifest/repos.yaml` — idempotent, CRLF-safe, BOM-preserving, and bounded to the Tree section so a later `## Examples` fenced block can never be cross-rewritten. `repair --target folder-readmes` re-syncs the canonical templates over drifted READMEs (with explicit user confirmation), capturing the pre-overwrite bytes into the journal's `previous_content` field so `undo` can restore them byte-for-byte — guarded by a SHA256 divergence check that refuses to overwrite when the operator has edited the README since repair.
 
 Full spec: [`docs/specs/2026-05-22-folder-taxonomy-design.md`](docs/specs/2026-05-22-folder-taxonomy-design.md).
 
