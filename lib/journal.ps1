@@ -17,6 +17,12 @@ $Script:CABootstrapJournalPath = Join-Path $Script:CABootstrapStateDir 'journal.
 $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
 $Script:CABootstrapSessionId   = $null
 $Script:CABJournalState        = $null   # full in-memory representation of the journal
+# Direct reference to the session Start-CABSession created in this
+# process run. Caching avoids an O(#sessions) Where-Object scan in
+# Get-CABCurrentSession (called once per Add-CABJournalEntry) and
+# removes the id-collision concern entirely — reference identity
+# doesn't care if two sessions ever share an id string.
+$Script:CABActiveSession       = $null
 # Monotonic per-process counter that disambiguates entry ids when two
 # Add-CABJournalEntry / Repair-CABJournal calls land in the same wall-
 # clock instant. Set-CABEntryUndone matches by id string, so two entries
@@ -73,6 +79,7 @@ function Reset-CABJournalState {
     $Script:CABootstrapTranscript  = Join-Path $Script:CABootstrapStateDir 'last-run.log'
     $Script:CABootstrapSessionId   = $null
     $Script:CABJournalState        = $null
+    $Script:CABActiveSession       = $null
     $Script:CABEntryIdSequence     = 0
 }
 
@@ -194,6 +201,17 @@ class CABSessionLockedException : System.Exception {
     }
 }
 
+# Thrown by Add-CABJournalEntry when no session was started this
+# process run. Typed to match the rest of this module (the lock-held
+# path uses CABSessionLockedException) so callers can distinguish
+# "concurrent run" from "missing Start-CABSession upstream" without
+# message-parsing. The base message is preserved verbatim — the
+# regression tests in tests/lib/journal-session-required.tests.ps1
+# still match it via Should -Throw -ExpectedMessage '*No active session*'.
+class CABNoActiveSessionException : System.Exception {
+    CABNoActiveSessionException() : base("No active session — call Start-CABSession first.") {}
+}
+
 function Unlock-CABSession {
     if ($Script:CABLockDirAcquired) {
         Remove-Item -Path $Script:CABLockDirAcquired -Recurse -Force -ErrorAction SilentlyContinue
@@ -235,12 +253,51 @@ function New-CABJournalSkeleton {
 # Read-CABJournal — load the journal file into $Script:CABJournalState.
 # If the file is missing or empty, creates a fresh skeleton in memory but
 # does NOT write to disk (that's Save-CABJournal's job).
+#
+# IMPORTANT: when called after Start-CABSession (commands/doctor.ps1 and
+# commands/undo.ps1 do this), the active session reference cached at
+# Start-CABSession would otherwise be orphaned by the reload — the cache
+# would still point at a hashtable that's no longer in
+# $Script:CABJournalState.sessions, and any subsequent
+# Add-CABJournalEntry would silently write into the orphan, then get
+# dropped on the next Save-CABJournal. Sync-CABActiveSession restores
+# the cache invariant by either (a) re-pointing it at the matching
+# loaded session if the journal was saved between Start- and Read-, or
+# (b) re-appending the pre-reload cached session into the freshly
+# loaded state if it hadn't been saved yet. PR #80 cycle-4 review.
+function Sync-CABActiveSession {
+    if (-not $Script:CABootstrapSessionId) { return }
+    $sessions = @()
+    if ($Script:CABJournalState -and $Script:CABJournalState.sessions) {
+        $sessions = @($Script:CABJournalState.sessions)
+    }
+    $match = $sessions | Where-Object { $_.id -eq $Script:CABootstrapSessionId } | Select-Object -Last 1
+    if ($match) {
+        # Session round-tripped through disk → re-point cache at the
+        # reloaded hashtable so future mutations land in the live state.
+        $Script:CABActiveSession = $match
+        return
+    }
+    if ($Script:CABActiveSession) {
+        # Session started this process run but not yet saved. Re-append
+        # the cached session into the reloaded state and re-cache the
+        # canonical reference (the post-append element, not the
+        # pre-append hashtable).
+        $Script:CABJournalState.sessions = $sessions + @($Script:CABActiveSession)
+        $Script:CABActiveSession = $Script:CABJournalState.sessions[-1]
+    }
+    # else: SessionId set but no cache and no match — Start-CABSession
+    # never completed, leave the cache as-is ($null). Subsequent
+    # Add-CABJournalEntry will throw CABNoActiveSessionException.
+}
+
 function Read-CABJournal {
     [CmdletBinding()]
     param()
     Initialize-CABJournal
     if (-not (Test-Path $Script:CABootstrapJournalPath)) {
         $Script:CABJournalState = New-CABJournalSkeleton
+        Sync-CABActiveSession
         return $Script:CABJournalState
     }
     Initialize-CABYaml
@@ -249,11 +306,13 @@ function Read-CABJournal {
         $raw = Get-Content -Raw -Path $Script:CABootstrapJournalPath
         if ([string]::IsNullOrWhiteSpace($raw)) {
             $Script:CABJournalState = New-CABJournalSkeleton
+            Sync-CABActiveSession
             return $Script:CABJournalState
         }
         $parsed = ConvertFrom-Yaml $raw
         if (-not $parsed) {
             $Script:CABJournalState = New-CABJournalSkeleton
+            Sync-CABActiveSession
             return $Script:CABJournalState
         }
         # Normalize: powershell-yaml returns hashtables; we want sessions as
@@ -263,6 +322,7 @@ function Read-CABJournal {
             if (-not $s.actions) { $s.actions = @() }
         }
         $Script:CABJournalState = $parsed
+        Sync-CABActiveSession
         return $parsed
     } catch {
         Write-CABColor Yellow "  Warning: journal at $Script:CABootstrapJournalPath could not be parsed ($($_.Exception.Message))."
@@ -271,6 +331,7 @@ function Read-CABJournal {
         $backup = "$Script:CABootstrapJournalPath.corrupt-$(Get-Date -AsUTC -Format 'yyyy-MM-ddTHH-mm-ssZ')"
         Move-Item -Path $Script:CABootstrapJournalPath -Destination $backup -Force -ErrorAction SilentlyContinue
         $Script:CABJournalState = New-CABJournalSkeleton
+        Sync-CABActiveSession
         return $Script:CABJournalState
     }
 }
@@ -298,13 +359,29 @@ function Start-CABSession {
         [Parameter(Mandatory)] [ValidateSet('setup','doctor','repair','undo','manifest-drift','manifest-edit')] [string]$Command,
         [Parameter(Mandatory)] [string]$Version,
         [string]$WorkspacePath,
-        [int]$LockTimeoutMs = 0
+        [int]$LockTimeoutMs = 0,
+        # When the orchestrator is in --json / --quiet mode for a mutating
+        # command, we still need the session (audit trail), but the banner
+        # Write-Host block would pollute stdout. -Quiet suppresses only
+        # the visible header; lock acquisition, journal load, transcript
+        # rotation, and session metadata recording all still happen.
+        [switch]$Quiet
     )
     # Refuse to run if another session is in progress. doctor is read-only
     # so we let it through without a lock.
     if ($Command -ne 'doctor') {
         Lock-CABSession -TimeoutMs $LockTimeoutMs
     }
+    # Clear any stale in-process session state BEFORE Read-CABJournal so
+    # Sync-CABActiveSession can't mis-resurrect a prior run's cached
+    # session into the freshly loaded state. Reset-CABJournalState is
+    # the normal test-harness entry point for this; Start-CABSession is
+    # the production entry point and must be self-cleaning so a caller
+    # that deleted journal.yaml between runs (e.g. an integration test
+    # that wipes the state dir without re-importing the module) gets a
+    # clean session, not a resurrected orphan from the prior run.
+    $Script:CABootstrapSessionId = $null
+    $Script:CABActiveSession     = $null
     Read-CABJournal | Out-Null
     $Script:CABootstrapSessionId = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
 
@@ -328,6 +405,11 @@ function Start-CABSession {
     $existing = @()
     if ($Script:CABJournalState.sessions) { $existing = @($Script:CABJournalState.sessions) }
     $Script:CABJournalState.sessions = $existing + @($newSession)
+    # Cache the direct reference for O(1) Get-CABCurrentSession lookups.
+    # Must come after the append, otherwise the cached reference would
+    # point at a copy that powershell-yaml may detach during a later
+    # Save-CABJournal / ConvertTo-Yaml round-trip.
+    $Script:CABActiveSession = $Script:CABJournalState.sessions[-1]
 
     # Rotate prior transcript if present, then start a new one.
     if (Test-Path $Script:CABootstrapTranscript) {
@@ -340,33 +422,53 @@ function Start-CABSession {
     }
     Start-Transcript -Path $Script:CABootstrapTranscript -Force | Out-Null
 
-    Write-Host ''
-    Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId]"
-    Write-Host "  command : $Command"
-    Write-Host "  version : $Version"
-    Write-Host "  os      : $($Script:CABJournalState.host.os)"
-    Write-Host "  pwsh    : $($PSVersionTable.PSVersion)"
-    if ($WorkspacePath) { Write-Host "  ws      : $WorkspacePath" }
-    Write-Host ''
+    if (-not $Quiet) {
+        Write-Host ''
+        Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId]"
+        Write-Host "  command : $Command"
+        Write-Host "  version : $Version"
+        Write-Host "  os      : $($Script:CABJournalState.host.os)"
+        Write-Host "  pwsh    : $($PSVersionTable.PSVersion)"
+        if ($WorkspacePath) { Write-Host "  ws      : $WorkspacePath" }
+        Write-Host ''
+    }
 }
 
 function Stop-CABSession {
     [CmdletBinding()]
-    param([int]$ExitCode = 0)
+    param(
+        [int]$ExitCode = 0,
+        # Symmetric with Start-CABSession -Quiet. The orchestrator pipes
+        # the same $silent flag at both ends so --json / --quiet
+        # mutating commands stay clean on stdout end-to-end; Save-CABJournal,
+        # transcript stop, and lock release all still run.
+        [switch]$Quiet
+    )
     Save-CABJournal
-    Write-Host ''
-    Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
+    if (-not $Quiet) {
+        Write-Host ''
+        Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
+    }
     try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
     Unlock-CABSession
 }
 
-# Get-CABCurrentSession — returns a reference to the current session
-# hashtable so steps can mutate its `actions` list directly.
+# Get-CABCurrentSession — returns a reference to the session
+# Start-CABSession created in this process run, so steps can mutate
+# its `actions` list directly.
+#
+# The implementation is intentionally O(1): Start-CABSession stamps
+# $Script:CABActiveSession with the live reference, and we return it
+# directly. Two earlier shapes failed in different ways:
+#   - return $sessions[-1] silently appended to the most-recent prior
+#     session when the journal already had history on disk.
+#   - Where-Object { $_.id -eq $sessId } | Select-Object -First 1
+#     scanned every session on every Add-CABJournalEntry and would
+#     have picked the wrong session if two ids ever collided
+#     (second-granularity timestamps are not guaranteed unique).
+# Reference identity has neither failure mode.
 function Get-CABCurrentSession {
-    if (-not $Script:CABJournalState -or -not $Script:CABJournalState.sessions) { return $null }
-    $sessions = @($Script:CABJournalState.sessions)
-    if ($sessions.Count -eq 0) { return $null }
-    return $sessions[-1]
+    return $Script:CABActiveSession
 }
 
 # ---------------------------------------------------------------------------
@@ -383,13 +485,13 @@ function Add-CABJournalEntry {
         [hashtable]$Data = @{}
     )
     $session = Get-CABCurrentSession
-    # When no session is active (e.g. test harness or non-session
-    # context), silently skip journaling. The journal is an audit trail,
-    # not a hard dependency; production code paths always start a
-    # session before mutating.
-    if (-not $session) {
-        return $null
-    }
+    # No session active = bug, not a test convenience. A silent $null
+    # return creates invisible audit-trail gaps in production: the
+    # action looks like it journaled, the caller assumes success, but
+    # the audit record never materializes. Tests must opt in to a
+    # session via Start-CABSession (or seed one through Repair-).
+    # PR #80 + the journal-session-required.tests.ps1 suite pin this.
+    if (-not $session) { throw [CABNoActiveSessionException]::new() }
 
     $entry = [ordered]@{
         id         = New-CABEntryId

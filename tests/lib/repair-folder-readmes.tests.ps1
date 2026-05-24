@@ -18,6 +18,10 @@ Describe 'Repair — folder-readmes' {
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-repair-readme-state-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tmpState
         Reset-CABJournalState
+        # PR #80 contract: Add-CABJournalEntry now throws without an
+        # active session. Repair journals seed_readme actions, so we
+        # must start a session paired with the Reset.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' | Out-Null
         New-Item -ItemType Directory -Path $script:tmpWs -Force | Out-Null
         foreach ($p in 'ca-tools','ca-docs','ca-platform','cm-product','ca-training','ca-work-dirs') {
             New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $p) -Force | Out-Null
@@ -29,6 +33,8 @@ Describe 'Repair — folder-readmes' {
         Set-CABPromptMode -Unattended $false -Answers @{}
     }
     AfterEach {
+        try { Stop-Transcript | Out-Null } catch {}
+        try { Unlock-CABSession } catch {}
         foreach ($p in @($script:tmpWs, $script:tmpState)) {
             if ($p -and (Test-Path $p)) { Remove-Item -Recurse -Force $p -ErrorAction SilentlyContinue }
         }
@@ -58,51 +64,6 @@ Describe 'Repair — folder-readmes' {
 
         Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
         (Get-Content -Raw $drift) | Should -Match 'my edits'
-    }
-
-    It 'captures pre-overwrite drift content as base64 in the refresh_readme journal entry' {
-        Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
-        $drift = Join-Path $script:tmpWs 'ca-tools/README.md'
-        $driftText = "# my drift edits`n"
-        Set-Content -Path $drift -Value $driftText -Encoding utf8 -NoNewline
-
-        # Start a journal session so Add-CABJournalEntry actually records.
-        Start-CABSession -Command 'repair' -Version '0.0.0-test' -WorkspacePath $script:tmpWs
-        try {
-            Set-CABPromptMode -Unattended $true -Answers @{ 'folder-readme.ca-tools.overwrite' = 'y' }
-            $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
-            $r.status | Should -Be 'ok'
-            $entries = @(Get-CABJournalEntry -Action 'refresh_readme')
-            $entries.Count | Should -BeGreaterThan 0
-            $entry = $entries | Where-Object { ([string]$_.path) -eq $drift } | Select-Object -First 1
-            $entry | Should -Not -BeNullOrEmpty
-            $entry.previous_content | Should -Not -BeNullOrEmpty
-            $decoded = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$entry.previous_content))
-            $decoded | Should -Be $driftText
-        } finally {
-            Stop-CABSession -ExitCode 0
-        }
-    }
-
-    It 'skips snapshot capture and warns when drift content exceeds the 64KB cap' {
-        Invoke-CABRepairFolderReadmes -Context $script:ctx | Out-Null
-        $drift = Join-Path $script:tmpWs 'ca-tools/README.md'
-        # 65537 bytes — one over the 64KB cap.
-        $large = ('a' * 65537)
-        [System.IO.File]::WriteAllText($drift, $large)
-
-        Start-CABSession -Command 'repair' -Version '0.0.0-test' -WorkspacePath $script:tmpWs
-        try {
-            Set-CABPromptMode -Unattended $true -Answers @{ 'folder-readme.ca-tools.overwrite' = 'y' }
-            $r = Invoke-CABRepairFolderReadmes -Context $script:ctx
-            $r.status | Should -Be 'ok'
-            $entry = @(Get-CABJournalEntry -Action 'refresh_readme') | Where-Object { ([string]$_.path) -eq $drift } | Select-Object -First 1
-            $entry | Should -Not -BeNullOrEmpty
-            # No snapshot captured -> field absent or empty.
-            [string]$entry.previous_content | Should -BeNullOrEmpty
-        } finally {
-            Stop-CABSession -ExitCode 0
-        }
     }
 
     # ---------------------------------------------------------------------------

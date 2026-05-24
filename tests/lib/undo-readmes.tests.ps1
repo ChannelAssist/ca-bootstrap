@@ -69,7 +69,7 @@ Describe 'Undo README reversers' {
         (Get-Content -Raw $target) | Should -Match 'my edits'
     }
 
-    It 'marks refresh_readme as a noop when no previous_content snapshot was captured' {
+    It 'marks refresh_readme as a noop so it can be closed out in the journal' {
         $target = Join-Path $script:tmp 'README.md'
         Set-Content -Path $target -Value '# template' -Encoding utf8
 
@@ -87,42 +87,57 @@ Describe 'Undo README reversers' {
         (Test-Path $target) | Should -BeTrue
     }
 
-    It 'restores pre-overwrite README content from a base64 previous_content snapshot' {
-        $target = Join-Path $script:tmp 'README.md'
-        # Current on-disk content is the template; the journal carries the
-        # user's pre-overwrite drift content as base64.
-        Set-Content -Path $target -Value '# template' -Encoding utf8
-        $driftBytes = [System.Text.Encoding]::UTF8.GetBytes("# my drift edits`n")
-        $b64        = [Convert]::ToBase64String($driftBytes)
+    It 'refresh_readme with previous_content restores the original bytes byte-for-byte' {
+        # PR #83: the repair --target folder-readmes capture path
+        # base64-encodes the pre-overwrite README before writing the
+        # template over it. Undo decodes the snapshot and rewrites the
+        # file with the original bytes — including custom line endings,
+        # trailing whitespace, or user prose that the template overwrote.
+        $target  = Join-Path $script:tmp 'README.md'
+        $template = Join-Path $script:tmp 'tpl.md'
+        Set-Content -Path $target -Value '# template (overwritten)' -Encoding utf8
+        $original = "# user drift`r`n`r`nThis paragraph had **markdown** and trailing whitespace.   `r`n"
+        $originalBytes = [System.Text.Encoding]::UTF8.GetBytes($original)
+        $b64 = [Convert]::ToBase64String($originalBytes)
 
         $entry = [ordered]@{
-            id               = 4
-            step             = 'repair'
-            action           = 'refresh_readme'
-            path             = $target
-            template         = (Join-Path $script:tmp 'tpl.md')
-            previous_content = $b64
-            timestamp        = (Get-Date -Format o)
+            id                = 4
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = $template
+            previous_content  = $b64
+            timestamp         = (Get-Date -Format o)
         }
 
         $r = Invoke-CABUndoEntry -Entry $entry
         $r.status | Should -Be 'ok'
         $r.details | Should -Match 'Restored'
-        (Get-Content -Raw $target) | Should -Match 'my drift edits'
+        # Verify byte-for-byte fidelity — line endings + trailing
+        # whitespace MUST survive the round-trip, not just text equality.
+        $restoredBytes = [System.IO.File]::ReadAllBytes($target)
+        $restoredBytes.Length | Should -Be $originalBytes.Length
+        for ($i = 0; $i -lt $originalBytes.Length; $i++) {
+            $restoredBytes[$i] | Should -Be $originalBytes[$i]
+        }
     }
 
-    It 'returns fail when previous_content is not valid base64' {
+    It 'refresh_readme fails clearly when previous_content is malformed base64' {
+        # A manually-edited journal entry could carry junk in
+        # previous_content. Undo must surface that as 'fail' (so the
+        # operator sees what went wrong), not 'ok' with a corrupt file
+        # on disk and not 'noop' which would silently swallow the error.
         $target = Join-Path $script:tmp 'README.md'
         Set-Content -Path $target -Value '# template' -Encoding utf8
 
         $entry = [ordered]@{
-            id               = 5
-            step             = 'repair'
-            action           = 'refresh_readme'
-            path             = $target
-            template         = (Join-Path $script:tmp 'tpl.md')
-            previous_content = '!!! not base64 !!!'
-            timestamp        = (Get-Date -Format o)
+            id                = 5
+            step              = 'repair'
+            action            = 'refresh_readme'
+            path              = $target
+            template          = (Join-Path $script:tmp 'tpl.md')
+            previous_content  = 'this-is-not-valid-base64!!!'
+            timestamp         = (Get-Date -Format o)
         }
 
         $r = Invoke-CABUndoEntry -Entry $entry

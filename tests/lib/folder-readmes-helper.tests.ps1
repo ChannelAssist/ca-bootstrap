@@ -16,6 +16,12 @@ Describe 'Invoke-CABSeedFolderReadme — file-type collision handling' {
         $script:tmpState = Join-Path ([System.IO.Path]::GetTempPath()) "cab-seed-state-$(Get-Random)"
         $env:CA_BOOTSTRAP_STATE = $script:tmpState
         Reset-CABJournalState
+        # Pair Reset-CABJournalState with Start-CABSession so the
+        # journal contract (PR #80) holds: Add-CABJournalEntry now
+        # throws "No active session" if a session wasn't started this
+        # process run. Invoke-CABSeedFolderReadme journals a
+        # 'seed_readme' action on success, so a session is required.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' | Out-Null
         New-Item -ItemType Directory -Path $script:tmp -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $script:tmp 'templates/folder-readmes/test-folder') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $script:tmp 'workspace/test-folder') -Force | Out-Null

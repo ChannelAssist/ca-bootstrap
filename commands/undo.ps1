@@ -234,8 +234,10 @@ function Invoke-CABUndoEntry {
             # refresh_readme overwrote a drifted README with the template.
             # If the pre-overwrite content was captured (base64-encoded in
             # `previous_content`), restore it byte-for-byte. If not (legacy
-            # entries or files > 64KB at capture time), fall back to noop
-            # so the entry is closed out rather than re-attempted forever.
+            # entries from before this PR landed, or files that exceeded the
+            # capture cap at write time), fall back to noop so the entry is
+            # closed out rather than re-attempted forever — the dev-side
+            # behavior before this PR landed.
             $path = [string]$Entry.path
             $b64  = $null
             try { $b64 = [string]$Entry['previous_content'] } catch { $b64 = $null }
