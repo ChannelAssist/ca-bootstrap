@@ -142,6 +142,17 @@ sessions:
         $entry.action | Should -Be 'pretend'
     }
 
+    It 'Stop-CABSession -Quiet suppresses the session-end banner' {
+        # Symmetric guarantee to Start-CABSession -Quiet, but for the
+        # shutdown path. The orchestrator pipes -Quiet:$silent at both
+        # ends so --json / --quiet mutating commands stay clean from
+        # banner through to "end — exit" line. Save-CABJournal,
+        # Stop-Transcript, and Unlock-CABSession still run unconditionally.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' -Quiet | Out-Null
+        $output = Stop-CABSession -ExitCode 0 -Quiet 6>&1 | Out-String
+        $output | Should -Not -Match '\[ca-bootstrap session.*end'
+    }
+
     It 'does NOT silently return $null (which would mask audit gaps)' {
         # Regression guard: if a future change ever softens the contract
         # back to "silently return $null", this assertion fails so the

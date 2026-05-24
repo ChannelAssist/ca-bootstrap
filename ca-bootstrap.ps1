@@ -287,7 +287,11 @@ finally {
             Save-CABJournal
         }
     } else {
-        Stop-CABSession -ExitCode $exitCode
+        # -Quiet:$silent matches the Start-CABSession call upstream so
+        # --json / --quiet mutating commands stay clean on stdout for
+        # the full lifecycle. The session-end banner is suppressed;
+        # journal save, transcript stop, and lock release still run.
+        Stop-CABSession -ExitCode $exitCode -Quiet:$silent
     }
 }
 

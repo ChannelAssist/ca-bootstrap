@@ -436,10 +436,19 @@ function Start-CABSession {
 
 function Stop-CABSession {
     [CmdletBinding()]
-    param([int]$ExitCode = 0)
+    param(
+        [int]$ExitCode = 0,
+        # Symmetric with Start-CABSession -Quiet. The orchestrator pipes
+        # the same $silent flag at both ends so --json / --quiet
+        # mutating commands stay clean on stdout end-to-end; Save-CABJournal,
+        # transcript stop, and lock release all still run.
+        [switch]$Quiet
+    )
     Save-CABJournal
-    Write-Host ''
-    Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
+    if (-not $Quiet) {
+        Write-Host ''
+        Write-Host "[ca-bootstrap session $Script:CABootstrapSessionId end — exit $ExitCode]"
+    }
     try { Stop-Transcript | Out-Null } catch { Write-Verbose "No active transcript to stop." }
     Unlock-CABSession
 }
