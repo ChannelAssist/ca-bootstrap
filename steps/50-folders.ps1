@@ -14,7 +14,12 @@ function Test-CABStep50 {
     }
     $manifest = Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml')
     $expected = @($manifest.folders | Where-Object { -not $_.optional })
-    $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $Context.WorkspacePath $_.path)) })
+    # -PathType Container ensures Test- mirrors Invoke- semantics: a
+    # regular file squatting on a required-folder path counts as
+    # missing, not as "present but wrong type". Same discipline on the
+    # predecessor walk below — a non-directory predecessor isn't
+    # renameable by Invoke-CABStep50 and must not be reported as one.
+    $missing  = @($expected | Where-Object { -not (Test-Path (Join-Path $Context.WorkspacePath $_.path) -PathType Container) })
     if ($missing.Count -eq 0) {
         return @{ status = 'ok'; details = "$($expected.Count)/$($expected.Count) folders present" }
     }
@@ -23,7 +28,7 @@ function Test-CABStep50 {
     foreach ($f in $missing) {
         $prev = $null
         foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
-            if (Test-Path (Join-Path $Context.WorkspacePath $p)) { $prev = $p; break }
+            if (Test-Path (Join-Path $Context.WorkspacePath $p) -PathType Container) { $prev = $p; break }
         }
         if ($prev) { $renamePairs.Add("$prev → $($f.path)") }
         else       { $stillMissing.Add([string]$f.path) }
@@ -58,14 +63,19 @@ function Invoke-CABStep50 {
     # rename predecessor on disk → ↻ (Yellow, will-rename). Missing
     # outright → + (Cyan, will-create).
     foreach ($f in $required) {
-        $present = Test-Path (Join-Path $Context.WorkspacePath $f.path)
+        # Use -PathType Container everywhere predecessors are classified
+        # so the preview matches what Invoke-CABStep50 will actually do
+        # — Invoke-CABStep50 only renames directories, so a regular file
+        # squatting on the predecessor path must NOT show up as a yellow
+        # "↻ rename" in the preview (it would fall through to create).
+        $present = Test-Path (Join-Path $Context.WorkspacePath $f.path) -PathType Container
         if ($present) {
             $icon, $color = '✓', 'Green'
             $desc = $f.description
         } else {
             $prev = $null
             foreach ($p in @(Get-CABFolderRenamedFrom -Folder $f)) {
-                if (Test-Path (Join-Path $Context.WorkspacePath $p)) { $prev = $p; break }
+                if (Test-Path (Join-Path $Context.WorkspacePath $p) -PathType Container) { $prev = $p; break }
             }
             if ($prev) {
                 $icon, $color = '↻', 'Yellow'

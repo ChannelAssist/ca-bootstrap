@@ -18,9 +18,10 @@
 # The main orchestrator loads all libs before dot-sourcing this file, so
 # these guards are no-ops in that path.
 foreach ($__libDep in @(
-    @{ cmd = 'Get-CABOSFamily';    file = 'platform.ps1' }
-    @{ cmd = 'Get-CABToolReport';  file = 'tools.ps1'    }
-    @{ cmd = 'Test-CABRepoCloned'; file = 'git-ops.ps1'  }
+    @{ cmd = 'Get-CABOSFamily';          file = 'platform.ps1' }
+    @{ cmd = 'Get-CABToolReport';        file = 'tools.ps1'    }
+    @{ cmd = 'Test-CABRepoCloned';       file = 'git-ops.ps1'  }
+    @{ cmd = 'Get-CABFolderRenamedFrom'; file = 'folders.ps1'  }
 )) {
     if (-not (Get-Command $__libDep.cmd -ErrorAction SilentlyContinue)) {
         $__p = Join-Path $PSScriptRoot "../lib/$($__libDep.file)"
@@ -158,26 +159,35 @@ function Invoke-CABDoctorCheck {
     # `repair --target folder-renames` for the safe fix. Repair honors the
     # safety contract: empty legacy → silent rename; non-empty → prompt;
     # both with content → bail to manual.
+    #
+    # PR #82 generalized `renamed_from` to scalar-or-list (a chain of
+    # historical names, most-recent → oldest). The cleanup check below
+    # iterates the full chain via Get-CABFolderRenamedFrom, emitting one
+    # check per predecessor still on disk. A direct `[string]$f.renamed_from`
+    # cast would have produced "a b" for a list and silently failed to
+    # detect any leftover, including the case where the new path already
+    # exists but an older predecessor lingers.
     if (Test-Path $workspace) {
         $foldersManifest = if ($manifest) { $manifest } else { Read-CABManifest -Path (Join-Path $Context.RepoRoot 'manifest/folders.yaml') -Quiet }
         $renamed = @($foldersManifest.folders | Where-Object {
             try { [bool]$_.renamed_from } catch { $false }
         })
         foreach ($f in $renamed) {
-            $legacyPath = Join-Path $workspace ([string]$f.renamed_from)
+          foreach ($legacyName in @(Get-CABFolderRenamedFrom -Folder $f)) {
+            $legacyPath = Join-Path $workspace $legacyName
             $newPath    = Join-Path $workspace ([string]$f.path)
             $legacyPathExists = Test-Path $legacyPath
             $newPathExists    = Test-Path $newPath
             $legacyExists     = Test-Path $legacyPath -PathType Container
             $newExists        = Test-Path $newPath    -PathType Container
 
-            $id = "folder-rename:$($f.renamed_from)"
+            $id = "folder-rename:$legacyName"
 
             if ($legacyPathExists -and -not $legacyExists) {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "'$($f.renamed_from)/' exists but is not a directory — manual resolution required."
+                    details = "'$legacyName/' exists but is not a directory — manual resolution required."
                 })
                 continue
             }
@@ -201,7 +211,7 @@ function Invoke-CABDoctorCheck {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "Cannot enumerate '$($f.renamed_from)/' contents ($($_.Exception.Message)) — manual resolution required."
+                    details = "Cannot enumerate '$legacyName/' contents ($($_.Exception.Message)) — manual resolution required."
                 })
                 continue
             }
@@ -223,23 +233,24 @@ function Invoke-CABDoctorCheck {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'warn'
-                    details = "Legacy folder '$($f.renamed_from)/' present, expected '$($f.path)/'."
+                    details = "Legacy folder '$legacyName/' present, expected '$($f.path)/'."
                     fix     = 'repair --target folder-renames'
                 })
             } elseif (-not $legacyHasContent -or -not $newHasContent) {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'warn'
-                    details = "Legacy folder '$($f.renamed_from)/' present alongside '$($f.path)/' — repair will merge."
+                    details = "Legacy folder '$legacyName/' present alongside '$($f.path)/' — repair will merge."
                     fix     = 'repair --target folder-renames'
                 })
             } else {
                 $checks.Add([ordered]@{
                     id      = $id
                     status  = 'fail'
-                    details = "Both '$($f.renamed_from)/' and '$($f.path)/' contain files — manual merge required."
+                    details = "Both '$legacyName/' and '$($f.path)/' contain files — manual merge required."
                 })
             }
+          }
         }
     }
 

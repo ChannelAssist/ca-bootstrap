@@ -137,5 +137,44 @@ Describe 'Doctor — folder-rename check' {
         $hit.status | Should -Be 'fail'
         $hit.details | Should -Match 'not a directory'
     }
+
+    It 'surfaces every predecessor in a renamed_from list when each lingers on disk' {
+        # PR #82 cycle-1 review pinned: the legacy folder-rename check
+        # used to cast renamed_from as a scalar via [string]$f.renamed_from,
+        # which produces "experiments older-experiments" (space-joined)
+        # for a list. The chain-aware rewrite must iterate the full list
+        # via Get-CABFolderRenamedFrom and emit one check per predecessor
+        # found on disk.
+        $script:foldersManifest = [pscustomobject]@{
+            folders = @(
+                [pscustomobject]@{ path = 'ca-tools';      optional = $false }
+                [pscustomobject]@{ path = 'ca-docs';       optional = $false }
+                [pscustomobject]@{ path = 'ca-platform';   optional = $false }
+                [pscustomobject]@{ path = 'cm-product';    optional = $false }
+                [pscustomobject]@{ path = 'ca-training';   optional = $false }
+                [pscustomobject]@{
+                    path         = 'ca-experiments'
+                    optional     = $true
+                    renamed_from = @('experiments','older-experiments')  # list, not scalar
+                }
+                [pscustomobject]@{ path = 'ca-work-dirs';  optional = $false }
+            )
+        }
+        # Both legacies on disk PLUS the new path; new is empty so the
+        # folder-rename cleanup should report a warn check for EACH
+        # legacy, not just the first.
+        New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'experiments') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'older-experiments') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $script:tmpWs 'ca-experiments') -Force | Out-Null
+
+        $checks = Invoke-CABDoctorCheck -Context $script:ctx
+        $hits = @($checks | Where-Object { $_.id -like 'folder-rename:*' })
+        # Two predecessors on disk → two cleanup checks.
+        $hits.Count | Should -Be 2
+        ($hits | ForEach-Object { $_.id }) | Should -Contain 'folder-rename:experiments'
+        ($hits | ForEach-Object { $_.id }) | Should -Contain 'folder-rename:older-experiments'
+        # Both should be warns (legacy exists alongside an empty new path).
+        ($hits | ForEach-Object { $_.status }) | Should -Be @('warn','warn')
+    }
 }
 
