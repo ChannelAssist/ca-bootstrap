@@ -72,6 +72,35 @@ Describe 'Update-CABFolderReadmeTree' {
         Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree 'x/' | Should -Be 'no-fence'
     }
 
+    It 'returns no-fence when Tree has no fence but a LATER section has one (no cross-section corruption)' {
+        # PR #81 cycle-3 review pinned: without bounding the fence
+        # search to the Tree section, an unfenced Tree followed by a
+        # fenced ## Examples block would silently rewrite the
+        # Examples block — corrupting README content the contract
+        # never authorized us to touch.
+        $content = @(
+            '# ca-platform',
+            '',
+            '## Tree',
+            '',
+            'prose only — no fence in this section',
+            '',
+            '## Examples',
+            '',
+            '```bash',
+            'must not be touched',
+            '```'
+        ) -join "`n"
+        Set-Content -Path $script:readme -Value $content -NoNewline
+
+        Update-CABFolderReadmeTree -ReadmePath $script:readme -Tree 'x/' | Should -Be 'no-fence'
+
+        # Examples fence MUST survive intact — it was never the target.
+        $after = Get-Content -Raw -Path $script:readme
+        $after | Should -Match 'must not be touched'
+        $after | Should -Not -Match '^x/$'
+    }
+
     It 'replaces the fenced tree block on first run and reports kept on the second' {
         $content = @(
             '# ca-platform',
@@ -240,14 +269,28 @@ ca-platform/
         # ca-docs has no README on disk → skipped, not failed.
         $r.skipped | Should -Contain 'ca-docs'
 
-        $toolsAfter = Get-Content -Raw -Path (Join-Path $script:tmpWs 'ca-tools/README.md')
-        $toolsAfter | Should -Match 'ca-bootstrap/'
-        $toolsAfter | Should -Not -Match 'obsolete/'
-
-        $platAfter = Get-Content -Raw -Path (Join-Path $script:tmpWs 'ca-platform/README.md')
-        $platAfter | Should -Match 'ca-ai-agents/'
-        $platAfter | Should -Match 'ca-privacy-gate/'
-        $platAfter | Should -Not -Match 'obsolete/'
+        # Derive expectations from the live manifest at runtime rather
+        # than pinning to specific repo slugs (ca-bootstrap/ etc.). PR
+        # #81 cycle-3 review pinned this: routine manifest changes
+        # (adding/removing/renaming repos) would otherwise break this
+        # test even when the tree-refresh logic is still correct. By
+        # computing the expected tree via Get-CABFolderTreeBlock — the
+        # same function the production refresh uses — the test
+        # verifies behavior, not the manifest snapshot.
+        $reposManifest = Read-CABManifest -Path (Join-Path $script:repoRoot 'manifest/repos.yaml') -Quiet
+        foreach ($folder in 'ca-tools','ca-platform') {
+            $expectedTree = Get-CABFolderTreeBlock -FolderPath $folder -ReposManifest $reposManifest
+            $readme = Get-Content -Raw -Path (Join-Path $script:tmpWs "$folder/README.md")
+            # The fence body for the Tree section must equal the
+            # expected tree (modulo trailing newline shape that
+            # Update-CABFolderReadmeTree appends).
+            foreach ($line in ($expectedTree -split "`n")) {
+                if ([string]::IsNullOrWhiteSpace($line)) { continue }
+                $readme | Should -Match ([regex]::Escape($line)) -Because "expected tree line '$line' must appear in $folder/README.md after refresh"
+            }
+            # Sanity: the stale-content marker the test seeds must be gone.
+            $readme | Should -Not -Match 'obsolete/'
+        }
     }
 
     It 'is a no-op on the second invocation (idempotent)' {

@@ -140,7 +140,13 @@ function Update-CABFolderReadmeTree {
         return 'no-section'
     }
 
-    # From the end of the heading line, find the first fenced code block.
+    # From the end of the heading line, find the first fenced code block
+    # within the "## Tree" SECTION ONLY. Bound the search to before the
+    # next h2-or-higher heading (or EOF). Without the bound, a Tree
+    # section missing its own fence would silently consume a fence from
+    # a later section (e.g. `## Examples`) and corrupt unrelated README
+    # content. With the bound, that case correctly returns 'no-fence'.
+    #
     # Block opener: optional leading whitespace + ``` (capture the exact
     # fence so we can reuse it for the rewrite). We don't require a
     # language tag — none of the existing templates use one — but we
@@ -149,6 +155,10 @@ function Update-CABFolderReadmeTree {
     # trailing-whitespace tolerance make the body capture stable
     # across LF and CRLF input.
     $tail = $raw.Substring($headingMatch.Index + $headingMatch.Length)
+    $nextHeading = [regex]::Match($tail, '(?m)^##[ \t]')
+    if ($nextHeading.Success) {
+        $tail = $tail.Substring(0, $nextHeading.Index)
+    }
     $fencePattern = '(?ms)^[ \t]*(```+)[^\r\n]*\r?\n(?<body>.*?)(?<=\r?\n)[ \t]*\1[ \t]*\r?$'
     $fenceMatch = [regex]::Match($tail, $fencePattern)
     if (-not $fenceMatch.Success) {
