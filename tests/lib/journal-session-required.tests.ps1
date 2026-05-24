@@ -97,6 +97,39 @@ sessions:
         }
     }
 
+    It 'survives Read-CABJournal after Start-CABSession (PR #80 cycle-4 regression)' {
+        # Scenario A: session started but NOT saved yet.
+        # commands/undo.ps1 / commands/doctor.ps1 call Read-CABJournal
+        # mid-run for journal cross-checks. Without Sync-CABActiveSession,
+        # the reload replaces $Script:CABJournalState and orphans the
+        # cached $Script:CABActiveSession — subsequent Add-CABJournalEntry
+        # would write into a detached hashtable that never gets saved.
+        Start-CABSession -Command 'repair' -Version '0.0.0-test' -Quiet | Out-Null
+        Add-CABJournalEntry -Step '99-test' -Action 'before_read' -Data @{} | Out-Null
+        Read-CABJournal | Out-Null
+        $entry = Add-CABJournalEntry -Step '99-test' -Action 'after_read' -Data @{}
+        $entry.action | Should -Be 'after_read'
+        # The post-read entry must be in the live $Script:CABJournalState,
+        # not stranded in an orphan session.
+        $current = Get-CABCurrentSession
+        @($current.actions | Where-Object { $_.action -eq 'after_read' }).Count | Should -Be 1
+        # And the cache must point at the session in the LIVE state.
+        @($Script:CABJournalState.sessions | Where-Object { $_.id -eq (Get-CABSessionId) }).Count | Should -Be 1
+
+        # Scenario B: session saved to disk, then reloaded.
+        # The cache must re-point at the loaded session (not the
+        # pre-save instance) so further mutations land in the live state
+        # that the next Save-CABJournal will serialize.
+        Save-CABJournal
+        $idBefore = Get-CABSessionId
+        Read-CABJournal | Out-Null
+        Add-CABJournalEntry -Step '99-test' -Action 'after_save_and_reread' -Data @{} | Out-Null
+        Save-CABJournal
+        Read-CABJournal | Out-Null
+        $sessionAfterReload = @($Script:CABJournalState.sessions | Where-Object { $_.id -eq $idBefore })[0]
+        @($sessionAfterReload.actions | Where-Object { $_.action -eq 'after_save_and_reread' }).Count | Should -Be 1
+    }
+
     It 'Start-CABSession -Quiet suppresses the banner header but still records the session' {
         # The orchestrator pipes -Quiet:$silent so --json / --quiet
         # mutating commands stay clean on stdout. Verify both halves:
