@@ -143,8 +143,31 @@ Describe 'Invoke-CABFolderTreeRefresh — end-to-end' {
         foreach ($f in 'ca-tools','ca-docs','ca-platform') {
             New-Item -ItemType Directory -Path (Join-Path $script:tmpWs $f) -Force | Out-Null
         }
-        $staleTools = "# ca-tools`n`n## Tree`n`n``````\nca-tools/`n└── obsolete/`n``````\n"
-        $stalePlat  = "# ca-platform`n`n## Tree`n`n``````\nca-platform/`n└── obsolete/`n``````\n"
+        # Heredoc style: easier to keep the fenced ``` markers correct
+        # than wrestling PowerShell's backtick escape inside `"..."`
+        # (six-backtick sequences confused the original literal — the
+        # adjacent `\n` was meant to be a newline but PS treats `\n`
+        # as the two-char string `\n`; only ``n`` produces a newline).
+        $staleTools = @"
+# ca-tools
+
+## Tree
+
+``````
+ca-tools/
+└── obsolete/
+``````
+"@
+        $stalePlat = @"
+# ca-platform
+
+## Tree
+
+``````
+ca-platform/
+└── obsolete/
+``````
+"@
         Set-Content -Path (Join-Path $script:tmpWs 'ca-tools/README.md')    -Value $staleTools -NoNewline
         Set-Content -Path (Join-Path $script:tmpWs 'ca-platform/README.md') -Value $stalePlat  -NoNewline
         # ca-docs intentionally has no README on disk — should be skipped.

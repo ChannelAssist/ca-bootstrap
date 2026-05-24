@@ -13,7 +13,7 @@ clone:
     ca-platform: skip
     cm-product: skip
     ca-training: skip
-    experiments: skip
+    ca-experiments: skip
 extras:
   vscode_workspace_file: false
   ca_claude_plugin: false

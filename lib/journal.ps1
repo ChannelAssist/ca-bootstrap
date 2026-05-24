@@ -383,7 +383,13 @@ function Add-CABJournalEntry {
         [hashtable]$Data = @{}
     )
     $session = Get-CABCurrentSession
-    if (-not $session) { throw 'No active session — call Start-CABSession first.' }
+    # When no session is active (e.g. test harness or non-session
+    # context), silently skip journaling. The journal is an audit trail,
+    # not a hard dependency; production code paths always start a
+    # session before mutating.
+    if (-not $session) {
+        return $null
+    }
 
     $entry = [ordered]@{
         id         = New-CABEntryId

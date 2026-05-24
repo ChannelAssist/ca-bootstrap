@@ -6,17 +6,18 @@
 #   make test          - run Pester unit tests
 #   make lint          - PSScriptAnalyzer + markdownlint
 #   make format        - apply PSScriptAnalyzer auto-fix
-#   make wiki-sync     - mirror docs/ to the GitHub Wiki working tree
-#   make wiki-push     - commit + push wiki changes
-#   make wiki-update   - sync + push (typical workflow)
+#   make wiki-update   - clone-if-missing + sync + push the GitHub wiki
 #   make clean         - remove ephemeral state under /tmp/cab-* and ~/.ca-bootstrap/cache
 
 SHELL := /bin/bash
-BLUE   := \033[0;34m
-GREEN  := \033[0;32m
-YELLOW := \033[0;33m
-RED    := \033[0;31m
-RESET  := \033[0m
+BLUE    := \033[0;34m
+GREEN   := \033[0;32m
+YELLOW  := \033[0;33m
+RED     := \033[0;31m
+MAGENTA := \033[0;35m
+CYAN    := \033[0;36m
+BOLD    := \033[1m
+RESET   := \033[0m
 
 # Pwsh executable; override with `make PWSH=pwsh-preview test`.
 PWSH ?= pwsh
@@ -29,9 +30,38 @@ SMOKE_WORKSPACE := /tmp/cab-smoke-workspace/ChannelAssistDev
 
 .PHONY: help
 help: ## Show this help (default target)
-	@printf "$(BLUE)ca-bootstrap make targets$(RESET)\n"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(CYAN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(RESET)"
+	@echo "$(BOLD)$(CYAN)  ca-bootstrap — Available Make Targets$(RESET)"
+	@echo "$(BOLD)$(CYAN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(RESET)"
+	@echo ""
+	@echo "$(BOLD)$(GREEN)Workspace:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; $$1 == "setup" || $$1 == "doctor" || $$1 == "repair" || $$1 == "undo" || $$1 == "nuke" || $$1 == "install-commit-hooks" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(BLUE)Tools:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^tool-/ {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(BLUE)Manifest:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^manifest-/ {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(GREEN)Quality:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; $$1 == "test" || $$1 == "lint" || $$1 == "format" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(YELLOW)Smoke & Cleanup:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^smoke/ || $$1 == "clean" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(CYAN)Wiki:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^wiki/ {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(MAGENTA)Releases:$(RESET)"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^release/ || $$1 == "tag" {printf "  $(YELLOW)%-22s$(RESET) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(BOLD)$(CYAN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(RESET)"
+	@echo ""
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Smoke & Cleanup
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .PHONY: smoke
 smoke: ## Run an end-to-end smoke test against /tmp (no real workspace touched)
@@ -51,6 +81,15 @@ smoke: ## Run an end-to-end smoke test against /tmp (no real workspace touched)
 smoke-clean: ## Remove smoke-test temp state
 	@rm -rf $(SMOKE_STATE) $(SMOKE_WORKSPACE)
 	@printf "$(GREEN)✓ Smoke state cleaned$(RESET)\n"
+
+.PHONY: clean
+clean: smoke-clean ## Remove caches and ephemeral state
+	@rm -rf $(HOME)/.ca-bootstrap/cache
+	@printf "$(GREEN)✓ Cleaned cache and smoke state$(RESET)\n"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Workspace
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .PHONY: setup
 setup: ## Run interactive setup wizard
@@ -94,12 +133,6 @@ repair: ## Run repair. Pass ARGS, e.g. `make repair ARGS='--all'` or `make repai
 undo: ## Run undo. `make undo ARGS='--target identity'` or `make undo ARGS='--force'`
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo $(ARGS)
 
-# ---------------------------------------------------------------------------
-# Nuke + per-tool wrappers — friendlier surfaces around `undo` and `repair`
-# so users don't have to remember the ARGS gymnastics. Logic stays in the
-# PowerShell commands; these are just thin Makefile shims.
-# ---------------------------------------------------------------------------
-
 .PHONY: nuke
 nuke: ## Full purge: undo every journaled action + remove ~/.ca-bootstrap/. Confirm-gated. INCLUDE_TOOLS=1 also uninstalls system tools (destructive). CONFIRM=1 skips prompt. DRY_RUN=1 prints the plan only.
 	@chmod +x scripts/nuke.sh
@@ -111,6 +144,10 @@ install-commit-hooks: ## Install commitlint commit-msg hooks in every ChannelAss
 		$(if $(WORKSPACE),-WorkspacePath '$(WORKSPACE)') \
 		$(if $(WHATIF),-WhatIf) \
 		$(if $(FORCE),-Force)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Tools
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .PHONY: tool-list
 tool-list: ## List every tool ID in manifest/tools.yaml (use these IDs with tool-install/tool-update/tool-remove).
@@ -136,6 +173,10 @@ tool-remove: ## Uninstall a single tool by ID, e.g. `make tool-remove TOOL=dotne
 	@if [ -z "$(TOOL)" ]; then printf "$(RED)TOOL is required, e.g. make tool-remove TOOL=dotnet-10. Use 'make tool-list' to see IDs.$(RESET)\n"; exit 2; fi
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 undo --target tool.$(TOOL) -IncludeTools -Force
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Manifest
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 .PHONY: manifest-drift
 manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAssist org (exit 8 = drift found)
 	@set +e; $(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-drift $(ARGS); rc=$$?; \
@@ -144,6 +185,10 @@ manifest-drift: ## Show drift between manifest/repos.yaml and the live ChannelAs
 .PHONY: manifest-edit
 manifest-edit: ## Interactively curate manifest/repos.yaml against the live org (add/remove repos)
 	@$(PWSH) -NoLogo -File ./ca-bootstrap.ps1 manifest-edit $(ARGS)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Quality
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .PHONY: test
 test: ## Run Pester unit tests under tests/
@@ -166,43 +211,24 @@ format: ## Apply PSScriptAnalyzer auto-fix where supported
 	@$(PWSH) -NoLogo -Command "Get-ChildItem -Recurse -Include *.ps1,*.psm1 | ForEach-Object { Invoke-Formatter -ScriptDefinition (Get-Content -Raw \$$_.FullName) | Set-Content \$$_.FullName }"
 	@printf "$(GREEN)✓ Formatted$(RESET)\n"
 
-# ---------------------------------------------------------------------------
-# Wiki sync — mirrors README, DESIGN, and docs/ into the GitHub Wiki.
-# Same pattern as cm-platform-infra and Keystone.
-# ---------------------------------------------------------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Wiki sync — single "do it all" target. Clones if missing, pulls
+# latest, syncs README + DESIGN + docs/, transforms links, regenerates
+# sidebar + footer, commits and pushes.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 WIKI_DIR := wiki
 
-.PHONY: wiki-clone
-wiki-clone: ## Clone the GitHub wiki repo into ./wiki (requires gh auth)
-	@printf "$(BLUE)Cloning GitHub Wiki...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh clone
-
-.PHONY: wiki-sync
-wiki-sync: ## Mirror README + DESIGN + docs/ into ./wiki (no push)
-	@printf "$(BLUE)Syncing documentation to wiki working tree...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh sync
-	@printf "$(GREEN)✓ Documentation synced to wiki$(RESET)\n"
-
-.PHONY: wiki-push
-wiki-push: ## Commit and push wiki changes
-	@printf "$(BLUE)Pushing wiki changes...$(RESET)\n"
-	@chmod +x scripts/wiki-sync.sh
-	@./scripts/wiki-sync.sh push
-
 .PHONY: wiki-update
-wiki-update: wiki-sync wiki-push ## Sync + push (typical workflow)
+wiki-update: ## Clone-if-missing + sync + push the GitHub wiki in one shot
+	@printf "$(BLUE)Updating GitHub Wiki...$(RESET)\n"
+	@chmod +x scripts/wiki-sync.sh
+	@./scripts/wiki-sync.sh full
+	@printf "$(GREEN)✓ Wiki updated$(RESET)\n"
 
-.PHONY: clean
-clean: smoke-clean ## Remove caches and ephemeral state
-	@rm -rf $(HOME)/.ca-bootstrap/cache
-	@printf "$(GREEN)✓ Cleaned cache and smoke state$(RESET)\n"
-
-# ---------------------------------------------------------------------------
-# Release helpers
-# ---------------------------------------------------------------------------
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Releases
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 .PHONY: release
 release: ## Cut a release. Requires the version constant on dev to already match VERSION (bump via PR first); for one-shot bump+release see `make release-full`
