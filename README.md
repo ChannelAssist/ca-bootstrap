@@ -2,9 +2,15 @@
 
 [![Ci](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml/badge.svg)](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml)
 
+> ### ⚠️ Project pivot — 2026-05-25
+>
+> This PowerShell implementation is being **archived in place** and replaced by a Go CLI distributed as **pre-built static binaries per platform via GitHub Releases**. The rationale, scope, and roadmap live in [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md) — read it before opening new issues or PRs against this codebase.
+>
+> The PowerShell version remains usable in the interim (subject to the known limitations the rewrite is escaping). **No new features are landing here.** The last PS-era commit is tagged for archival reference. New work proceeds **spec → tests → code** in that strict order.
+
 One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
 
-> **Status: v1.9.0** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
+> **Status: v1.9.0 (PowerShell, lame-duck)** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`). See the pivot notice above; new development is happening in the Go rewrite, not here.
 
 ---
 

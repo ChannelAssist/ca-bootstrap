@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Project status
+
+- **2026-05-25 — Go-rewrite pivot.** The PowerShell implementation of `ca-bootstrap` is being archived in place and replaced by a Go CLI distributed as pre-built static binaries per platform via GitHub Releases. Trigger: three independent first-use bugs surfaced in a single session (broken Windows install one-liner, mojibake'd `make` output, frozen `./make.ps1 setup`), all symptoms of a recurring stdio/console/encoding bug class that six prior commits have addressed without eliminating. Rationale and roadmap: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md). No new features will land on the PowerShell codebase; the last PS-era commit is tagged for archival reference. Process going forward: spec → tests → code, strict order. Authored by Peter Giannopoulos with Claude Code (AI-assisted).
+
 ## [1.9.0] - 2026-05-24
 
 ### Added
