@@ -157,6 +157,8 @@ Same step output but no prompts; all answers from the config. Exits non-zero on 
 | `2` | Drift found AND user declined to continue (interactive) OR config said `continue_with_drift: false` |
 | `130` | User quit — SIGINT, `q` at any prompt, **or declined welcome consent** (`n` / `consent: false`). Declining consent ≠ "drift declined" (which is `2`); it's "I don't want to run this at all," sharing the quit code. |
 
+> **Intentional divergence from the v1 (PowerShell) contract.** The legacy CLI used exit `1` for a voluntary quit (`legacy/docs/commands.md`), and `legacy/Makefile`'s `setup` target remapped exit `1` → `0` so a quit didn't read as a crash. The Go rewrite adopts the conventional SIGINT code `130` for quit and reserves `1` exclusively for system errors. This is a deliberate break — anyone porting scripts or CI that keyed on the old `1`-means-quit behavior must update to `130`. Called out here so the change is discoverable rather than surprising.
+
 ## 6. Functional spec — action journal
 
 ### 6.1 Entry schema
@@ -184,7 +186,7 @@ Same step output but no prompts; all answers from the config. Exits non-zero on 
 
 ### 6.3 Storage
 
-`~/.ca-bootstrap/journal.ndjson`. Created with mode 0600 on first write (user-only — journal entries include git identity and may later hold more sensitive state). On Windows, Go maps 0600 to the owner-only ACL; cross-platform permission behavior is documented in the journal package. Permission errors at write time → exit 1 with clear message.
+`~/.ca-bootstrap/journal.ndjson`. Created with mode 0600 on first write (user-only on POSIX — journal entries include git identity and may later hold more sensitive state). **Windows caveat:** Windows permissioning is ACL-based; Go's `os.FileMode` is best-effort there, and a 0600 request does **not** reliably produce an owner-only ACL (files commonly inherit the parent directory's ACL). Treat 0600 as a hard guarantee on POSIX and a best-effort hint on Windows — the journal package documents the actual Windows behavior rather than overpromising here. Permission errors at write time → exit 1 with clear message.
 
 ## 7. Functional spec — prompt model
 

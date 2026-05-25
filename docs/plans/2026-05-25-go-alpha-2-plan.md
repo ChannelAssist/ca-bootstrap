@@ -19,7 +19,7 @@
 | Path | Responsibility | Created in task |
 |---|---|---|
 | `internal/journal/entry.go` | `Entry` struct + JSON marshaling | Task 3 |
-| `internal/journal/journal.go` | `NewSession`, `Append`, `Iterate`, file open/lock | Task 3 |
+| `internal/journal/journal.go` | `NewSession`, `Append`, `End` (file open + append). NO locking — session locking is deferred to alpha.3 (spec §2.B-5). | Task 3 |
 | `internal/journal/journal_test.go` | Unit tests for append/iterate/session boundaries | Task 3 |
 | `internal/prompt/prompt.go` | `Prompter` interface + stdin implementation | Task 4 |
 | `internal/prompt/unattended.go` | YAML-config-backed implementation | Task 4 |
@@ -204,7 +204,7 @@ git commit -S -m "test(alpha-2): 7 failing acceptance tests + fixtures (AB#<NEW>
 
 - [ ] **Step 2: Verify RED** (`Append`, `NewSession`, etc. undefined)
 
-- [ ] **Step 3: Implement `journal.go`** — `Append` opens file with `O_APPEND|O_CREATE|O_WRONLY`, marshals entry to JSON, writes line + `\n`. Single-line per record means each call is one POSIX `write()` syscall and therefore atomic at the line boundary. ULID for session IDs via tiny inline impl (no external dep).
+- [ ] **Step 3: Implement `journal.go`** — `Append` opens file with `O_APPEND|O_CREATE|O_WRONLY` (mode 0600), marshals entry to JSON, writes `line + \n`. Each record is a single `write()` — small enough to land in one syscall in practice, but **not** a POSIX cross-process atomicity guarantee (see spec §2.B-3); the alpha.3 session lock is what actually prevents interleaving. Random-hex session IDs via tiny inline impl (no external dep).
 
 - [ ] **Step 4: Verify GREEN**
 
