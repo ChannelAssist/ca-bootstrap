@@ -2,7 +2,7 @@
 
 - **Date:** 2026-05-25
 - **Author:** Peter Giannopoulos (decision); drafted with Claude Code (AI-assisted)
-- **Status:** Decided. Archival tag pending. Spec phase next.
+- **Status:** Decided. Archival tag `legacy/v1.9.0` created + pushed. Spec/implementation phases underway (alpha.1–alpha.3).
 - **Work item:** [AB#40028](https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/40028) — child of Epic [AB#38056](https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/38056) (AI Platform & Workflow Integration — 2026)
 - **Related ADRs:** TBD (a new ADR formalizing the rewrite + distribution model should follow this doc)
 - **Supersedes:** `DESIGN.md` § 16 (PowerShell-era distribution + one-liner stability assumptions)
@@ -167,8 +167,8 @@ Option B: new repo (`ChannelAssist/ca-bootstrap-go` or rename ca-bootstrap → c
 
 ## 8. References
 
-- [Memory: project-ca-bootstrap-go-rewrite-pivot](../../.claude/projects/-Users-petergiannopoulos-Documents-Projects-ChannelAssistDev-ca-tools-ca-bootstrap/memory/project_ca_bootstrap_go_rewrite_pivot.md) (private)
-- [Memory: feedback-ca-bootstrap-recurring-stdio-bugs](../../.claude/projects/-Users-petergiannopoulos-Documents-Projects-ChannelAssistDev-ca-tools-ca-bootstrap/memory/feedback_ca_bootstrap_recurring_stdio_bugs.md) (private)
 - `docs/specs/2026-05-22-folder-taxonomy-design.md` — most recent PS-era design doc (taxonomy carries forward)
-- Engineering journal entry (Keystone repo, 2026-Q2): **TBD** — to be written via `/journal` skill
+- Engineering journal entry (Keystone repo, 2026-Q2): to be written via `/journal` skill
 - Archival tag: `legacy/v1.9.0` at commit `008b2e2`
+
+> The decision rationale and recurring-bug-pattern analysis that drove this pivot are also retained in the AI assistant's private cross-session memory; they are summarized in §§ 2.1–2.4 above so the repository is self-contained (no external/local paths required to understand the decision).
