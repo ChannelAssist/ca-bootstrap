@@ -2,7 +2,7 @@
 
 - **Date:** 2026-05-25
 - **Author:** Peter Giannopoulos (decisions); drafted with Claude Code (AI-assisted)
-- **Status:** Draft → pending Peter review
+- **Status:** Implementation complete locally (14/14 acceptance tests GREEN) → pending Peter review of PRs #87-#93. Release deferred until CI re-enabled.
 - **Work item:** [AB#40028](https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/40028) — `ca-bootstrap: rewrite in Go (pivot from PowerShell)`. Phase A deliverable (see § 13).
 - **Builds on:** [`docs/specs/2026-05-25-go-rewrite-pivot.md`](2026-05-25-go-rewrite-pivot.md) — pivot decision record
 - **Supersedes:** § 7 (open questions) of the pivot doc, for the v2.0.0-alpha.1 scope only
@@ -437,18 +437,23 @@ tests/                              # PS Pester tests; archived alongside the co
 
 ### 11.2 Kept at root (not moved)
 
+> **Amendment (post-implementation, 2026-05-25):** During alpha.1 implementation we discovered that Go's `//go:embed` directive cannot reference paths above the package directory (no `..` in embed patterns). The plan as written above assumed `manifest/` would stay at root; in reality it moved to `internal/manifest/` so the embed in `internal/manifest/manifest.go` can use the bare `//go:embed tools.yaml`. The same migration commit also moved `manifest/folders.yaml`, `manifest/repos.yaml`, and `manifest/answers.example.yaml` (alpha.2+ will consume these — moving them now keeps the data co-located). The `.github/workflows/` directory moved to `legacy/.github/workflows/` per Peter's overnight CI-cost-min directive (not because the workflows were PS-era — but because we explicitly want no Actions runs until CI is re-enabled).
+
+Updated layout actually shipped:
+
 ```
-manifest/                           # Go reads it directly; identical files
-docs/                               # specs forward-compatible
-.github/                            # workflows replaced wholesale (PS → Go versions)
-README.md
-CHANGELOG.md
-LICENSE
-CLAUDE.md
-DESIGN.md
-VERSION                             # value updated to 2.0.0-alpha.1
-.gitignore                          # updated for Go (binary artifacts, dist/)
+internal/manifest/                  # all manifest YAMLs (moved here from root)
+internal/{cli,detect,journal,prompt,identity,wizard}  # Go packages
+cmd/ca-bootstrap/                   # binary entry point
+docs/                               # specs + plans + tutorial (this file)
+legacy/                             # frozen PS tree + legacy/.github/workflows/
+.github/                            # CODEOWNERS, dependabot.yml, agents/, pull_request_template.md
+README.md, CHANGELOG.md, CLAUDE.md, DESIGN.md, .gitignore
+go.mod, go.sum
+tests/acceptance/                   # //go:build acceptance gated tests
 ```
+
+LICENSE and VERSION files don't exist on this repo (the PS era never had them). Both deferred — VERSION's role is filled by `-ldflags` injection at build time; LICENSE warrants its own decision when CI is re-enabled.
 
 ### 11.3 Added in the same PR
 
