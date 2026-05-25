@@ -1,0 +1,5 @@
+# Validation rule: a tool entry must have an `id`.
+version: 1
+tools:
+  - detect:
+      command: git
