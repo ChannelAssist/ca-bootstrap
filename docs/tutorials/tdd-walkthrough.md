@@ -1382,4 +1382,82 @@ Bisectable diff, ~11 new files, zero behavior change.
 
 ---
 
-*Chapter 13 — RED phase for alpha.2 — coming next task.*
+## Chapter 13 — RED phase for alpha.2
+
+> [Outside-in TDD, second time around] Same discipline as alpha.1: write the acceptance tests first, watch them fail for the right reason, then implement. The 7 new tests in this chapter extend `tests/acceptance/acceptance_test.go` — same file, shared helpers (`buildBinary`, `run`, `fixture`).
+
+### The unattended-config testing strategy
+
+Acceptance tests cannot reliably drive interactive stdin. Spawning a subprocess and pumping bytes to its stdin works on Unix but is fragile on Windows (pipe buffering, terminal emulation differences, encoding edge cases). Instead, every alpha.2 acceptance test runs `setup` in `--unattended --config <path>` mode — answers come from YAML, not stdin.
+
+This means **the unattended path needs to be a first-class implementation**, not a tacked-on `--quiet` flag. It is, per spec §2.B-8.
+
+### Four unattended fixtures
+
+```text
+tests/acceptance/testdata/
+├── unattended-happy.yaml             → all consent, no drift expected
+├── unattended-drift-acknowledge.yaml → consent + continue_with_drift: true
+├── unattended-drift-reject.yaml      → consent + continue_with_drift: false
+└── unattended-quit.yaml              → welcome.consent: false → user quits
+```
+
+Each is ~5 lines. The `workspace_root` is injected at runtime via the `renderUnattendedConfig` helper so each test gets a clean `t.TempDir()` workspace.
+
+### Two new test helpers
+
+`renderUnattendedConfig(fixtureName, workspace)` copies a fixture template into the test's temp dir and appends `workspace_root: <workspace>` if missing. Returns the materialized path.
+
+`runSetup(binPath, manifest, config, fakeHome)` is like `run()` but specifically for the setup subcommand:
+
+```go
+cmd.Env = append(os.Environ(),
+    "CA_BOOTSTRAP_MANIFEST="+manifestPath,
+    "HOME="+fakeHome,                        // redirect journal location
+    "CA_BOOTSTRAP_ASCII=1",                  // ASCII output is greppable
+)
+```
+
+`HOME=$fakeHome` is critical — it redirects the journal (`~/.ca-bootstrap/journal.ndjson`) into the test sandbox so `TestSetup_JournalRecordsSession` can verify its contents without polluting the real `$HOME`.
+
+### The 7 tests, briefly
+
+| # | Test | Asserts |
+|---|---|---|
+| 1 | `TestSetup_HappyPath_ExitsZero` | go+git fixture + consent → exit 0 |
+| 2 | `TestSetup_PrereqsDrift_Acknowledged_ExitsZero` | missing-required fixture + `continue_with_drift: true` → exit 0 |
+| 3 | `TestSetup_PrereqsDrift_Rejected_ExitsTwo` | missing-required fixture + `continue_with_drift: false` → exit 2 |
+| 4 | `TestSetup_QuitAtPrompt_ExitsOneThirty` | `welcome.consent: false` → exit 130 |
+| 5 | `TestSetup_ConfigMissing_ExitsOne` | `--config /tmp/nope.yaml` → exit 1 + 'config' in stderr |
+| 6 | `TestSetup_WritesGitIdentityToWorkspace` | happy path → `workspace/.git/config` has Test User / test@example.com |
+| 7 | `TestSetup_JournalRecordsSession` | happy path → journal has `session_start`, `identity_set`, `session_end` lines |
+
+Tests 6 and 7 verify side effects on the filesystem — exactly the kind of assertion that's hard to fake. **A passing 6 and 7 mean setup is actually doing the work**, not just looping silently.
+
+### Watching them fail
+
+```text
+$ go test -tags acceptance ./tests/acceptance/... -v
+=== RUN   TestVersion_PrintsSemverCommitAndBuildTime
+--- PASS (0.46s)                                              ← alpha.1 stays green
+=== RUN   TestDoctor_AllToolsPresent_ExitsZero
+--- PASS (0.51s)
+... (5 more alpha.1 PASS)
+=== RUN   TestSetup_HappyPath_ExitsZero
+--- FAIL (0.48s)                                              ← alpha.2 RED starts
+... (6 more alpha.2 FAIL)
+```
+
+**14 tests, 7 PASS, 7 FAIL.** The 7 PASS are alpha.1's untouched-by-this-PR contract. The 7 FAIL are alpha.2's not-yet-implemented contract. Discipline gate satisfied: no implementation lands until the contract is locked in.
+
+### Why test failure mode matters
+
+A FAIL because "unknown command setup" is the correct kind of FAIL — the binary built, it ran, it returned the wrong exit code because the feature is missing. A FAIL because "compile error in test file" or "fixture not found" would be a test bug. We have the former, not the latter.
+
+### End of PR boundary
+
+This commit closes the scaffold + RED PR. Implementation begins in chapter 14 on a new branch (`feat/alpha-2-impl`) with the journal package — chosen first because it has no dependencies on other alpha.2 packages, so it's the safest place to start GREEN-ing things.
+
+---
+
+*Chapter 14 — Implementing the journal — coming next task (after scaffold/RED PR merges).*

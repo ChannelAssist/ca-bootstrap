@@ -1,0 +1,9 @@
+# Unattended config for TestSetup_QuitAtPrompt_ExitsOneThirty.
+# User declined consent at the welcome step → wizard quits → exit 130.
+welcome:
+  consent: false
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
