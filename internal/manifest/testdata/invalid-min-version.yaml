@@ -1,0 +1,7 @@
+# Validation rule: min_version must be parseable semver.
+version: 1
+tools:
+  - id: git
+    min_version: "not-a-version"
+    detect:
+      command: git

@@ -1,0 +1,5 @@
+# Validation rule: missing `version` field at the top level.
+tools:
+  - id: git
+    detect:
+      command: git

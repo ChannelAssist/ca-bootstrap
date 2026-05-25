@@ -549,4 +549,147 @@ One test green. Code that does exactly what the test demands and nothing more. T
 
 ---
 
-*Chapter 6 — GREEN tests 6 & 7: the manifest loader — coming next task.*
+## Chapter 6 — GREEN tests 6 & 7: the manifest loader
+
+> [Tests first, even at this layer] Acceptance tests 6 and 7 (manifest-missing, manifest-parse-error) won't actually go green until the `doctor` subcommand exists in Chapter 10 — they test the *whole-binary* flow. But the manifest **loader** itself is its own unit-testable piece, and TDD discipline says: write unit tests for the loader before writing the loader.
+
+### The schema mismatch we discovered
+
+The plan assumed the existing `manifest/tools.yaml` could be embedded as-is. **It can't**, for two reasons.
+
+**Reason 1: Go's `//go:embed` cannot traverse `..`.** From [the Go docs](https://pkg.go.dev/embed): *"Patterns may not contain '.' or '..' or empty path elements"*. The loader lives at `internal/manifest/manifest.go`; the manifest was at `manifest/tools.yaml`. There's no `//go:embed ../../manifest/tools.yaml` form that works.
+
+So we moved it: `git mv manifest/tools.yaml internal/manifest/tools.yaml` (plus the three other manifest files, for consistency). The spec doc got amended in the same PR per the standing rule that spec + HTML + plan stay in sync.
+
+**Reason 2: the schemas didn't match.** The PowerShell-era file used:
+
+```yaml
+required:                   # required and optional were separate lists
+  - id: git
+    check:                  # not `detect:`
+      cmd: "git --version"  # full command string, not separate command+flag
+      version_regex: "..."
+      min_version: "2.40.0" # nested under check, not top-level
+optional:
+  - id: docker
+    ...
+```
+
+The Go-era schema (spec §7) is:
+
+```yaml
+tools:                      # one flat list
+  - id: git
+    optional: false         # boolean per tool
+    min_version: "2.40.0"   # top-level field
+    detect:                 # not `check:`
+      command: git          # separated from version_flag
+      version_flag: --version
+      version_regex: "..."
+```
+
+We migrated the 16-tool inventory by hand (the migration commit is one of the longer changes in this PR). All `required:` items became `optional: false` entries in `tools:`; all `optional:` items became `optional: true`. The `check.cmd: "git --version"` form was split into `detect.command: git` + `detect.version_flag: --version`.
+
+> [Why we didn't make the loader speak both schemas] Two reasons: (a) the spec docs say one schema, and the file should match its spec — drift between "what the docs say" and "what the file does" is exactly the bug class we're trying to escape; (b) the PS-era manifest lives forever at `legacy/v1.9.0` for archaeology, so nothing's lost.
+
+### The loader code
+
+`internal/manifest/manifest.go` is ~110 lines. The key parts:
+
+**Embedded default:**
+
+```go
+//go:embed tools.yaml
+var embeddedManifest []byte
+
+func LoadDefault() (*Manifest, error) {
+    if override := os.Getenv("CA_BOOTSTRAP_MANIFEST"); override != "" {
+        return Load(override)
+    }
+    return parseAndValidate(embeddedManifest, "<embedded>")
+}
+```
+
+> [The contract] At runtime the binary always has a manifest. The default is what was embedded at build time. `CA_BOOTSTRAP_MANIFEST` overrides for tests, custom manifests, or local experimentation. Spec §6.5 makes this the canonical resolution order: env var > embedded.
+
+**Reading from a path:**
+
+```go
+func Load(path string) (*Manifest, error) {
+    data, err := os.ReadFile(path)
+    if err != nil {
+        if os.IsNotExist(err) {
+            return nil, fmt.Errorf("%w: %s", ErrNotFound, path)
+        }
+        return nil, fmt.Errorf("read manifest %s: %w", path, err)
+    }
+    return parseAndValidate(data, path)
+}
+```
+
+> [Why a sentinel error] `ErrNotFound = errors.New("manifest not found")` lets callers do `errors.Is(err, ErrNotFound)` to distinguish missing-file from parse-error. The acceptance test `TestDoctor_ManifestMissing_ExitsOneToStderr` will lean on this distinction later — missing file is a different category of error than malformed YAML.
+
+**Validation (the 6 rules from spec §7.1):**
+
+```go
+if m.Version == 0 { ... "missing required 'version' field" }
+if m.Version != 1 { ... "unsupported manifest version" }
+if len(m.Tools) == 0 { ... "missing required 'tools' list" }
+for i, t := range m.Tools {
+    if t.ID == "" { ... "missing required 'id'" }
+    if seen[t.ID] { ... "duplicate tool id" }
+    if t.MinVersion != "" && !semverRegex.MatchString(t.MinVersion) { ... "invalid min_version" }
+    if t.Detect.Command == "" { ... "missing required detect.command" }
+}
+```
+
+Each rule has its own fixture (`testdata/missing-version.yaml`, `tool-missing-id.yaml`, etc.) and its own table-driven test case in `TestLoad_ValidationErrors`. One rule = one bug we can write a regression test for later if it ever resurfaces.
+
+### A gotcha we hit: the semver regex was too strict
+
+First iteration of `semverRegex` was `^\d+\.\d+\.\d+(?:[-+][\w.]+)?$` — required `MAJOR.MINOR.PATCH`. The embedded manifest has GNU Make at `min_version: "3.81"` (two-part).
+
+The test `TestLoadDefault_UsesEmbeddedWhenNoEnvVar` caught it:
+
+```text
+manifest_test.go:66: LoadDefault from embedded: tool make: invalid min_version "3.81"
+```
+
+**The fix was one regex tweak:** make the third `.\d+` group optional. Two-part semver is common (jq is `1.6`, make is `3.81`, sometimes Python ships `3.12` without patch). We accept both.
+
+```go
+// Before:
+var semverRegex = regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][\w.]+)?$`)
+// After:
+var semverRegex = regexp.MustCompile(`^\d+\.\d+(?:\.\d+)?(?:[-+][\w.]+)?$`)
+```
+
+> [Why this is a TDD win] We didn't pre-write the regex correctly. We didn't have to. The test failed at "validate embedded manifest" with a clear message; one regex edit fixed it; all tests green again. Five minutes total. Without the test, we might have shipped a binary that refused to load its own embedded manifest.
+
+### Verifying state
+
+```text
+$ go test ./internal/manifest/...
+ok  github.com/ChannelAssist/ca-bootstrap/internal/manifest    0.227s
+
+$ go test -tags acceptance ./tests/acceptance/...
+--- PASS: TestVersion_PrintsSemverCommitAndBuildTime
+--- FAIL: TestDoctor_AllToolsPresent_ExitsZero
+--- FAIL: TestDoctor_RequiredToolMissing_ExitsTwo
+--- FAIL: TestDoctor_RequiredToolBelowMin_ExitsTwo
+--- FAIL: TestDoctor_OptionalToolMissing_ExitsZeroWithWarning
+--- FAIL: TestDoctor_ManifestMissing_ExitsOneToStderr
+--- FAIL: TestDoctor_ManifestParseError_ExitsOneToStderr
+```
+
+Unit tests all green. Acceptance state still 1 PASS / 6 FAIL — doctor isn't wired yet, so the loader's contributions don't surface end-to-end.
+
+### The takeaway
+
+The loader is done. It compiles. Its unit tests pass. The embedded manifest is real (16 tools, valid against the schema). Two acceptance tests (6, 7) will go green automatically once doctor lands in Chapter 10 and *uses* this loader — because the loader's error paths already match what those tests assert.
+
+The next chapter builds the detection layer: the thing that takes a `Tool` struct and answers "is it installed, and at what version?"
+
+---
+
+*Chapter 7 — Building the detection interface — coming next task.*
