@@ -79,7 +79,7 @@ jobs:
       issues: write
     steps:
       - name: Open or update tracking issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_SHA: ${{ github.sha }}
@@ -163,7 +163,7 @@ jobs:
         env:
           MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
           MAIL_RECIPIENT: ${{ secrets.MAIL_RECIPIENT }}
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v17
         with:
           server_address: ${{ secrets.MAIL_HOST || 'smtp.office365.com' }}
           server_port: ${{ secrets.MAIL_PORT || 587 }}
