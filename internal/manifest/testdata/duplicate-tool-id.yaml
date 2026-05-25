@@ -1,0 +1,9 @@
+# Validation rule: tool ids must be unique within a manifest.
+version: 1
+tools:
+  - id: git
+    detect:
+      command: git
+  - id: git
+    detect:
+      command: git

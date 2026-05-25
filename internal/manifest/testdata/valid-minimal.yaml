@@ -1,0 +1,6 @@
+# Smallest possible valid manifest: version + one tool with detect.command.
+version: 1
+tools:
+  - id: git
+    detect:
+      command: git

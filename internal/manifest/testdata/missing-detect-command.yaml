@@ -1,0 +1,6 @@
+# Validation rule: every tool must declare a detect.command.
+version: 1
+tools:
+  - id: git
+    detect:
+      version_flag: --version

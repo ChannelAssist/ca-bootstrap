@@ -1,0 +1,6 @@
+# Validation rule: only manifest version 1 is supported in alpha.1.
+version: 99
+tools:
+  - id: git
+    detect:
+      command: git
