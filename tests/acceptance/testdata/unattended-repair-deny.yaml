@@ -1,0 +1,3 @@
+# Unattended config: user declines elevation → repair exits 130 (quit).
+repair:
+  elevation_action: deny

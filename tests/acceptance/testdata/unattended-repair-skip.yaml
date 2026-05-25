@@ -1,0 +1,4 @@
+# Unattended config: user skips elevation → tool marked manual-install-required,
+# repair exits 2 with a manual-instructions summary.
+repair:
+  elevation_action: skip

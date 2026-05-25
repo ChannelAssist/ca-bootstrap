@@ -31,16 +31,18 @@ type Manifest struct {
 
 // Tool describes one entry in the manifest's tools list.
 type Tool struct {
-	ID         string    `yaml:"id"`
-	Name       string    `yaml:"name,omitempty"`
-	Optional   bool      `yaml:"optional,omitempty"`
-	MinVersion string    `yaml:"min_version,omitempty"`
-	Detect     Detect    `yaml:"detect"`
-	// Install block preserved-but-unused by alpha.1's doctor. yaml.Node
-	// captures it without forcing a strict schema so manifest entries
-	// already in this repo (with their existing install: blocks) load
-	// without modification.
-	Install yaml.Node `yaml:"install,omitempty"`
+	ID         string `yaml:"id"`
+	Name       string `yaml:"name,omitempty"`
+	Optional   bool   `yaml:"optional,omitempty"`
+	MinVersion string `yaml:"min_version,omitempty"`
+	Detect     Detect `yaml:"detect"`
+	// Install is the per-OS install spec. alpha.1/alpha.2 ignored it;
+	// alpha.3's repair reads it to dispatch the right installer. Typed
+	// (was yaml.Node) as of alpha.3 — see install_schema.go.
+	Install InstallSpec `yaml:"install,omitempty"`
+	// RequiresElevation is an explicit per-tool opt-in. When false (the
+	// default), elevation is inferred from the installer type.
+	RequiresElevation bool `yaml:"requires_elevation,omitempty"`
 }
 
 // Detect describes how to find a tool and parse its version.
