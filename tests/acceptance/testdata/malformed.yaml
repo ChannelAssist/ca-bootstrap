@@ -1,0 +1,10 @@
+# Acceptance-test fixture for TestDoctor_ManifestParseError_ExitsOneToStderr.
+#
+# Deliberately invalid YAML: unterminated double-quoted string. yaml.v3
+# rejects this at Unmarshal time, which doctor surfaces as exit 1 + a
+# parse-error message on stderr.
+version: 1
+tools:
+  - id: "this string never ends
+    detect:
+      command: anything

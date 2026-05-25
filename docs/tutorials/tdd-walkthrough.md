@@ -281,4 +281,72 @@ The next chapter does test fixtures *before* the first test, because tests depen
 
 ---
 
-*Chapter 3 — Why fixtures come before tests — coming next task.*
+## Chapter 3 — Why fixtures come before tests
+
+> [Why this is its own chapter] Tests reference fixtures. If we wrote the test file first, every test would fail at *file-not-found* before we got to verify anything about the actual behavior. So fixtures land in their own commit. Same bisectability principle as Chapter 2.
+
+### Go's `testdata/` convention
+
+Any directory named `testdata` is special-cased by the Go build system: it's **excluded from package builds** but accessible to tests in the same package. You can put any file in there — YAML, JSON, JPEG, whatever — and it won't be parsed as Go.
+
+We placed fixtures at `tests/acceptance/testdata/`. The 7 acceptance tests in Chapter 4 will reference them via:
+
+```go
+filepath.Join(cwd, "testdata", "two-real-tools.yaml")
+```
+
+> [Gotcha] `testdata/` only works as a literal directory name. `test_data/` or `fixtures/` don't get the special exclusion. Go's `go test` tooling looks for `testdata/` specifically.
+
+### The 5 fixtures and what they're for
+
+```text
+tests/acceptance/testdata/
+├── two-real-tools.yaml         → TestDoctor_AllToolsPresent_ExitsZero
+├── one-missing-required.yaml   → TestDoctor_RequiredToolMissing_ExitsTwo
+├── one-impossibly-new.yaml     → TestDoctor_RequiredToolBelowMin_ExitsTwo
+├── one-missing-optional.yaml   → TestDoctor_OptionalToolMissing_ExitsZeroWithWarning
+└── malformed.yaml              → TestDoctor_ManifestParseError_ExitsOneToStderr
+```
+
+The 7th test (`TestDoctor_ManifestMissing_ExitsOneToStderr`) uses no fixture — it points `$CA_BOOTSTRAP_MANIFEST` at a path that definitely doesn't exist (`/tmp/this-file-does-not-exist-2026.yaml`) and asserts the missing-file error path.
+
+The first test (`TestVersion_PrintsSemverCommitAndBuildTime`) also uses no fixture — `version` doesn't read the manifest.
+
+### Why `go` and `git` for the "real tools" fixture
+
+The "all tools present" test needs to assert exit 0 against tools that *actually exist on every machine running the test*. Two safe bets:
+
+- `go` — we needed it to build the binary under test, so it's definitely on PATH.
+- `git` — required by `actions/checkout@v4` and by every developer running this locally.
+
+A bad choice would have been something like `docker` (not on every CI runner) or `node` (not installed on a Go-only dev box). The test would be brittle and flaky.
+
+### Why `xyzzy-nonexistent`
+
+For the "missing required" and "missing optional" tests, we need a tool name that *definitely doesn't exist anywhere*. `xyzzy` is a programmer's-folklore nonword (from the original Adventure text game). No real tool ships with this name. If we'd used something like `cobol-compiler` or `delphi`, we'd risk a false negative on a developer who actually had it installed.
+
+> [Why we care] False negatives in TDD are subtle but corrosive. If a test passes for the wrong reason, you don't notice — until much later when the real implementation breaks behavior the test should have caught.
+
+### Why the deliberately-broken YAML
+
+`malformed.yaml` contains:
+
+```yaml
+version: 1
+tools:
+  - id: "this string never ends
+    detect:
+      command: anything
+```
+
+The unterminated double quote makes yaml.v3 fail at `Unmarshal` with a parse error. We need a test that exercises the **parse-error path** in our manifest loader (spec §7.1, validation rule "manifest parse error → exit 1"). A broken YAML is the simplest way to trigger that branch deterministically.
+
+### The takeaway
+
+Five YAML files; ~50 lines of declarative test setup. No Go code yet. No tests yet. Each fixture has a comment header naming the test it serves — when the next chapter writes the tests, the linkage is unambiguous.
+
+Next: we write the test file. All 7 tests at once. They all fail because no subcommands are wired. That's the RED gate.
+
+---
+
+*Chapter 4 — RED: writing all 7 tests at once — coming next task.*
