@@ -167,7 +167,7 @@ const (
 
 ---
 
-## Task 4 — Unix installer (`detect_unix.go`)
+## Task 4 — Unix installer (`install_unix.go`)
 
 **Files:**
 - Create: `internal/install/install_unix.go` (`//go:build darwin || linux`)
@@ -195,7 +195,7 @@ const (
 
 **Files:**
 - Create: `internal/install/install_windows.go`
-- Tests: cross-compile only (we don't have a Windows host)
+- Tests: cross-compile-verified on the dev box (`GOOS=windows go vet/build`). **Runtime** Windows tests run on the `windows-latest` CI runner **once CI is re-enabled** — the repo's CI matrix already includes Windows, so the Windows-only paths (winget dispatch, `Start-Process -Verb RunAs` elevation, `LockFileEx`) WILL get real execution there. The "cross-compile only" status is a *temporary* consequence of CI being paused for cost during the rewrite, not a permanent gap.
 
 **Branch:** continue on `feat/alpha-3-impl`
 
@@ -242,7 +242,7 @@ const (
 
 **Branch:** continue on `feat/alpha-3-impl`
 
-- [ ] **Step 1: Tests** — verify exclusive acquire, second-acquire-blocks, release, ForceUnlock semantics, cleanup on process exit (via `t.TempDir()` + goroutine)
+- [ ] **Step 1: Tests** — verify exclusive acquire, second-acquire-fails-fast (non-blocking), release, ForceUnlock semantics, cleanup on process exit (via `t.TempDir()` + goroutine)
 
 - [ ] **Step 2-5:** RED → impl → GREEN → tutorial chapter 26 — "cross-platform file locking, two ways"
 

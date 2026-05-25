@@ -2,8 +2,8 @@
 
 - **Date:** 2026-05-25
 - **Author:** Peter Giannopoulos (4 brainstorm decisions) + Claude Code (AI-assisted drafting)
-- **Status:** Draft → pending Peter review of §2.B autonomous calls
-- **Work item:** TBD — file new PBI before any code lands
+- **Status:** Draft → pending Peter review of §2.C autonomous calls (§2.B are the brainstorm-LOCKED decisions; §2.C are the AI judgment calls)
+- **Work item:** [AB#40046](https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/40046) — alpha.3 spec + plan PBI (child of Epic AB#38056)
 - **Builds on:** [alpha.1 spec](2026-05-25-go-v2-0-alpha-1-spec.md), [alpha.2 spec](2026-05-25-go-v2-0-alpha-2-spec.md), [pivot doc](2026-05-25-go-rewrite-pivot.md)
 
 ## 1. TL;DR
@@ -34,7 +34,7 @@ Repo layout, binary name (`ca-bootstrap`), versioning (`v2.0.0-alpha.N`), manife
 | 7 | **Rollback on install failure** | No rollback | Leave the partial state; user can retry `repair` or run `doctor` to see what happened. alpha.4's `undo` is the proper rollback mechanism. |
 | 8 | **Re-doctor after repair** | No automatic re-run | `repair` reports what it did; user runs `doctor` explicitly to verify. Keeps each verb single-responsibility. |
 | 9 | **Progress indication** | Stream installer output to stdout live | No spinner, no buffering — let the user see `apt`'s progress dots, `winget`'s download bar, etc. live. Matches expectations from running these tools directly. |
-| 10 | **Install timeouts** | 10 minutes per install command | Docker Desktop on macOS can take 5+ minutes. 10 minutes is generous; SIGKILL on timeout. Configurable via `$CA_BOOTSTRAP_INSTALL_TIMEOUT_SECONDS` env var. |
+| 10 | **Install timeouts** | 10 minutes per install command | Docker Desktop on macOS can take 5+ minutes. 10 minutes is generous; on timeout the command context is cancelled and the process force-killed (os.Process.Kill — portable; not a Unix-only SIGKILL). Configurable via `$CA_BOOTSTRAP_INSTALL_TIMEOUT_SECONDS` env var. |
 | 11 | **Network failures** | Surface stderr verbatim; exit 1 (not 2) | Network failures are system errors, not drift. Distinct exit-code category. |
 | 12 | **`repair` exit codes** | 0 = success, 1 = system error (manifest, lock, network), 2 = install failure or `skip` chosen | Same convention as `doctor`. |
 
@@ -152,7 +152,7 @@ Exit code: 2 (drift remains).
 | `0` | Tool installed and verified; no drift remains for `--target` |
 | `1` | System error (manifest missing/parse, lock acquisition failed, network failure, etc.) |
 | `2` | Install failed OR user chose `skip` OR post-install verification shows drift still present |
-| `130` | User chose `n` at the elevation prompt (treated as quit) |
+| `130` | Elevation **declined** — interactive `n` at the prompt, or `repair.elevation_action: deny` in unattended mode. Both mean "I don't want to run the elevated install" and share the quit code (consistent with alpha.2 treating declined-consent as 130). Distinct from `skip` (→ 2, manual-install path). |
 
 ### 5.5 The `--ForceUnlock` flag
 
@@ -169,7 +169,7 @@ Clears any existing `~/.ca-bootstrap/session.lock` before acquiring the new one.
 ```go
 // internal/lock/lock.go
 type Lock interface {
-    Acquire() error           // blocks until acquired or returns error
+    Acquire() error           // non-blocking: returns an error immediately if already held
     AcquireWithForce() error  // breaks any existing lock then acquires
     Release() error
 }
@@ -177,7 +177,7 @@ type Lock interface {
 func New(path string) Lock   // returns platform-appropriate impl
 ```
 
-### 6.2 Unix implementation (`detect_unix.go`)
+### 6.2 Unix implementation (`lock_unix.go`)
 
 `syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)`. Lock released on file close or process exit (kernel-managed). Stale locks from crashes are auto-cleared by the kernel.
 
@@ -187,7 +187,9 @@ func New(path string) Lock   // returns platform-appropriate impl
 
 ### 6.4 ForceUnlock semantics
 
-When `--ForceUnlock` is passed: `os.Remove(lockPath)` BEFORE attempting to acquire. Documented as "use this when a previous run crashed and the lock won't release."
+`--ForceUnlock` is for the **crashed-process** case. With `flock`/`LockFileEx`, a lock held by a *dead* process is **already released by the kernel** on process exit — so in the common stale-lock scenario, a normal `Acquire()` would already succeed and `--ForceUnlock` is belt-and-braces.
+
+Implementation: `os.Remove(lockPath)` then `Acquire()`. **Important correctness caveat (Copilot-flagged):** removing the lock file does **not** release an advisory `flock` that a *live* process still holds — and on Unix, unlinking the locked inode and creating a fresh one would let a second process acquire a lock on the *new* inode while the first still holds the old one, i.e. two concurrent runs. So `--ForceUnlock` is explicitly documented as **"use only when you are certain no other ca-bootstrap process is running"** (the previous run crashed). It is not a safe way to preempt a live session. A future hardening could check liveness via a PID written into the lock file before removing it.
 
 ### 6.5 Setup also takes the lock (in alpha.3)
 
@@ -216,14 +218,14 @@ So alpha.4's `undo` can:
 
 Following the alpha.1 / alpha.2 pattern: ~5-6 hermetic acceptance tests at `tests/acceptance/`. These tests **build the real binary** and exercise the `repair` subcommand. They use a **mock installer** because we cannot run real `brew install` / `apt install` in tests.
 
-The mock installer is selected via env var `$CA_BOOTSTRAP_INSTALLER_OVERRIDE=mock` (parallels how `$CA_BOOTSTRAP_MANIFEST` works). The mock returns canned results based on the tool ID — e.g., `success-tool` → exit 0, `fail-tool` → exit 1, `needs-elevation-tool` → triggers the elevation prompt.
+The mock is **data-driven**, not env-var-gated: a fixture manifest declares `install: { any: { type: mock, id: fail } }`. The installer dispatch recognizes `type: mock` and returns canned outcomes by `id` (`fail` → Failed, `needs-elevation` → triggers the elevation decision, `success` → Installed). Production manifests never use `type: mock`, so production never hits it. (This replaced an earlier `$CA_BOOTSTRAP_INSTALLER_OVERRIDE` env-var design — the data-driven form keeps test intent visible in the fixture and avoids a global state flag.)
 
 ```go
 TestRepair_TargetNotInManifest_ExitsOne                  // --target xyz when xyz isn't in manifest → exit 1 + stderr msg
 TestRepair_AlreadyInstalled_ExitsZeroNoOp                 // tool present + at version → no install attempt, exit 0
 TestRepair_HappyPath_InstallsAndVerifies                  // tool missing → mock install succeeds → exit 0
 TestRepair_InstallFailure_ExitsTwo                        // mock install returns error → exit 2
-TestRepair_ElevationPromptDeclined_ExitsOneThirty         // unattended config sets repair.allow_elevation: false → exit 130
+TestRepair_ElevationPromptDeclined_ExitsOneThirty         // repair.elevation_action: deny → exit 130 (declined elevation = quit)
 TestRepair_ElevationSkipChosen_ExitsTwoWithManual         // unattended config sets repair.elevation_action: skip → exit 2 + manual-install summary in stdout
 TestRepair_LockHeld_ExitsOne                              // pre-existing lock → exit 1 + clear message
 TestRepair_ForceUnlock_ClearsExistingLock_ExitsZero       // --ForceUnlock + stale lock → succeeds
@@ -256,4 +258,6 @@ Plus integration tests per new package (install, lock, elevation detection).
 - alpha.1 spec: [`2026-05-25-go-v2-0-alpha-1-spec.md`](2026-05-25-go-v2-0-alpha-1-spec.md)
 - alpha.2 spec: [`2026-05-25-go-v2-0-alpha-2-spec.md`](2026-05-25-go-v2-0-alpha-2-spec.md)
 - Pivot doc: [`2026-05-25-go-rewrite-pivot.md`](2026-05-25-go-rewrite-pivot.md)
-- Tutorial: [`../tutorials/tdd-walkthrough.md`](../tutorials/tdd-walkthrough.md) (alpha.3 will add Part III chapters 20+)
+- Tutorial: [`../tutorials/tdd-walkthrough.md`](../tutorials/tdd-walkthrough.md) (alpha.3 adds Part III chapters 20-28)
+
+> Cross-doc links above are correct relative paths for the merged tree — they resolve once the stacked pivot/alpha.1/alpha.2 PRs land on `dev` (all targets live under `docs/specs/`, `docs/plans/`, `docs/tutorials/`). They render as "not found" only in this branch's isolated view.
