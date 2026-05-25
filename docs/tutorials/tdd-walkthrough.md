@@ -459,4 +459,94 @@ The next chapter implements the easiest one: `version`. ~10 lines of Go. One tes
 
 ---
 
-*Chapter 5 — GREEN test 1: the smallest possible subcommand — coming next task.*
+## Chapter 5 — GREEN test 1: the smallest possible subcommand
+
+> [The first green] We have 7 failing tests. The discipline is: pick the easiest one, write the **smallest** code that makes it pass, and don't do anything else. No "while I'm here." No "let me also fix...". The `version` subcommand is ~10 lines; that's all we add.
+
+### The code
+
+`internal/cli/version.go`:
+
+```go
+package cli
+
+import (
+    "fmt"
+    "github.com/spf13/cobra"
+)
+
+var versionCmd = &cobra.Command{
+    Use:   "version",
+    Short: "Print version, commit, and build time, then exit",
+    RunE: func(cmd *cobra.Command, args []string) error {
+        fmt.Printf("ca-bootstrap %s (commit %s, built %s)\n", version, commit, buildTime)
+        return nil
+    },
+}
+
+func init() {
+    rootCmd.AddCommand(versionCmd)
+}
+```
+
+That's it. 17 lines including the imports and the blank line. Cobra subcommand pattern in its barest form.
+
+> [Why `init()` registration] Cobra subcommands are commonly registered via `func init() { rootCmd.AddCommand(...) }` in their own files. The pattern means **adding a new subcommand is a single-file change**. We don't have to modify `root.go` every time. Each subcommand is self-contained — own file, own `init()`, own registration. Scales well as we add `doctor`, eventually `setup`, `repair`, etc.
+
+> [Why `RunE` instead of `Run`] `Run` is `func(*cobra.Command, []string)` — no return value. `RunE` is `func(*cobra.Command, []string) error`. Using `RunE` even when we don't currently return an error is forward-looking: if later we need to fail out of `version` (file unreadable, ldflag corrupt, anything), the signature already supports it. Cobra handles a non-nil error by printing it to stderr and exiting 1.
+
+> [Why `fmt.Printf` not `cmd.Println`] Either works. For `version` we want output on the actual program stdout (a user piping to `grep` should see it). `fmt.Printf` is the stdlib default and writes to `os.Stdout`. Cobra's `cmd.Println` writes to the same place by default but adds a layer of indirection we don't need yet.
+
+### Running it
+
+```bash
+$ go build -o /tmp/cab ./cmd/ca-bootstrap
+$ /tmp/cab version
+ca-bootstrap dev (commit unknown, built unknown)
+```
+
+`dev / unknown / unknown` because we didn't pass any ldflags locally. The acceptance test sets them:
+
+```text
+-ldflags "-X main.Version=2.0.0-test -X main.Commit=testcommit -X main.BuildTime=2026-05-25T00:00:00Z"
+```
+
+And asserts the output contains `2.0.0-test`, `testcommit`, and matches the regex `^ca-bootstrap (\S+) \(commit (\S+), built (\S+)\)$`. Both checks pass.
+
+### Verifying the green
+
+```text
+$ go test -tags acceptance -run TestVersion ./tests/acceptance/...
+ok      github.com/ChannelAssist/ca-bootstrap/tests/acceptance    0.766s
+```
+
+Then we run **the whole acceptance suite** to confirm we didn't break anything (we didn't — version was a pure addition):
+
+```text
+$ go test -tags acceptance ./tests/acceptance/...
+--- PASS: TestVersion_PrintsSemverCommitAndBuildTime  (0.43s)
+--- FAIL: TestDoctor_AllToolsPresent_ExitsZero        (0.43s)
+--- FAIL: TestDoctor_RequiredToolMissing_ExitsTwo     (0.44s)
+--- FAIL: TestDoctor_RequiredToolBelowMin_ExitsTwo    (0.44s)
+--- FAIL: TestDoctor_OptionalToolMissing_ExitsZero…   (0.43s)
+--- FAIL: TestDoctor_ManifestMissing_ExitsOneToStderr (0.43s)
+--- FAIL: TestDoctor_ManifestParseError_ExitsOneToS…  (0.43s)
+```
+
+**1 PASS, 6 FAIL.** That's exactly the intermediate state TDD predicts. We never had to look at the test code to make it pass — the spec drove the implementation.
+
+### A note on `version` design choices we *didn't* make
+
+- No `--json` output flag. Spec §5 says alpha.1 doesn't have one.
+- No `--short` variant. Same reason.
+- No coloring. No emoji. Plain text.
+
+> [Why restraint matters here] Every flag you ship is a flag you maintain. Every flag you don't ship is a flag a future spec gets to design correctly. If someone later actually needs `version --json`, they'll add it then — and they'll add tests for it then. That's how YAGNI compounds positively.
+
+### The takeaway
+
+One test green. Code that does exactly what the test demands and nothing more. The next chapter tackles two tests at once (the two manifest-error tests) by building the loader — these don't need `doctor` to exist yet because they exercise the manifest **path** (missing file, parse error), which doctor will plug into in Task 10.
+
+---
+
+*Chapter 6 — GREEN tests 6 & 7: the manifest loader — coming next task.*
