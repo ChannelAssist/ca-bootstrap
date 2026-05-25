@@ -488,20 +488,37 @@ code.inline {
 
 <!-- ════════════════════════ HERO ════════════════════════ -->
 <header class="hero">
-  <div class="eyebrow">live status · 2026-05-25</div>
+  <div class="eyebrow">live status · 2026-05-25 (overnight session)</div>
   <h1>ca-bootstrap → Go rewrite</h1>
   <p class="subtitle">
     How Peter Giannopoulos and Claude Code collaborate to spec, test, and ship the
-    v2.0.0-alpha.1 release. Every phase, every gate, every loop.
+    v2.0.0 alphas. Every phase, every gate, every loop.
   </p>
+
+  <h2 style="margin-top:2.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.1 — <code class="inline">version</code> + <code class="inline">doctor</code></h2>
   <div class="status-row">
-    <span class="pill done"><span class="dot"></span>Phase 0 — Pivot decision</span>
-    <span class="pill active"><span class="dot"></span>Phase A — Spec</span>
-    <span class="pill"><span class="dot"></span>Phase B — Plan</span>
-    <span class="pill"><span class="dot"></span>Phase C — Tests first</span>
-    <span class="pill"><span class="dot"></span>Phase D — Code</span>
-    <span class="pill"><span class="dot"></span>Phase E — PR + review</span>
-    <span class="pill"><span class="dot"></span>Phase F — Release</span>
+    <span class="pill done"><span class="dot"></span>Phase 0 — Pivot</span>
+    <span class="pill done"><span class="dot"></span>Phase A — Spec</span>
+    <span class="pill done"><span class="dot"></span>Phase B — Plan</span>
+    <span class="pill done"><span class="dot"></span>Phase C — RED (7/7)</span>
+    <span class="pill done"><span class="dot"></span>Phase D — GREEN (7/7)</span>
+    <span class="pill active"><span class="dot"></span>Phase E — PR #90 open</span>
+    <span class="pill"><span class="dot"></span>Phase F — Release (CI paused)</span>
+  </div>
+
+  <h2 style="margin-top:1.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.2 — <code class="inline">setup</code> + journal + prompt model</h2>
+  <div class="status-row">
+    <span class="pill done"><span class="dot"></span>Phase A — Spec</span>
+    <span class="pill done"><span class="dot"></span>Phase B — Plan</span>
+    <span class="pill done"><span class="dot"></span>Phase C — RED (7/7)</span>
+    <span class="pill done"><span class="dot"></span>Phase D — GREEN (14/14)</span>
+    <span class="pill active"><span class="dot"></span>Phase E — PR #93 open</span>
+    <span class="pill"><span class="dot"></span>Phase F — Release (CI paused)</span>
+  </div>
+
+  <h2 style="margin-top:1.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.3 — <code class="inline">repair</code> (install logic)</h2>
+  <div class="status-row">
+    <span class="pill"><span class="dot"></span>Not started — pending Peter's review of alpha.1/alpha.2</span>
   </div>
 </header>
 
@@ -669,67 +686,97 @@ flowchart TD
       <span class="phase-emoji">🏛</span>
       <div>
         <div class="phase-title">Pivot Decision</div>
-        <div class="phase-detail">Pivot doc · archival tag <code class="inline">legacy/v1.9.0</code> · PBI AB#40028 · PR #87 with 12-field metadata verified</div>
+        <div class="phase-detail">Pivot doc · archival tag <code class="inline">legacy/v1.9.0</code> · PBI AB#40028 · PR #87</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 A+B</span>
+      <span class="phase-emoji">📋</span>
+      <div>
+        <div class="phase-title">alpha.1 Spec + Plan</div>
+        <div class="phase-detail">10 brainstorm decisions · spec §1-§14 + Appendix A · 15-task plan · AB#40033 · PR #88</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 C</span>
+      <span class="phase-emoji">🧪</span>
+      <div>
+        <div class="phase-title">alpha.1 RED — 7 failing tests</div>
+        <div class="phase-detail">Migration (PS → <code class="inline">legacy/</code>, 95 renames) + Go scaffold + 5 fixtures + 7 failing acceptance tests · AB#40034 · PR #89</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 D</span>
+      <span class="phase-emoji">⚒</span>
+      <div>
+        <div class="phase-title">alpha.1 GREEN — version + doctor</div>
+        <div class="phase-detail">Manifest loader + detect interface + Unix/Windows probes + doctor subcommand · 7/7 acceptance tests pass · AB#40037 · PR #90</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 A+B</span>
+      <span class="phase-emoji">📋</span>
+      <div>
+        <div class="phase-title">alpha.2 Spec + Plan</div>
+        <div class="phase-detail">10 design decisions (prompt model, journal format, identity scope, …) · 10-task plan · AB#40039 · PR #91</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 C</span>
+      <span class="phase-emoji">🧪</span>
+      <div>
+        <div class="phase-title">alpha.2 RED — 7 more failing tests</div>
+        <div class="phase-detail">4 new packages scaffolded (<code class="inline">journal/prompt/identity/wizard</code>) + 4 unattended fixtures + 7 failing setup tests · AB#40043 · PR #92</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 D</span>
+      <span class="phase-emoji">⚒</span>
+      <div>
+        <div class="phase-title">alpha.2 GREEN — setup wizard + journal + prompts</div>
+        <div class="phase-detail">~2000 LOC Go + ~600 LOC tests · 14/14 acceptance tests pass · journal NDJSON, stdin prompter (no TUI), per-folder git identity · AB#40045 · PR #93</div>
       </div>
       <span class="phase-status done">✓ DONE</span>
     </div>
 
     <div class="phase-row current">
-      <span class="phase-id">Phase A</span>
-      <span class="phase-emoji">📋</span>
-      <div>
-        <div class="phase-title">Spec</div>
-        <div class="phase-detail">10 decisions locked via brainstorm · design proposal approved in 2 chunks · spec doc written · awaiting self-review + Peter read-through</div>
-      </div>
-      <span class="phase-status current">● IN PROGRESS</span>
-    </div>
-
-    <div class="phase-row">
-      <span class="phase-id">Phase B</span>
-      <span class="phase-emoji">🗺</span>
-      <div>
-        <div class="phase-title">Plan</div>
-        <div class="phase-detail">Invoke <code class="inline">writing-plans</code> skill · break spec into ordered tasks with dependencies and acceptance criteria</div>
-      </div>
-      <span class="phase-status">— next</span>
-    </div>
-
-    <div class="phase-row">
-      <span class="phase-id">Phase C</span>
-      <span class="phase-emoji">🧪</span>
-      <div>
-        <div class="phase-title">Tests First</div>
-        <div class="phase-detail">Write the 7 mandatory acceptance tests from spec §9.2 · all RED · no implementation code yet</div>
-      </div>
-      <span class="phase-status">— pending</span>
-    </div>
-
-    <div class="phase-row">
-      <span class="phase-id">Phase D</span>
-      <span class="phase-emoji">⚒</span>
-      <div>
-        <div class="phase-title">Code</div>
-        <div class="phase-detail">Implement smallest unit · run tests · commit (signed, bisected) · loop until all 7 green on every CI runner</div>
-      </div>
-      <span class="phase-status">— pending</span>
-    </div>
-
-    <div class="phase-row">
       <span class="phase-id">Phase E</span>
       <span class="phase-emoji">📬</span>
       <div>
-        <div class="phase-title">PR + Review</div>
-        <div class="phase-detail">Open PR with all 12 metadata fields · CI green · Peter + Copilot review · address every comment · merge to dev</div>
+        <div class="phase-title">PR review (7 PRs open)</div>
+        <div class="phase-detail">PRs #87, #88, #89, #90, #91, #92, #93 all open with 12-field metadata. Stacked: #93 → #92 → #90 → #89 → dev (#88, #91 → dev directly).</div>
       </div>
-      <span class="phase-status">— pending</span>
+      <span class="phase-status current">● IN PROGRESS — Peter's review</span>
     </div>
 
     <div class="phase-row">
       <span class="phase-id">Phase F</span>
       <span class="phase-emoji">📦</span>
       <div>
-        <div class="phase-title">Release</div>
-        <div class="phase-detail">Tag <code class="inline">v2.0.0-alpha.1</code> · release.yml builds 5 platforms · GH Releases publishes binaries + SHA256SUMS · Peter smoke-tests on real Windows</div>
+        <div class="phase-title">Release (deferred)</div>
+        <div class="phase-detail">CI workflows paused per Peter's overnight cost-min directive. Will re-enable + tag <code class="inline">v2.0.0-alpha.1</code> + ship 5-platform binaries once the alpha.1/alpha.2 PRs land on <code class="inline">dev</code>.</div>
+      </div>
+      <span class="phase-status">— deferred</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.3+</span>
+      <span class="phase-emoji">🛠</span>
+      <div>
+        <div class="phase-title">Next subsystem: <code class="inline">repair</code></div>
+        <div class="phase-detail">alpha.3 = install logic per manifest (winget/brew/apt/dnf), session lock, journal-recorded installs that alpha.4's <code class="inline">undo</code> can reverse. Not started — pending review of alpha.1/alpha.2.</div>
       </div>
       <span class="phase-status">— pending</span>
     </div>
@@ -896,16 +943,28 @@ Checking installed tooling against manifest/tools.yaml...
       <span class="link-desc">Go module layout, doctor functional spec, 7 mandatory acceptance tests, release pipeline.</span>
     </a>
 
-    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/pull/87">
-      <span class="link-label">GitHub</span>
-      <span class="link-title">PR #87 — pivot announcement</span>
-      <span class="link-desc">Open for review. All 12 metadata fields verified.</span>
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/docs/go-alpha-2-spec/docs/specs/2026-05-25-go-v2-0-alpha-2-spec.md">
+      <span class="link-label">Spec doc</span>
+      <span class="link-title">v2.0.0-alpha.2 implementation spec</span>
+      <span class="link-desc">setup wizard, action journal (NDJSON), prompt model (no TUI), per-folder git identity.</span>
     </a>
 
-    <a class="link-card" href="https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/40028">
-      <span class="link-label">Azure Boards</span>
-      <span class="link-title">AB#40028 — Go-rewrite PBI</span>
-      <span class="link-desc">Child of Epic AB#38056 (AI Platform &amp; Workflow Integration — 2026).</span>
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/feat/alpha-2-impl/docs/tutorials/tdd-walkthrough.md">
+      <span class="link-label">Tutorial</span>
+      <span class="link-title">TDD walkthrough (chapters 1–19)</span>
+      <span class="link-desc">Live record of how alpha.1 and alpha.2 were built. For ChannelAssist developer onboarding.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/pulls?q=is%3Apr+is%3Aopen">
+      <span class="link-label">GitHub</span>
+      <span class="link-title">7 open PRs (#87 – #93)</span>
+      <span class="link-desc">All with 12-field metadata. Stacked: #93 → #92 → #90 → #89 → dev (#88, #91 → dev).</span>
+    </a>
+
+    <a class="link-card" href="https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/38056">
+      <span class="link-label">Epic</span>
+      <span class="link-title">AB#38056 — parent Epic</span>
+      <span class="link-desc">7 sibling PBIs filed under: AB#40028 (pivot), #40033 (α.1 spec), #40034 (α.1 RED), #40037 (α.1 GREEN), #40039 (α.2 spec), #40043 (α.2 RED), #40045 (α.2 GREEN).</span>
     </a>
 
     <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/releases/tag/legacy%2Fv1.9.0">
