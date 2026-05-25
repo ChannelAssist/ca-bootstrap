@@ -1288,4 +1288,98 @@ After this PR opens, Tasks 12 (`ci.yml`) and 13 (`release.yml`) are **deferred**
 
 ---
 
-*End of alpha.1 implementation chapters. Chapters 12-15 (CI, release, README, tag) deferred until CI re-enabled.*
+*End of alpha.1 implementation chapters. Chapters renumbered: 12-19 below are alpha.2; CI/release/tag chapters (formerly 12-15) deferred until CI re-enabled.*
+
+---
+
+# Part II — alpha.2: setup wizard + action journal + prompt model
+
+> [Why a new "part" instead of continuing chapters in alpha.1's flow] Each alpha release is its own coherent unit of work with its own spec, plan, and PRs. The tutorial mirrors that. Part II chapters reference Part I's stable interfaces but a reader landing in Part II cold can still follow it without re-reading Part I.
+
+## Chapter 12 — Scaffolding alpha.2
+
+> [Why empty stubs first] Same reason as alpha.1's Tasks 1-2: tests need symbols to reference. We create empty-but-compiling package skeletons for `journal`, `prompt`, `identity`, and `wizard` so chapter 13's acceptance tests can `import` them and assert against their interfaces. Each stub function returns a `not implemented (Task N of alpha.2 plan)` error so test failures map cleanly to "this isn't built yet" rather than "this is broken."
+
+### The four new packages
+
+```text
+internal/
+├── journal/            # NEW — append-only NDJSON record (spec §6)
+│   ├── entry.go        # Entry struct + JSON marshaling
+│   ├── journal.go      # Session, Append, End — all stubs
+│   └── errors.go       # errNotImplemented helper
+├── prompt/             # NEW — stdin-only prompt model (spec §7)
+│   ├── prompt.go       # Prompter interface + stub
+│   └── unattended.go   # FromYAML(path) stub
+├── identity/           # NEW — per-folder git config (spec §5 step 3)
+│   └── identity.go     # SetWorkspaceIdentity / GetWorkspaceIdentity stubs
+└── wizard/             # NEW — multi-step orchestrator
+    ├── wizard.go       # Step interface, Context, Run() stub
+    └── steps/
+        ├── welcome.go  # step 1 stub
+        ├── prereqs.go  # step 2 stub
+        ├── identity.go # step 3 stub
+        └── errors.go   # errStubStep helper
+```
+
+### The Prompter interface — design invariant
+
+The most consequential file is `prompt/prompt.go`. It declares:
+
+```go
+// **DESIGN INVARIANT** (spec §2.B-2): plain stdin only. No TUI library.
+// No survey, no bubbletea, no termbox. The PS-era TUI bug class (six
+// prior commits) is exactly what we're avoiding.
+type Prompter interface {
+    YesNo(question, defaultAnswer string) (bool, error)
+    Line(question, defaultAnswer string) (string, error)
+    Quit() bool
+}
+```
+
+That comment isn't decoration — it's an enforced rule. A future contributor who tries to add a survey-library dependency has to delete the comment AND restructure the wizard's test infrastructure to do it. The friction is intentional.
+
+### The Step interface — wizard pattern
+
+`wizard/wizard.go`:
+
+```go
+type Step interface {
+    Title() string
+    Run(ctx *Context) (result string, err error)
+}
+```
+
+Each step is a self-contained unit. The wizard `Run([]Step, *Context)` iterates: print header, call `Run()`, print result, journal the outcome, move to next. The pattern fits on a postcard and extends cleanly through alpha.6+ (folder-creation, repo-cloning, identity steps all plug into the same interface).
+
+`Context` holds shared dependencies (`Out`, `Prompt`, `Session`) AND state that flows between steps (`Workspace string` — set by the identity step in alpha.2; read by a future clone step in alpha.6). Mutable shared state is usually a smell; here it's the explicit cross-step communication channel.
+
+### The stub-error pattern
+
+Every stub returns:
+
+```go
+return fmt.Errorf("journal: NewSession not implemented (Task 3 of alpha.2 plan)")
+```
+
+When tests fail, the error message tells the reader **exactly which task implements the missing piece**. No "panic: nil pointer" mysteries; no "unexpected behavior" guessing.
+
+### What this commit doesn't do
+
+- No tests. Tests come in chapter 13.
+- No behavior. Every function returns an error.
+- No outside imports of these packages. They're islands until chapter 13's tests connect them.
+
+State after this commit:
+
+```text
+$ go build ./...                        # exit 0
+$ go test ./...                         # alpha.1 tests still GREEN
+$ go test -tags acceptance ./tests/...  # 7/7 alpha.1 still GREEN (no alpha.2 tests yet)
+```
+
+Bisectable diff, ~11 new files, zero behavior change.
+
+---
+
+*Chapter 13 — RED phase for alpha.2 — coming next task.*
