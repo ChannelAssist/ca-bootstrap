@@ -11,6 +11,21 @@ import (
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
 )
 
+// Output glyphs. Default to UTF-8 (✓/✗/⚠). If $CA_BOOTSTRAP_ASCII is
+// set (e.g. on a Windows console with an unusual code page), fall back
+// to ASCII so the output remains readable.
+var (
+	glyphOK   = "✓"
+	glyphFail = "✗"
+	glyphWarn = "⚠"
+)
+
+func init() {
+	if os.Getenv("CA_BOOTSTRAP_ASCII") != "" {
+		glyphOK, glyphFail, glyphWarn = "[ok]", "[FAIL]", "[warn]"
+	}
+}
+
 // doctorCmd diagnoses installed tooling against the (embedded or
 // env-var-overridden) manifest. Read-only — never writes anywhere.
 // Exit codes per spec §6.3:
@@ -56,14 +71,14 @@ func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
 			if tool.MinVersion != "" {
 				minNote = fmt.Sprintf("  (manifest min: %s)", tool.MinVersion)
 			}
-			fmt.Fprintf(w, "  ✓ %s\t%s%s\n", tool.ID, r.Version, minNote)
+			fmt.Fprintf(w, "  %s %s\t%s%s\n", glyphOK, tool.ID, r.Version, minNote)
 			okCount++
 		case classDrift:
-			fmt.Fprintf(w, "  ✗ %s\t%s  (manifest min: %s)   → install %s\n",
-				tool.ID, displayVersion(r), tool.MinVersion, tool.ID)
+			fmt.Fprintf(w, "  %s %s\t%s  (manifest min: %s)   → install %s\n",
+				glyphFail, tool.ID, displayVersion(r), tool.MinVersion, tool.ID)
 			driftCount++
 		case classMissingOptional:
-			fmt.Fprintf(w, "  ⚠ %s\tnot found                       → optional\n", tool.ID)
+			fmt.Fprintf(w, "  %s %s\tnot found                       → optional\n", glyphWarn, tool.ID)
 			missingOptionalCount++
 		}
 	}
