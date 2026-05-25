@@ -3,7 +3,7 @@
 - **Date:** 2026-05-25 (authored overnight by Claude Code, autonomously, per Peter's directive)
 - **Author:** Claude Code (AI-assisted) — **all section-2 decisions are AI-made judgment calls** awaiting Peter's morning review
 - **Status:** Draft → pending Peter review (especially the decisions in §2.B)
-- **Work item:** TBD — file new PBI before opening any alpha.2 PR
+- **Work item:** [AB#40039](https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/40039) — alpha.2 spec + plan PBI (child of Epic AB#38056)
 - **Builds on:** [`docs/specs/2026-05-25-go-v2-0-alpha-1-spec.md`](2026-05-25-go-v2-0-alpha-1-spec.md), [`docs/specs/2026-05-25-go-rewrite-pivot.md`](2026-05-25-go-rewrite-pivot.md)
 
 ## 1. TL;DR
@@ -34,12 +34,12 @@ These were decided autonomously overnight per Peter's directive ("I'll make judg
 |---|---|---|---|
 | 1 | **alpha.2 scope** | welcome + prereqs-check + identity-config only. NO install, NO folder structure, NO repo cloning. | Smallest feature surface that still feels like a wizard; install is a meaningful enough concern to deserve its own alpha (alpha.3 = `repair`). |
 | 2 | **Prompt model** | **stdin/stdout only.** `bufio.NewReader(os.Stdin).ReadString('\n')` for input; default-on-Enter; `--unattended --config <path>` reads answers from YAML. | No TUI library. No survey library. The PS-era TUI bug class (six prior commits, see pivot doc § 2.2) is the literal reason we're rewriting; we will not reintroduce that surface area. Stdlib stdin is rock-solid across all 5 release platforms. |
-| 3 | **Action journal format** | Append-only JSON Lines (`.ndjson`) at `~/.ca-bootstrap/journal.ndjson`. One line = one event. Schema: `{ts, sessionID, action, target, before, after, result}`. | JSONL is greppable, append-safe across crashes (one line = one atomic write on POSIX), and parseable line-by-line for undo replay. No DB, no nested format. |
+| 3 | **Action journal format** | Append-only JSON Lines (`.ndjson`) at `~/.ca-bootstrap/journal.ndjson`. One line = one event. Schema: `{ts, sessionID, action, target, before, after, result}`. | JSONL is greppable and parseable line-by-line for undo replay. No DB, no nested format. **Crash-resilience caveat:** each entry is one `write()` of `line + \n` — small enough to land in a single syscall in practice — but POSIX does **not** guarantee atomicity for regular-file appends across processes. Without the session lock (alpha.3), two concurrent runs *could* interleave. alpha.2 is effectively single-writer-per-session; alpha.3's lock makes the guarantee real. |
 | 4 | **Identity scope** | Per-folder git identity (mirrors PS era). Setup writes git config to the workspace root, not global. | Avoids polluting the user's `~/.gitconfig` for non-ChannelAssist repos. Same UX as v1.9.0 — onboarding hires expect this. |
 | 5 | **Session lock** | Skip for alpha.2 v0. Concurrent-run protection arrives in alpha.3 (when `repair` actually mutates external state in parallel-unsafe ways). | Setup in alpha.2 mostly *reads* (prereqs check) + does ONE folder-scoped git config write. The cost of corrupting that is low; the cost of building a Windows-compatible file-lock now is unwarranted YAGNI. |
 | 6 | **Quit / Ctrl+C** | Trap SIGINT, write a `quit` journal entry, exit 130 (conventional SIGINT exit). | Standard CLI behavior; the journal entry lets future `undo` know a setup was interrupted. |
-| 7 | **Welcome consent** | Print a short banner + 1-paragraph description + Y/n prompt. Empty input = "Y". `q` quits. | Matches PS-era UX exactly. Hires expect this. |
-| 8 | **`--unattended` config schema** | YAML with one top-level key per wizard step: `welcome.consent: true`, `identity.{name, email}`, `prereqs.continue_with_drift: false`. | Forward-compatible — alpha.3+ adds keys without breaking alpha.2 configs. |
+| 7 | **Welcome consent** | Print a short banner + 1-paragraph description + Y/n prompt. Empty input = "Y". `q` quits. **Declining consent (`n`, or `consent: false` in unattended mode) is treated as a quit** → exit 130. | Matches PS-era UX. Declining at the welcome gate is semantically "I don't want to proceed" = quit, so it shares the 130 exit rather than inventing a separate code. |
+| 8 | **`--unattended` config schema** | **Nested YAML**, one top-level mapping per wizard step. Prompt keys are dotted *paths into* that nested structure (`welcome.consent`, `identity.name`, `identity.email`, `prereqs.continue_with_drift`). The Prompter walks the dotted path through the nested map. | Forward-compatible — alpha.3+ adds keys without breaking alpha.2 configs. (Dotted strings are lookup keys, **not** flat YAML keys; the file is nested objects — see the §5.2 example.) |
 | 9 | **Stale journal cleanup** | None in alpha.2. The journal grows unbounded; cleanup logic is alpha.4 (`undo --all` truncates or archives). | YAGNI. The journal is line-based ndjson; users on dev boxes will rarely exceed 1MB. |
 | 10 | **Output style for setup steps** | Step header (`Step N/M — Title`) + body indented 2 spaces + result line. Same as PS era's step output (`legacy/lib/ui.ps1`). | Hires recognize this. Familiarity reduces UX risk. |
 
@@ -155,7 +155,7 @@ Same step output but no prompts; all answers from the config. Exits non-zero on 
 | `0` | All steps completed (with or without drift acknowledged) |
 | `1` | System error (manifest missing, git not installed, config file unreadable, etc.) |
 | `2` | Drift found AND user declined to continue (interactive) OR config said `continue_with_drift: false` |
-| `130` | User quit (SIGINT or `q` at any prompt) |
+| `130` | User quit — SIGINT, `q` at any prompt, **or declined welcome consent** (`n` / `consent: false`). Declining consent ≠ "drift declined" (which is `2`); it's "I don't want to run this at all," sharing the quit code. |
 
 ## 6. Functional spec — action journal
 
@@ -184,7 +184,7 @@ Same step output but no prompts; all answers from the config. Exits non-zero on 
 
 ### 6.3 Storage
 
-`~/.ca-bootstrap/journal.ndjson`. Created with mode 0644 on first write. Permission errors at write time → exit 1 with clear message.
+`~/.ca-bootstrap/journal.ndjson`. Created with mode 0600 on first write (user-only — journal entries include git identity and may later hold more sensitive state). On Windows, Go maps 0600 to the owner-only ACL; cross-platform permission behavior is documented in the journal package. Permission errors at write time → exit 1 with clear message.
 
 ## 7. Functional spec — prompt model
 
@@ -218,7 +218,7 @@ Following the alpha.1 pattern: 7-ish hermetic acceptance tests at `tests/accepta
 TestSetup_HappyPath_ExitsZero                   // unattended config, all consented, exits 0
 TestSetup_PrereqsDrift_Acknowledged_ExitsZero   // drift found, config says continue → exit 0
 TestSetup_PrereqsDrift_Rejected_ExitsTwo        // drift found, config says don't continue → exit 2
-TestSetup_QuitAtPrompt_ExitsOneThirty           // unattended config sets welcome.consent=false → exit 130
+TestSetup_QuitAtPrompt_ExitsOneThirty           // welcome.consent=false (declined consent, treated as quit) → exit 130
 TestSetup_ConfigMissing_ExitsOne                // --config points at nonexistent file
 TestSetup_WritesGitIdentityToWorkspace          // verifies the per-folder git config write
 TestSetup_JournalRecordsSession                 // verifies journal entries written for session_start/end + identity_set
@@ -258,4 +258,5 @@ The release is ready to tag `v2.0.0-alpha.2` when:
 - alpha.1 plan: [`docs/plans/2026-05-25-go-alpha-1-plan.md`](../plans/2026-05-25-go-alpha-1-plan.md)
 - Pivot doc: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](2026-05-25-go-rewrite-pivot.md)
 - Tutorial doc (alpha.1 chapters 1-11): [`docs/tutorials/tdd-walkthrough.md`](../tutorials/tdd-walkthrough.md)
-- Recurring stdio bug pattern (the reason we picked the prompt model in §2.B-2): `~/.claude/projects/.../memory/feedback_ca_bootstrap_recurring_stdio_bugs.md`
+
+> The cross-doc links above resolve once the stacked alpha.1/pivot PRs land on `dev` (all targets live under `docs/specs/`, `docs/plans/`, `docs/tutorials/`). The recurring stdio-bug analysis that motivated the no-TUI prompt model (§2.B-2) is summarized in the pivot doc §2.2 — no external/local paths required.
