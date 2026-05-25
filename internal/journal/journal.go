@@ -33,7 +33,10 @@ func NewSession() (*Session, error) {
 		return nil, fmt.Errorf("journal: mkdir %s: %w", dir, err)
 	}
 	path := filepath.Join(dir, "journal.ndjson")
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	// 0600 (user-only): journal entries include git identity and may later
+	// hold more sensitive state, so it must not be world-readable on
+	// multi-user systems. (Addresses Copilot review on the alpha.2 spec.)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("journal: open %s: %w", path, err)
 	}
