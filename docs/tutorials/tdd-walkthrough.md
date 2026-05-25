@@ -833,4 +833,99 @@ All pure-logic tests green. The interface compiles. Acceptance state unchanged a
 
 ---
 
-*Chapter 8 — Probing the host on Unix — coming next task.*
+## Chapter 8 — Probing the host on Unix
+
+> [Two-step detection] On Unix-likes (macOS + Linux), tool detection is two operations: **(1) is the binary on PATH?** via `exec.LookPath`, then **(2) what version does it report?** via `exec.Command` + regex. Both stdlib. No external deps.
+
+### The test we wrote first
+
+`detect_unix_test.go` lives under `//go:build darwin || linux` so it's only compiled on those platforms. Three tests:
+
+```go
+TestProbe_GoBinary           // happy path: known-present tool
+TestProbe_MissingBinary      // not on PATH → Found=false, Err=nil
+TestProbe_MultiArgVersionFlag // "env GOOS" splits into 2 args
+```
+
+> [Why test against real tools] Some test suites mock `exec.Command` to avoid touching the OS. We don't — we use `go`, which we know is present (we're running `go test` to invoke this test in the first place). Real-binary probes catch real bugs the mocks would miss (PATH lookups behaving differently, version output formats drifting in major releases, etc.).
+
+### The implementation
+
+```go
+//go:build darwin || linux
+
+type unixDetector struct{}
+
+func Default() Detector {
+    return unixDetector{}
+}
+
+func (unixDetector) Probe(t manifest.Tool) Result {
+    r := Result{ID: t.ID}
+
+    if _, err := exec.LookPath(t.Detect.Command); err != nil {
+        return r  // Not on PATH — Found stays false, no error.
+    }
+
+    versionFlag := t.Detect.VersionFlag
+    if versionFlag == "" {
+        versionFlag = "--version"  // sensible default
+    }
+    args := strings.Fields(versionFlag)  // whitespace-split
+
+    cmd := exec.Command(t.Detect.Command, args...)
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        var exitErr *exec.ExitError
+        if !errors.As(err, &exitErr) {
+            r.Err = err  // process couldn't start at all
+            return r
+        }
+        // Non-zero exit is OK — fall through with whatever we got.
+    }
+    r.Found = true
+    r.VersionRaw = strings.TrimSpace(string(out))
+    r.Version = ExtractVersion(r.VersionRaw, t.Detect.VersionRegex)
+    return r
+}
+```
+
+> [Why `strings.Fields`] The manifest's `version_flag` is a single string, but some tools need multiple flags: `kubectl version --client`, `helm version --short`, `go env GOOS`. We split on whitespace so the manifest stays readable while the implementation supports multi-arg flags transparently. `strings.Fields` (not `strings.Split`) handles any-whitespace and skips empty tokens.
+
+> [Why `CombinedOutput` not `Output`] Some tools print their version to stderr (notably old gcc, some Java versions). `CombinedOutput` captures both stdout AND stderr. The regex doesn't care which stream it came from.
+
+> [Why we tolerate non-zero exits] `git --version` exits 0. But `node --version` historically returns 0; `claude --version` might exit 1 with the version on stderr; some tools exit 64 (EX_USAGE) when they think `--version` is unknown but they still printed something useful. We tolerate non-zero as long as the process *started*. We fail only if the process couldn't start — that's a real OS-level error (binary corrupt, permissions issue).
+
+### The shape of a `Result`
+
+For each probe, one of four outcomes:
+
+| Scenario | Found | Version | VersionRaw | Err |
+|---|---|---|---|---|
+| Binary not on PATH | false | "" | "" | nil |
+| Found + version parsed | true | "1.21.5" | "go version go1.21.5 darwin/arm64" | nil |
+| Found + regex didn't match | true | "" | full output | nil |
+| Process couldn't start | false | "" | "" | non-nil |
+
+The `Found=true + Version=""` case is interesting — it means "the tool exists but we can't tell which version." Downstream display logic (in `doctor`) handles it as "present, version unknown" — neither drift nor confirmed-OK. We've encoded ambiguity in the type.
+
+### Verifying
+
+```text
+$ go test ./internal/detect/...
+--- PASS: TestProbe_GoBinary
+--- PASS: TestProbe_MissingBinary
+--- PASS: TestProbe_MultiArgVersionFlag
+... (plus 15 existing pure-function tests)
+ok  github.com/ChannelAssist/ca-bootstrap/internal/detect    0.291s
+```
+
+Acceptance state: still 1/7. The detection layer works; doctor still doesn't exist.
+
+### Windows is next
+
+The Windows implementation needs everything the Unix one has, plus a fallback for tools installed by winget that don't end up on PATH (Microsoft Store apps, Electron GUIs). That's Chapter 9.
+
+---
+
+*Chapter 9 — Probing the host on Windows — coming next task.*
