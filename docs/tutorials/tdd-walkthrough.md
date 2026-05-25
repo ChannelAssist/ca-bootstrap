@@ -1288,4 +1288,461 @@ After this PR opens, Tasks 12 (`ci.yml`) and 13 (`release.yml`) are **deferred**
 
 ---
 
-*End of alpha.1 implementation chapters. Chapters 12-15 (CI, release, README, tag) deferred until CI re-enabled.*
+*End of alpha.1 implementation chapters. Chapters renumbered: 12-19 below are alpha.2; CI/release/tag chapters (formerly 12-15) deferred until CI re-enabled.*
+
+---
+
+# Part II — alpha.2: setup wizard + action journal + prompt model
+
+> [Why a new "part" instead of continuing chapters in alpha.1's flow] Each alpha release is its own coherent unit of work with its own spec, plan, and PRs. The tutorial mirrors that. Part II chapters reference Part I's stable interfaces but a reader landing in Part II cold can still follow it without re-reading Part I.
+
+## Chapter 12 — Scaffolding alpha.2
+
+> [Why empty stubs first] Same reason as alpha.1's Tasks 1-2: tests need symbols to reference. We create empty-but-compiling package skeletons for `journal`, `prompt`, `identity`, and `wizard` so chapter 13's acceptance tests can `import` them and assert against their interfaces. Each stub function returns a `not implemented (Task N of alpha.2 plan)` error so test failures map cleanly to "this isn't built yet" rather than "this is broken."
+
+### The four new packages
+
+```text
+internal/
+├── journal/            # NEW — append-only NDJSON record (spec §6)
+│   ├── entry.go        # Entry struct + JSON marshaling
+│   ├── journal.go      # Session, Append, End — all stubs
+│   └── errors.go       # errNotImplemented helper
+├── prompt/             # NEW — stdin-only prompt model (spec §7)
+│   ├── prompt.go       # Prompter interface + stub
+│   └── unattended.go   # FromYAML(path) stub
+├── identity/           # NEW — per-folder git config (spec §5 step 3)
+│   └── identity.go     # SetWorkspaceIdentity / GetWorkspaceIdentity stubs
+└── wizard/             # NEW — multi-step orchestrator
+    ├── wizard.go       # Step interface, Context, Run() stub
+    └── steps/
+        ├── welcome.go  # step 1 stub
+        ├── prereqs.go  # step 2 stub
+        ├── identity.go # step 3 stub
+        └── errors.go   # errStubStep helper
+```
+
+### The Prompter interface — design invariant
+
+The most consequential file is `prompt/prompt.go`. It declares:
+
+```go
+// **DESIGN INVARIANT** (spec §2.B-2): plain stdin only. No TUI library.
+// No survey, no bubbletea, no termbox. The PS-era TUI bug class (six
+// prior commits) is exactly what we're avoiding.
+type Prompter interface {
+    YesNo(question, defaultAnswer string) (bool, error)
+    Line(question, defaultAnswer string) (string, error)
+    Quit() bool
+}
+```
+
+That comment isn't decoration — it's an enforced rule. A future contributor who tries to add a survey-library dependency has to delete the comment AND restructure the wizard's test infrastructure to do it. The friction is intentional.
+
+### The Step interface — wizard pattern
+
+`wizard/wizard.go`:
+
+```go
+type Step interface {
+    Title() string
+    Run(ctx *Context) (result string, err error)
+}
+```
+
+Each step is a self-contained unit. The wizard `Run([]Step, *Context)` iterates: print header, call `Run()`, print result, journal the outcome, move to next. The pattern fits on a postcard and extends cleanly through alpha.6+ (folder-creation, repo-cloning, identity steps all plug into the same interface).
+
+`Context` holds shared dependencies (`Out`, `Prompt`, `Session`) AND state that flows between steps (`Workspace string` — set by the identity step in alpha.2; read by a future clone step in alpha.6). Mutable shared state is usually a smell; here it's the explicit cross-step communication channel.
+
+### The stub-error pattern
+
+Every stub returns:
+
+```go
+return fmt.Errorf("journal: NewSession not implemented (Task 3 of alpha.2 plan)")
+```
+
+When tests fail, the error message tells the reader **exactly which task implements the missing piece**. No "panic: nil pointer" mysteries; no "unexpected behavior" guessing.
+
+### What this commit doesn't do
+
+- No tests. Tests come in chapter 13.
+- No behavior. Every function returns an error.
+- No outside imports of these packages. They're islands until chapter 13's tests connect them.
+
+State after this commit:
+
+```text
+$ go build ./...                        # exit 0
+$ go test ./...                         # alpha.1 tests still GREEN
+$ go test -tags acceptance ./tests/...  # 7/7 alpha.1 still GREEN (no alpha.2 tests yet)
+```
+
+Bisectable diff, ~11 new files, zero behavior change.
+
+---
+
+## Chapter 13 — RED phase for alpha.2
+
+> [Outside-in TDD, second time around] Same discipline as alpha.1: write the acceptance tests first, watch them fail for the right reason, then implement. The 7 new tests in this chapter extend `tests/acceptance/acceptance_test.go` — same file, shared helpers (`buildBinary`, `run`, `fixture`).
+
+### The unattended-config testing strategy
+
+Acceptance tests cannot reliably drive interactive stdin. Spawning a subprocess and pumping bytes to its stdin works on Unix but is fragile on Windows (pipe buffering, terminal emulation differences, encoding edge cases). Instead, every alpha.2 acceptance test runs `setup` in `--unattended --config <path>` mode — answers come from YAML, not stdin.
+
+This means **the unattended path needs to be a first-class implementation**, not a tacked-on `--quiet` flag. It is, per spec §2.B-8.
+
+### Four unattended fixtures
+
+```text
+tests/acceptance/testdata/
+├── unattended-happy.yaml             → all consent, no drift expected
+├── unattended-drift-acknowledge.yaml → consent + continue_with_drift: true
+├── unattended-drift-reject.yaml      → consent + continue_with_drift: false
+└── unattended-quit.yaml              → welcome.consent: false → user quits
+```
+
+Each is ~5 lines. The `workspace_root` is injected at runtime via the `renderUnattendedConfig` helper so each test gets a clean `t.TempDir()` workspace.
+
+### Two new test helpers
+
+`renderUnattendedConfig(fixtureName, workspace)` copies a fixture template into the test's temp dir and appends `workspace_root: <workspace>` if missing. Returns the materialized path.
+
+`runSetup(binPath, manifest, config, fakeHome)` is like `run()` but specifically for the setup subcommand:
+
+```go
+cmd.Env = append(os.Environ(),
+    "CA_BOOTSTRAP_MANIFEST="+manifestPath,
+    "HOME="+fakeHome,                        // redirect journal location
+    "CA_BOOTSTRAP_ASCII=1",                  // ASCII output is greppable
+)
+```
+
+`HOME=$fakeHome` is critical — it redirects the journal (`~/.ca-bootstrap/journal.ndjson`) into the test sandbox so `TestSetup_JournalRecordsSession` can verify its contents without polluting the real `$HOME`.
+
+### The 7 tests, briefly
+
+| # | Test | Asserts |
+|---|---|---|
+| 1 | `TestSetup_HappyPath_ExitsZero` | go+git fixture + consent → exit 0 |
+| 2 | `TestSetup_PrereqsDrift_Acknowledged_ExitsZero` | missing-required fixture + `continue_with_drift: true` → exit 0 |
+| 3 | `TestSetup_PrereqsDrift_Rejected_ExitsTwo` | missing-required fixture + `continue_with_drift: false` → exit 2 |
+| 4 | `TestSetup_QuitAtPrompt_ExitsOneThirty` | `welcome.consent: false` → exit 130 |
+| 5 | `TestSetup_ConfigMissing_ExitsOne` | `--config /tmp/nope.yaml` → exit 1 + 'config' in stderr |
+| 6 | `TestSetup_WritesGitIdentityToWorkspace` | happy path → `workspace/.git/config` has Test User / test@example.com |
+| 7 | `TestSetup_JournalRecordsSession` | happy path → journal has `session_start`, `identity_set`, `session_end` lines |
+
+Tests 6 and 7 verify side effects on the filesystem — exactly the kind of assertion that's hard to fake. **A passing 6 and 7 mean setup is actually doing the work**, not just looping silently.
+
+### Watching them fail
+
+```text
+$ go test -tags acceptance ./tests/acceptance/... -v
+=== RUN   TestVersion_PrintsSemverCommitAndBuildTime
+--- PASS (0.46s)                                              ← alpha.1 stays green
+=== RUN   TestDoctor_AllToolsPresent_ExitsZero
+--- PASS (0.51s)
+... (5 more alpha.1 PASS)
+=== RUN   TestSetup_HappyPath_ExitsZero
+--- FAIL (0.48s)                                              ← alpha.2 RED starts
+... (6 more alpha.2 FAIL)
+```
+
+**14 tests, 7 PASS, 7 FAIL.** The 7 PASS are alpha.1's untouched-by-this-PR contract. The 7 FAIL are alpha.2's not-yet-implemented contract. Discipline gate satisfied: no implementation lands until the contract is locked in.
+
+### Why test failure mode matters
+
+A FAIL because "unknown command setup" is the correct kind of FAIL — the binary built, it ran, it returned the wrong exit code because the feature is missing. A FAIL because "compile error in test file" or "fixture not found" would be a test bug. We have the former, not the latter.
+
+### End of PR boundary
+
+This commit closes the scaffold + RED PR. Implementation begins in chapter 14 on a new branch (`feat/alpha-2-impl`) with the journal package — chosen first because it has no dependencies on other alpha.2 packages, so it's the safest place to start GREEN-ing things.
+
+---
+
+*Chapter 14 — Implementing the journal — coming next task (after scaffold/RED PR merges).*
+
+---
+
+## Chapter 14 — The journal package (NDJSON, append-only)
+
+> [Why this first] Journal has no dependencies on other alpha.2 packages. We start here so each subsequent package can lean on a real Append() rather than a stub. Smallest unit, no upstream.
+
+### The implementation in 4 lines of write semantics
+
+```go
+func (s *Session) write(e Entry) error {
+    if e.TS.IsZero()       { e.TS = time.Now().UTC() }
+    if e.SessionID == ""   { e.SessionID = s.ID }
+    line, _ := json.Marshal(e)
+    _, err := s.f.Write(append(line, '\n'))
+    return err
+}
+```
+
+That's the whole "write" path. JSON-marshal the entry, append a newline, write to the file. **One `os.File.Write` per entry = one POSIX `write()` syscall**, which the kernel guarantees is atomic at the line boundary for files opened with `O_APPEND`.
+
+> [Why atomic-at-line-boundary matters] If `ca-bootstrap setup` crashes mid-session (Ctrl+C, kernel panic, power loss), the journal is still readable: every line before the crash is a complete, parseable JSON entry. The undo logic in alpha.4 will rely on this — replay-up-to-last-good-line is much simpler than "did the file get corrupted?"
+
+### The session ID
+
+```go
+func newID() string {
+    var b [10]byte
+    rand.Read(b[:])
+    return hex.EncodeToString(b[:])
+}
+```
+
+20-char hex string. **Not a full ULID** — ULIDs encode a timestamp prefix and require monotonicity guarantees across processes. We don't need either yet; we just need "different sessions get different IDs." A real ULID lib is one of those YAGNI temptations we said no to in spec §4.2.
+
+### 5 unit tests, $HOME-redirect for hermeticity
+
+```go
+func withTestHome(t *testing.T) string {
+    home := t.TempDir()
+    t.Setenv("HOME", home)
+    return home
+}
+```
+
+Every journal test calls `withTestHome(t)` first. The journal package's `NewSession()` reads `$HOME` via `os.UserHomeDir()` to find `~/.ca-bootstrap/journal.ndjson` — `t.Setenv` redirects it into the test sandbox so we never write to the real user's home. `t.Setenv` is auto-restored at test end (Go 1.17+); no manual cleanup needed.
+
+---
+
+## Chapter 15 — The prompt package (stdin + unattended)
+
+> [The design invariant, enforced by what we DIDN'T import] Look at `go.mod`. Two deps: cobra, yaml.v3. No survey. No promptui. No bubbletea. The "no TUI" rule from spec §2.B-2 is visible in the dependency graph itself — adding one would be a reviewer-visible signal.
+
+### The interactive Prompter — `bufio.NewReader` + a tiny validation loop
+
+```go
+func (p *stdinPrompter) YesNo(question, defaultAnswer string) (bool, error) {
+    hint := "[y/n]"
+    switch strings.ToLower(defaultAnswer) {
+    case "y": hint = "[Y/n]"
+    case "n": hint = "[y/N]"
+    }
+    for retries := 0; retries < 5; retries++ {
+        fmt.Fprintf(p.w, "%s %s ", question, hint)
+        line, _ := p.r.ReadString('\n')
+        ans := strings.ToLower(strings.TrimSpace(line))
+        if ans == "" { ans = strings.ToLower(defaultAnswer) }
+        switch ans {
+        case "y", "yes": return true, nil
+        case "n", "no":  return false, nil
+        case "q", "quit":
+            p.quitted = true
+            return false, ErrQuit
+        default:
+            fmt.Fprintf(p.w, "  please answer y or n (q to quit)\n")
+        }
+    }
+    return false, fmt.Errorf("prompt: too many invalid answers")
+}
+```
+
+That's everything. Default hint shown via `[Y/n]` capitalization. 5-retry limit so a wedged user doesn't loop forever. `ErrQuit` sentinel for `q`. **No terminal manipulation, no cursor positioning, no ANSI sequences.** The kind of code that compiles on every platform Go runs on and behaves identically.
+
+> [The retry loop's cost-benefit] We allow 5 invalid answers before giving up. Why not 1? A user mistyping "yse" instead of "yes" shouldn't fail the whole setup. Why not 100? A scripted environment with broken stdin should fail quickly. 5 is the smallest number that feels human-tolerant.
+
+### The unattended Prompter — YAML keys as dotted paths
+
+```go
+func (p *unattendedPrompter) YesNo(question, defaultAnswer string) (bool, error) {
+    v, ok := p.lookup(question)  // walks "welcome.consent" through map
+    if !ok {
+        return false, fmt.Errorf("%w: %s", errKeyMissing, question)
+    }
+    if b, ok := v.(bool); ok { return b, nil }
+    ...
+}
+```
+
+Steps call `ctx.Prompt.YesNo("welcome.consent", "y")`. The stdin Prompter prints `welcome.consent [Y/n]` (slightly ugly but consistent with YAML keys). The unattended Prompter walks the dotted path through `map[string]any`. **Same call site, two completely different behaviors.**
+
+> [The interactive UX compromise] Showing "welcome.consent [Y/n]" instead of "Continue? [Y/n]" is uglier than the PS-era UX. Trade-off: zero risk of drift between display text and YAML key path. A future alpha can add a `prompter.YesNoNamed(key, display, default)` signature when interactive UX becomes a priority.
+
+### 17 subtests via table-driven matrix
+
+Eight yes/no variants × one cassette (`y/Y/yes/YES/n/N/no/NO`) + edge cases (`q`, empty-with-default, invalid retries, file not found, missing key) = comprehensive coverage in ~70 lines of test code.
+
+---
+
+## Chapter 16 — The identity package (per-folder git config)
+
+> [Why shell out to git instead of writing the INI by hand] Git's config format is INI-like but has subtleties (sections, subsections, includes, quoting rules). Writing the bytes ourselves means we'd have to handle all those subtleties to stay compatible with `git config --get`. Shelling out to `git config --file <path>` lets git own its own format — and `git config` is **idempotent by default** (updates the existing key rather than appending duplicates), which gives us idempotency for free.
+
+```go
+func setGitConfigKey(cfgPath, key, value string) error {
+    cmd := exec.Command("git", "config", "--file", cfgPath, key, value)
+    out, err := cmd.CombinedOutput()
+    if err != nil {
+        return fmt.Errorf("identity: git config %s=%q: %w (output: %s)", key, value, err, strings.TrimSpace(string(out)))
+    }
+    return nil
+}
+```
+
+The dependency on `git` being on PATH is OK: setup runs the prereqs check *first*, so by the time the identity step runs, we know `git` is installed.
+
+### Per-folder strategy decisions
+
+`<workspace>/.git/config` makes the workspace look like a degenerate git repo (no HEAD, no objects, just config). When users clone repos *inside* the workspace, those inner `.git/` dirs take precedence per git's standard lookup, so the workspace identity only applies to git operations run from the workspace itself (rare). For repos that need their own identity, that identity is still set normally in the cloned repo's own `.git/config`.
+
+> [Why not includeIf in ~/.gitconfig] That's the "cleanest" git-native approach but it pollutes the user's global config, which spec §2.B-4 explicitly avoids. The degenerate-workspace approach has a slightly weird semantic but a zero-pollution outcome.
+
+---
+
+## Chapter 17 — The wizard orchestrator
+
+> [The Step interface fits on a postcard] Two methods: `Title() string`, `Run(*Context) (string, error)`. Steps are pure data + a Run method. Adding a step in alpha.5 (folder taxonomy) or alpha.6 (repos) means writing one `.go` file and appending it to the `[]Step` slice in `setup.go`. No registry, no factory, no DI framework.
+
+### Run() in 25 lines
+
+```go
+func Run(steps []Step, ctx *Context) int {
+    for i, step := range steps {
+        fmt.Fprintf(ctx.Out, "\nStep %d/%d — %s\n", i+1, len(steps), step.Title())
+        action := normalizeAction(step.Title())
+        result, err := step.Run(ctx)
+        switch {
+        case errors.Is(err, prompt.ErrQuit):
+            fmt.Fprintln(ctx.Out, "  (user quit)")
+            _ = ctx.Session.Append(journal.Entry{Action: action, Result: "quit"})
+            return 130
+        case errors.Is(err, ErrDriftRejected):
+            _ = ctx.Session.Append(journal.Entry{Action: action, Result: "drift_rejected"})
+            return 2
+        case err != nil:
+            fmt.Fprintln(ctx.Out, "  error:", err)
+            _ = ctx.Session.Append(journal.Entry{Action: action, Result: "error"})
+            return 1
+        default:
+            if result != "" { fmt.Fprintln(ctx.Out, "  ✓ "+result) }
+            _ = ctx.Session.Append(journal.Entry{Action: action, Result: "ok"})
+        }
+    }
+    return 0
+}
+```
+
+The exit codes map 1:1 to spec §5.3. Each path writes exactly one journal entry per step. **Reading this function once tells you everything about how setup handles success, drift-rejection, quit, and errors.**
+
+### Two sentinel errors
+
+- `prompt.ErrQuit` — from any Prompter when the user types 'q'
+- `wizard.ErrDriftRejected` — from the Prereqs step when drift was found AND user declined
+
+Both checked via `errors.Is`. The errors-as-values pattern keeps the exit-code logic linear and exhaustive.
+
+---
+
+## Chapter 18 — The three steps (welcome, prereqs, identity)
+
+Each step is ~30-50 lines. The pattern:
+
+1. Print step-specific output via `ctx.Out`
+2. Call `ctx.Prompt.YesNo(...)` or `ctx.Prompt.Line(...)` with the dotted-path key
+3. On success, do the side effect (write git config, set ctx.Workspace, etc.)
+4. Return the `result` string (the wizard prints it with ✓) and `nil` error
+
+```go
+func (Welcome) Run(ctx *wizard.Context) (string, error) {
+    fmt.Fprintln(ctx.Out, "  Welcome to the ChannelAssist developer setup wizard.")
+    ...
+    ok, err := ctx.Prompt.YesNo("welcome.consent", "y")
+    if err != nil { return "", err }
+    if !ok       { return "", prompt.ErrQuit }
+    return "Consented.", nil
+}
+```
+
+The `Prereqs` step **reuses the doctor classification logic** via a small `classifyTool` helper (duplicated for now to avoid a cyclic dependency — `cli` already imports `wizard.steps`, so `steps` can't import `cli`). Refactor candidate flagged in code.
+
+---
+
+## Chapter 19 — The setup subcommand: 14/14 GREEN
+
+```go
+// internal/cli/setup.go
+func runSetup() int {
+    prompter := /* unattended or stdin */
+    sess, _ := journal.NewSession()
+    ctx := &wizard.Context{Out: os.Stdout, Prompt: prompter, Session: sess}
+    if setupUnattended {
+        if ws, _ := prompter.Line("identity.workspace_root", ""); ws != "" {
+            ctx.Workspace = ws
+        }
+    }
+    stepList := []wizard.Step{steps.Welcome{}, steps.Prereqs{}, steps.Identity{}}
+    exit := wizard.Run(stepList, ctx)
+    sess.End(exit)
+    return exit
+}
+```
+
+Cobra wiring is mechanical. The actual orchestration is the 8 lines inside `runSetup()`. **One call to `wizard.Run`** dispatches three steps and returns an exit code.
+
+### The bug we found at integration time
+
+First test run: 6/14 FAIL. The Welcome step was using `ctx.Prompt.YesNo("  Continue?", "y")` (the display text) instead of `ctx.Prompt.YesNo("welcome.consent", "y")` (the YAML key path). Unattended prompts couldn't find a key called `"  Continue?"`.
+
+Fix: change all step prompts to use the dotted-path key (matching the YAML structure). UX gets slightly uglier in interactive mode (we now print `welcome.consent` instead of `Continue?`) but the unattended path is bulletproof. Documented in chapter 15 as a deliberate trade-off.
+
+### A second bug — the test helper's YAML rendering
+
+After the first fix: 3/14 FAIL. The `renderUnattendedConfig` test helper was appending `workspace_root` to the END of the YAML file:
+
+```yaml
+identity:
+  name: "Test User"
+  email: "test@example.com"
+  # workspace_root is filled in...
+
+  workspace_root: "/tmp/..."   ← this blank line breaks the identity: block
+```
+
+YAML's indent-based parser saw the blank line + new indented key as breaking the `identity:` mapping → `workspace_root` became a top-level key → the unattended Prompter's `identity.workspace_root` lookup failed.
+
+Fix: inject `workspace_root` *immediately after* `email:` (no blank line in between). Test helper now does:
+
+```go
+emailLine := "  email: \"test@example.com\""
+body = strings.Replace(body, emailLine, emailLine+"\n  workspace_root: \""+workspace+"\"", 1)
+```
+
+> [TDD-shaped because the helper was test code, not impl code] Test infrastructure bugs are sometimes worse than production bugs — they erode trust in the test suite. The discipline: fix them visibly, document them, move on. The fix landed in the same commit as the implementation it enabled.
+
+### The final state
+
+```text
+$ go test -tags acceptance ./tests/acceptance/... -v
+--- PASS: TestVersion_PrintsSemverCommitAndBuildTime         (alpha.1)
+--- PASS: TestDoctor_AllToolsPresent_ExitsZero               (alpha.1)
+--- PASS: TestDoctor_RequiredToolMissing_ExitsTwo            (alpha.1)
+--- PASS: TestDoctor_RequiredToolBelowMin_ExitsTwo           (alpha.1)
+--- PASS: TestDoctor_OptionalToolMissing_ExitsZeroWithWarning (alpha.1)
+--- PASS: TestDoctor_ManifestMissing_ExitsOneToStderr        (alpha.1)
+--- PASS: TestDoctor_ManifestParseError_ExitsOneToStderr     (alpha.1)
+--- PASS: TestSetup_HappyPath_ExitsZero                      (alpha.2)
+--- PASS: TestSetup_PrereqsDrift_Acknowledged_ExitsZero      (alpha.2)
+--- PASS: TestSetup_PrereqsDrift_Rejected_ExitsTwo           (alpha.2)
+--- PASS: TestSetup_QuitAtPrompt_ExitsOneThirty              (alpha.2)
+--- PASS: TestSetup_ConfigMissing_ExitsOne                   (alpha.2)
+--- PASS: TestSetup_WritesGitIdentityToWorkspace             (alpha.2)
+--- PASS: TestSetup_JournalRecordsSession                    (alpha.2)
+PASS  (14/14)
+ok    github.com/ChannelAssist/ca-bootstrap/tests/acceptance    7.328s
+```
+
+**14/14.** alpha.2 functional surface = `setup` interactive wizard with `welcome` + `prereqs` + `identity` steps, action journal recording, prompt model with unattended-YAML support. The whole thing is roughly 600 lines of Go + 300 lines of test code + 17 fixtures.
+
+### What's deferred
+
+- **Real-binary smoke run on Windows** — we cross-compile but don't run there yet. Lands in the eventual release-pipeline PR.
+- **Tasks 9 (refactor)** — there's duplication between `cli/doctor.go`'s `classify` and `wizard/steps/prereqs.go`'s `classifyTool`. Worth extracting to a shared utility once alpha.3's `repair` lands and we have a third caller.
+
+---
+
+*End of alpha.2 implementation chapters. Next subsystem (alpha.3 — `repair`) gets its own spec / plan / RED / GREEN cycle.*

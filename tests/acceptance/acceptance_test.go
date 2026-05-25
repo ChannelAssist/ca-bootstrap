@@ -229,3 +229,165 @@ func TestDoctor_ManifestParseError_ExitsOneToStderr(t *testing.T) {
 		t.Errorf("doctor: expected stderr to mention 'parse' or 'yaml'. got:\n%s", stderr)
 	}
 }
+
+// ─────────────────────── alpha.2 setup tests ───────────────────────
+//
+// Tests for `ca-bootstrap setup` per spec docs/specs/2026-05-25-go-v2-0-alpha-2-spec.md.
+// All use --unattended --config since acceptance tests can't reliably
+// drive interactive stdin. Workspace_root is patched into the config
+// at runtime via a small templating helper so each test gets a clean
+// t.TempDir().
+
+// renderUnattendedConfig copies a fixture template into the test's
+// temp dir and injects identity.workspace_root with the given path.
+// Returns the path of the materialized file.
+//
+// The injection point matters: workspace_root must be a key UNDER
+// identity (2-space indent, no intervening blank line) or yaml.v3
+// will parse it as a top-level key and the unattended Prompter
+// won't find it under identity.workspace_root.
+func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string {
+	t.Helper()
+	src, err := os.ReadFile(fixture(t, fixtureName))
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", fixtureName, err)
+	}
+	body := string(src)
+	// Replace any existing `# workspace_root: ...` comment placeholder
+	// or just append a workspace_root line immediately after the last
+	// non-blank line under identity:. Simplest approach: split fixture
+	// content + inject right after the "email:" line.
+	if !strings.Contains(body, "workspace_root:") {
+		emailLine := "  email: \"test@example.com\""
+		body = strings.Replace(body, emailLine,
+			emailLine+"\n  workspace_root: \""+workspace+"\"", 1)
+	}
+	dst := filepath.Join(t.TempDir(), fixtureName)
+	if err := os.WriteFile(dst, []byte(body), 0644); err != nil {
+		t.Fatalf("write rendered fixture: %v", err)
+	}
+	return dst
+}
+
+// runSetup is like run() but for the setup subcommand. Sets up:
+//   - $CA_BOOTSTRAP_MANIFEST (override path)
+//   - $HOME (so the journal lands in the test sandbox)
+//   - $CA_BOOTSTRAP_ASCII=1 (so output is grep-able regardless of console)
+// Returns stdout, stderr, exit code.
+func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome string) (string, string, int) {
+	t.Helper()
+	cmd := exec.Command(binPath, "setup", "--unattended", "--config", configPath)
+	env := append(os.Environ(),
+		"CA_BOOTSTRAP_MANIFEST="+manifestPath,
+		"HOME="+fakeHome,
+		"CA_BOOTSTRAP_ASCII=1",
+	)
+	cmd.Env = env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exit := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exit = exitErr.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	return stdout.String(), stderr.String(), exit
+}
+
+func TestSetup_HappyPath_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-happy.yaml", workspace)
+	stdout, stderr, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup happy path: expected exit 0, got %d\nstdout:\n%s\nstderr:\n%s", exit, stdout, stderr)
+	}
+}
+
+func TestSetup_PrereqsDrift_Acknowledged_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-drift-acknowledge.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "one-missing-required.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup with acknowledged drift: expected exit 0, got %d", exit)
+	}
+}
+
+func TestSetup_PrereqsDrift_Rejected_ExitsTwo(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-drift-reject.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "one-missing-required.yaml"), cfg, fakeHome)
+	if exit != 2 {
+		t.Fatalf("setup with rejected drift: expected exit 2, got %d", exit)
+	}
+}
+
+func TestSetup_QuitAtPrompt_ExitsOneThirty(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-quit.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 130 {
+		t.Fatalf("setup with welcome consent=false: expected exit 130, got %d", exit)
+	}
+}
+
+func TestSetup_ConfigMissing_ExitsOne(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	_, stderr, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), "/tmp/this-config-does-not-exist-2026.yaml", fakeHome)
+	if exit != 1 {
+		t.Fatalf("setup with missing config: expected exit 1, got %d. stderr:\n%s", exit, stderr)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "config") {
+		t.Errorf("setup: expected stderr to mention 'config'. got:\n%s", stderr)
+	}
+}
+
+func TestSetup_WritesGitIdentityToWorkspace(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup happy path: expected exit 0, got %d", exit)
+	}
+	gitConfig := filepath.Join(workspace, ".git", "config")
+	body, err := os.ReadFile(gitConfig)
+	if err != nil {
+		t.Fatalf("read workspace .git/config: %v", err)
+	}
+	if !strings.Contains(string(body), "Test User") || !strings.Contains(string(body), "test@example.com") {
+		t.Errorf("workspace .git/config missing identity. got:\n%s", body)
+	}
+}
+
+func TestSetup_JournalRecordsSession(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup happy path: expected exit 0, got %d", exit)
+	}
+	journalPath := filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson")
+	body, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatalf("read journal at %s: %v", journalPath, err)
+	}
+	for _, want := range []string{"session_start", "identity_set", "session_end"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("journal missing %q. body:\n%s", want, body)
+		}
+	}
+}
