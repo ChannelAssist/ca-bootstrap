@@ -239,20 +239,28 @@ func TestDoctor_ManifestParseError_ExitsOneToStderr(t *testing.T) {
 // t.TempDir().
 
 // renderUnattendedConfig copies a fixture template into the test's
-// temp dir and substitutes WORKSPACE_PLACEHOLDER (if present) with
-// the given workspace path. Returns the path of the materialized file.
-// HOME override is set by the caller via os.Setenv to redirect the
-// journal (~/.ca-bootstrap/journal.ndjson) into the test sandbox.
+// temp dir and injects identity.workspace_root with the given path.
+// Returns the path of the materialized file.
+//
+// The injection point matters: workspace_root must be a key UNDER
+// identity (2-space indent, no intervening blank line) or yaml.v3
+// will parse it as a top-level key and the unattended Prompter
+// won't find it under identity.workspace_root.
 func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string {
 	t.Helper()
 	src, err := os.ReadFile(fixture(t, fixtureName))
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", fixtureName, err)
 	}
-	// Append workspace_root if missing.
 	body := string(src)
-	if !strings.Contains(body, "workspace_root") {
-		body += "\n  workspace_root: \"" + workspace + "\"\n"
+	// Replace any existing `# workspace_root: ...` comment placeholder
+	// or just append a workspace_root line immediately after the last
+	// non-blank line under identity:. Simplest approach: split fixture
+	// content + inject right after the "email:" line.
+	if !strings.Contains(body, "workspace_root:") {
+		emailLine := "  email: \"test@example.com\""
+		body = strings.Replace(body, emailLine,
+			emailLine+"\n  workspace_root: \""+workspace+"\"", 1)
 	}
 	dst := filepath.Join(t.TempDir(), fixtureName)
 	if err := os.WriteFile(dst, []byte(body), 0644); err != nil {
@@ -293,9 +301,9 @@ func TestSetup_HappyPath_ExitsZero(t *testing.T) {
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
 	cfg := renderUnattendedConfig(t, "unattended-happy.yaml", workspace)
-	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	stdout, stderr, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
 	if exit != 0 {
-		t.Fatalf("setup happy path: expected exit 0, got %d", exit)
+		t.Fatalf("setup happy path: expected exit 0, got %d\nstdout:\n%s\nstderr:\n%s", exit, stdout, stderr)
 	}
 }
 
