@@ -692,4 +692,145 @@ The next chapter builds the detection layer: the thing that takes a `Tool` struc
 
 ---
 
-*Chapter 7 — Building the detection interface — coming next task.*
+## Chapter 7 — Building the detection interface
+
+> [Separation of concerns] The detection layer has two parts: **pure logic** (regex matching, semver comparison — doesn't touch the OS) and **OS-touching code** (`exec.LookPath`, `exec.Command`). We separate them deliberately. Pure functions get table-driven unit tests with no fixtures. OS-touching code is harder to test (Chapter 8) — but only the smallest possible part of the system depends on it.
+
+### Three files
+
+```text
+internal/detect/
+├── detect.go              # Detector interface + Result type (NO OS code)
+├── version_parse.go       # ExtractVersion + VersionAtLeast (pure)
+├── version_parse_test.go  # 9-row + 6-row table tests for both
+├── detect_unix.go         # (next chapter)
+└── detect_windows.go      # (chapter after)
+```
+
+### The interface
+
+```go
+type Detector interface {
+    Probe(t manifest.Tool) Result
+}
+
+type Result struct {
+    ID         string
+    Found      bool
+    Version    string  // semver-ish; "" if Found=false
+    VersionRaw string  // raw output, for debugging
+    Err        error   // non-nil iff the probe failed unexpectedly
+}
+```
+
+Three states a probe can land in:
+
+| State | `Found` | `Version` | `Err` | Meaning |
+|---|---|---|---|---|
+| Not on PATH | `false` | `""` | `nil` | Clean signal: tool absent. Not an error. |
+| Present, parsed | `true` | `"1.2.3"` | `nil` | Happy path. |
+| Probe crashed | `?` | `?` | non-nil | Binary errored unexpectedly (very rare). |
+
+> [The "missing tool is not an error" choice] An absent tool is information, not failure. The CLI doesn't have a way to know *up front* whether `xyzzy` should exist — the manifest says "look for xyzzy"; the answer "no" is a fact. Returning an error here would force every probe-site to handle a "well-actually" path. Cleaner to encode "absent" as `Found=false, Err=nil`.
+
+### The pure functions
+
+`ExtractVersion(raw, regex string) string`:
+
+```go
+func ExtractVersion(raw, pattern string) string {
+    if pattern == "" {
+        pattern = defaultVersionRegex  // (\d+\.\d+(?:\.\d+)?)
+    }
+    re, err := regexp.Compile(pattern)
+    if err != nil {
+        return ""  // bad regex → empty string, not crash
+    }
+    match := re.FindStringSubmatch(raw)
+    if len(match) < 2 {
+        return ""
+    }
+    return strings.TrimSpace(match[1])
+}
+```
+
+> [Returning "" not error] If the version can't be parsed, callers treat it as "found but unknown version" — same display as a winget-fallback hit on Windows. Returning an error here would conflate "binary missing" with "parse failed," both of which the user can act on differently.
+
+`VersionAtLeast(got, min string) (bool, error)`:
+
+```go
+func VersionAtLeast(got, min string) (bool, error) {
+    if min == "" {
+        return true, nil  // no min = any version OK
+    }
+    g, err := parseTriplet(got)  // splits "1.21.5" → [1, 21, 5]
+    if err != nil { return false, ... }
+    m, err := parseTriplet(min)
+    if err != nil { return false, ... }
+    for i := 0; i < 3; i++ {
+        if g[i] != m[i] { return g[i] > m[i], nil }
+    }
+    return true, nil  // all three equal
+}
+```
+
+> [Why a [3]int triplet] Standard semver libraries are 1000s of LOC because they handle prerelease ordering, build metadata, range constraints, etc. We need *one* comparison: "is got at least min?" with both formatted as MAJOR.MINOR.PATCH. A fixed array compared component-by-component is 15 lines and zero external deps. YAGNI in action.
+
+> [How 2-part versions are handled] `parseTriplet("3.81")` returns `[3, 81, 0]` (missing parts default to 0). So `VersionAtLeast("3.81", "3.80.5")` correctly returns `true`. Same logic the manifest validator's relaxed regex enables.
+
+### The 15-row test suite
+
+`TestVersionAtLeast` runs 9 cases covering all the comparison branches plus the empty-min special case. `TestExtractVersion` runs 6 cases including the "bad regex returns empty" and "no match returns empty" branches:
+
+```text
+=== RUN   TestVersionAtLeast
+    --- PASS: TestVersionAtLeast/equal
+    --- PASS: TestVersionAtLeast/got_higher_patch
+    --- PASS: TestVersionAtLeast/got_lower_patch
+    --- PASS: TestVersionAtLeast/got_higher_major
+    --- PASS: TestVersionAtLeast/got_two-part_vs_three-part_min
+    --- PASS: TestVersionAtLeast/three-part_got_vs_two-part_min
+    --- PASS: TestVersionAtLeast/two-part_below_two-part
+    --- PASS: TestVersionAtLeast/prerelease_accepted
+    --- PASS: TestVersionAtLeast/empty_min_always_true
+=== RUN   TestExtractVersion
+    --- PASS: TestExtractVersion/go
+    --- PASS: TestExtractVersion/git
+    --- PASS: TestExtractVersion/make_2-part
+    --- PASS: TestExtractVersion/default_regex
+    --- PASS: TestExtractVersion/no_match_returns_empty
+    --- PASS: TestExtractVersion/invalid_regex_returns_empty
+```
+
+Table-driven tests are idiomatic Go: one `func Test...` runs N subtests via `t.Run(name, func)`. Each row is data — adding a new case is one line. When a future bug surfaces ("our regex broke on Java 17 output"), you add the failing row, watch it red, fix the function, watch it green.
+
+### The compile-error we hit (and a small refactor)
+
+First attempt put `Default() Detector { return defaultDetector{} }` in `detect.go`. The compiler complained:
+
+```text
+internal/detect/detect.go:31:9: cannot use defaultDetector{} as Detector value:
+    defaultDetector does not implement Detector (missing method Probe)
+```
+
+Right — `Probe` is platform-specific. It lives in `detect_unix.go` / `detect_windows.go`, which we haven't written yet. The compiler can't see a `Probe` method on `defaultDetector` because none exists in the current source set.
+
+**Fix:** keep `defaultDetector{}` and `Default()` out of `detect.go`. They'll live in the platform files (one definition per file, build-tag selected). `detect.go` is the *interface* and the *value type*. Implementations bring the receiver type with them.
+
+> [Tutorial-worthy because it's TDD-shaped] A real implementation would have written the function and added a stub Probe and shipped. With TDD pressure, the failure was immediate and the fix structural: own the platform polymorphism in the platform files. Cleaner architecture as a side effect of strict ordering.
+
+### Verifying state
+
+```text
+$ go test ./internal/detect/...
+ok  github.com/ChannelAssist/ca-bootstrap/internal/detect    0.323s
+$ go test ./...
+ok  github.com/ChannelAssist/ca-bootstrap/internal/detect
+ok  github.com/ChannelAssist/ca-bootstrap/internal/manifest
+```
+
+All pure-logic tests green. The interface compiles. Acceptance state unchanged at 1/7 — the detection layer can't do anything end-to-end without a platform implementation and a `doctor` subcommand. Both land in the next chapters.
+
+---
+
+*Chapter 8 — Probing the host on Unix — coming next task.*
