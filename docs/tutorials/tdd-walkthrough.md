@@ -928,4 +928,76 @@ The Windows implementation needs everything the Unix one has, plus a fallback fo
 
 ---
 
-*Chapter 9 — Probing the host on Windows — coming next task.*
+## Chapter 9 — Probing the host on Windows
+
+> [Why Windows needs more] On Unix, "is this tool installed" is essentially synonymous with "is its binary on PATH." Windows breaks that assumption — Microsoft Store apps, MSI installers, and Electron GUIs frequently install to `%LOCALAPPDATA%` or `Program Files\WindowsApps\` without touching the PATH. A tool can be very much "installed" and still fail `exec.LookPath`. So our Windows probe needs a fallback.
+
+### Two-stage detection
+
+```text
+1. exec.LookPath(command)         → on PATH?    yes → run --version → done
+2. winget list --id <command>     → installed?  yes → return Found=true, Version=""
+3. (neither)                                          → Found=false
+```
+
+```go
+//go:build windows
+
+func (windowsDetector) Probe(t manifest.Tool) Result {
+    r := Result{ID: t.ID}
+
+    // Primary: PATH lookup
+    if path, err := exec.LookPath(t.Detect.Command); err == nil {
+        return runVersionAt(t, r, path)
+    }
+
+    // Fallback: winget list
+    if wingetAvailable() && wingetHasPackage(t.Detect.Command) {
+        r.Found = true
+        r.VersionRaw = "winget: present (not on PATH)"
+        return r
+    }
+    return r
+}
+```
+
+`runVersionAt` does the same exec-and-parse as Unix; `wingetAvailable` and `wingetHasPackage` are small helpers.
+
+### The "Found but Version unknown" path
+
+When we hit the winget fallback, we know the tool is installed but we *can't* run it via `exec.Command` (it's not on PATH). So `Version` stays empty. Downstream:
+
+- `doctor`'s output will show the tool with "present, version unknown" rather than a ✓ with a version. We don't have enough info to decide "OK vs drift" against `min_version`, so we display it as "found, requires manual verification."
+
+For alpha.1 we tolerate this gracefully without doing extra work. alpha.2+ may add `paths:` declarations in the manifest (PS era had these — see `legacy/internal/manifest/tools.yaml` for the `claude-desktop` entry with `paths.windows: [...]`) to enable PATH-bypassing version probes via parsing `Get-AppPackage` or similar.
+
+### Verifying without a Windows host
+
+We're on macOS. We can't run the Windows tests directly. But Go's cross-compile lets us verify the code is *correct enough to compile* on a Windows target:
+
+```text
+$ GOOS=windows go vet ./...
+# (no output, exit 0)
+
+$ GOOS=windows GOARCH=amd64 go build -o /tmp/cab-check.exe ./cmd/ca-bootstrap
+# (exit 0)
+```
+
+`go vet` runs the full static-analysis suite (unreachable code, shadowed variables, suspicious type assertions, etc.) against the Windows view of the source — including `detect_windows.go` while `detect_unix.go` is invisible due to build tags. Catches typos and most refactor mistakes.
+
+Real Windows acceptance test runs land in the release pipeline (`release.yml` matrix builds + runs on `windows-latest`). For tonight, we have static analysis confidence; ship it.
+
+> [What we can't catch cross-platform] What we *can't* verify on macOS:
+> - `winget list` actually returning the expected text (their output format might drift)
+> - PATH semantics on Windows (`%PATH%` vs case-insensitive lookup)
+> - The "Microsoft protected your PC" SmartScreen flow at first run
+>
+> Those are deferred to the Windows smoke test in the eventual release PR.
+
+### Acceptance state
+
+Still 1/7. Both platform probes exist, but no `doctor` subcommand to invoke them. That's the entire content of Chapter 10 — the climactic chapter where the 6 remaining tests go GREEN at once.
+
+---
+
+*Chapter 10 — GREEN remaining tests: the doctor subcommand — coming next task.*
