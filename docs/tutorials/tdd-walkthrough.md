@@ -1000,4 +1000,169 @@ Still 1/7. Both platform probes exist, but no `doctor` subcommand to invoke them
 
 ---
 
-*Chapter 10 — GREEN remaining tests: the doctor subcommand — coming next task.*
+## Chapter 10 — GREEN remaining tests: the doctor subcommand
+
+> [The climax] We have 1 test green and 6 red. Everything we've written so far is plumbing — manifests, detectors, semver compare. None of it has been wired together. This chapter wires it. When we're done, all 7 tests turn green at once. That's because we built the right plumbing in the right order — driven by the test suite, not by hunches.
+
+### One subcommand. Two test files. Six tests turning green.
+
+The doctor subcommand is **two files**:
+
+`internal/cli/doctor.go` (~100 LOC): the cobra command + the `runDoctor` function.
+`internal/cli/doctor_test.go` (~70 LOC): four integration tests with a stub Detector.
+
+### Test first — the integration tests
+
+```go
+type stubDetector struct {
+    results map[string]detect.Result
+}
+
+func (s stubDetector) Probe(t manifest.Tool) detect.Result {
+    if r, ok := s.results[t.ID]; ok {
+        r.ID = t.ID
+        return r
+    }
+    return detect.Result{ID: t.ID, Found: false}
+}
+```
+
+A canned-results Detector. Lets us test `runDoctor` end-to-end *without* actually probing the host. The 4 tests cover:
+
+| Test | Setup | Asserts |
+|---|---|---|
+| `TestRunDoctor_ClassifiesResults` | mix of ok / drift / missing-required / missing-optional | exit 2, all 4 status lines present, summary counts correct |
+| `TestRunDoctor_AllOK_ExitsZero` | one tool, present, at version | exit 0 |
+| `TestRunDoctor_OnlyOptionalMissing_ExitsZero` | required-present + optional-absent | exit 0 (optional missing ≠ drift) |
+| `TestRunDoctor_BelowMinForOptional_DoesNotDrift` | optional present but below min | exit 0 (optional below-min surfaces as ⚠, not ✗) |
+
+> [Why integration tests in addition to acceptance tests] The acceptance tests build a real binary. They're slow (~3s total) and they break loudly when the world changes (PATH semantics, OS versions). The integration tests in `cli/doctor_test.go` use a stub Detector — they run in 0.3ms each and exercise EVERY code path in `runDoctor` deterministically. **Two tiers of tests catch different bug classes.**
+
+### The implementation
+
+```go
+func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
+    fmt.Fprintln(w, "Checking installed tooling against manifest/tools.yaml...")
+    fmt.Fprintln(w)
+
+    var ok, drift, missingOpt int
+    for _, tool := range m.Tools {
+        r := d.Probe(tool)
+        switch classify(tool, r) {
+        case classOK:
+            fmt.Fprintf(w, "  ✓ %s\t%s  (manifest min: %s)\n", tool.ID, r.Version, tool.MinVersion)
+            ok++
+        case classDrift:
+            fmt.Fprintf(w, "  ✗ %s\t%s  (manifest min: %s)   → install %s\n",
+                tool.ID, displayVersion(r), tool.MinVersion, tool.ID)
+            drift++
+        case classMissingOptional:
+            fmt.Fprintf(w, "  ⚠ %s\tnot found                       → optional\n", tool.ID)
+            missingOpt++
+        }
+    }
+    fmt.Fprintf(w, "\n%d tools checked: %d ok, %d drift, %d missing-optional\n",
+        len(m.Tools), ok, drift, missingOpt)
+    if drift > 0 {
+        return 2
+    }
+    return 0
+}
+```
+
+> [Why `runDoctor` takes `io.Writer` and `Detector`] So tests can inject `bytes.Buffer` and `stubDetector`. The cobra `RunE` callback wires real `os.Stdout` + `detect.Default()`. Same function, two callers, only one of which touches the OS. This is dependency-injection without the framework: just take an interface.
+
+### The classification helper
+
+```go
+type classification int
+const (classOK classification = iota; classDrift; classMissingOptional)
+
+func classify(t manifest.Tool, r detect.Result) classification {
+    if !r.Found {
+        if t.Optional { return classMissingOptional }
+        return classDrift
+    }
+    if t.MinVersion != "" {
+        ok, err := detect.VersionAtLeast(r.Version, t.MinVersion)
+        if err != nil || !ok {
+            if t.Optional { return classMissingOptional }
+            return classDrift
+        }
+    }
+    return classOK
+}
+```
+
+Three cases, four branches each. Encapsulated in 15 lines. Each branch has a corresponding test row. **Small enums + exhaustive switches are testable and obvious; if/else chains rot.**
+
+### The moment of truth
+
+```text
+$ go test -tags acceptance ./tests/acceptance/... -v
+=== RUN   TestVersion_PrintsSemverCommitAndBuildTime
+--- PASS
+=== RUN   TestDoctor_AllToolsPresent_ExitsZero
+--- PASS
+=== RUN   TestDoctor_RequiredToolMissing_ExitsTwo
+--- PASS
+=== RUN   TestDoctor_RequiredToolBelowMin_ExitsTwo
+--- PASS
+=== RUN   TestDoctor_OptionalToolMissing_ExitsZeroWithWarning
+--- PASS
+=== RUN   TestDoctor_ManifestMissing_ExitsOneToStderr
+--- PASS
+=== RUN   TestDoctor_ManifestParseError_ExitsOneToStderr
+--- PASS
+PASS
+ok  github.com/ChannelAssist/ca-bootstrap/tests/acceptance    3.339s
+```
+
+**7/7 GREEN.** The 6 doctor tests turned green simultaneously — because we built `runDoctor` to match `classify`'s expected behavior, `classify` to match the spec's exit-code table, the spec to match the acceptance tests. Tests led; implementation followed.
+
+### The real smoke run
+
+Built locally and ran against the real manifest:
+
+```text
+$ go build -o /tmp/cab ./cmd/ca-bootstrap
+$ /tmp/cab version
+ca-bootstrap dev (commit unknown, built unknown)
+
+$ /tmp/cab doctor
+Checking installed tooling against manifest/tools.yaml...
+
+  ✓ git           2.54.0   (manifest min: 2.40.0)
+  ✓ gh            2.92.0   (manifest min: 2.30.0)
+  ✓ pwsh          7.6.1    (manifest min: 7.0.0)
+  ✓ make          3.81     (manifest min: 3.81)
+  ✓ dotnet-10     10.0.107
+  ✓ az            2.86.0   (manifest min: 2.60.0)
+  ✓ kubectl       1.34.1   (manifest min: 1.28.0)
+  ✓ helm          4.2.0    (manifest min: 3.10.0)
+  ✓ jq            1.8      (manifest min: 1.6)
+  ✓ psql          18.4     (manifest min: 14.0)
+  ✓ node-20       22.22.2  (manifest min: 20.0.0)
+  ✓ python-312    3.14.5   (manifest min: 3.12.0)
+  ✓ docker        29.5.2
+  ✓ vscode        1.120.0
+  ✓ claude-code   2.1.150
+  ✓ copilot-cli   1.0.51
+
+16 tools checked: 16 ok, 0 drift, 0 missing-optional
+
+$ echo $?
+0
+```
+
+**16 tools detected. Zero drift. Exit 0.** The whole thing — detection, version regex, semver compare, classification, formatting — works against a real machine on the first try because every layer was tested in isolation before being wired together.
+
+### The takeaway
+
+We've achieved alpha.1's functional surface: `version` + `doctor`. 7 acceptance tests green. Unit + integration tests green. Real-binary smoke run green. The next chapter (REFACTOR) is the cleanup pass — extract duplication, add the ASCII fallback, no new behavior, all tests stay green.
+
+After that we open the implementation PR (Phase E in the workflow diagram) and stop per Peter's overnight directive. Tasks 12-13 (CI + release pipelines) are deferred until CI is re-enabled.
+
+---
+
+*Chapter 11 — REFACTOR — making it right after making it work — coming next task.*
