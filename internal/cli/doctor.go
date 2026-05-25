@@ -65,19 +65,19 @@ func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
 	var okCount, driftCount, missingOptionalCount int
 	for _, tool := range m.Tools {
 		r := d.Probe(tool)
-		switch classify(tool, r) {
-		case classOK:
+		switch detect.Classify(tool, r) {
+		case detect.ClassOK:
 			minNote := ""
 			if tool.MinVersion != "" {
 				minNote = fmt.Sprintf("  (manifest min: %s)", tool.MinVersion)
 			}
 			fmt.Fprintf(w, "  %s %s\t%s%s\n", glyphOK, tool.ID, r.Version, minNote)
 			okCount++
-		case classDrift:
+		case detect.ClassDrift:
 			fmt.Fprintf(w, "  %s %s\t%s  (manifest min: %s)   → install %s\n",
 				glyphFail, tool.ID, displayVersion(r), tool.MinVersion, tool.ID)
 			driftCount++
-		case classMissingOptional:
+		case detect.ClassMissingOptional:
 			fmt.Fprintf(w, "  %s %s\tnot found                       → optional\n", glyphWarn, tool.ID)
 			missingOptionalCount++
 		}
@@ -89,38 +89,6 @@ func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
 		return 2
 	}
 	return 0
-}
-
-// classification is the result of evaluating one tool's Result against
-// its manifest entry: OK, drift (required tool missing or below min),
-// or missing-optional (optional tool absent or below min).
-type classification int
-
-const (
-	classOK classification = iota
-	classDrift
-	classMissingOptional
-)
-
-func classify(t manifest.Tool, r detect.Result) classification {
-	// Not on PATH (or winget fallback didn't find it).
-	if !r.Found {
-		if t.Optional {
-			return classMissingOptional
-		}
-		return classDrift
-	}
-	// Found, but below min_version → drift (required) or warning (optional).
-	if t.MinVersion != "" {
-		ok, err := detect.VersionAtLeast(r.Version, t.MinVersion)
-		if err != nil || !ok {
-			if t.Optional {
-				return classMissingOptional
-			}
-			return classDrift
-		}
-	}
-	return classOK
 }
 
 // displayVersion returns "not found" if no version was parsed, else the version.

@@ -1,0 +1,10 @@
+# Fixture for the elevation acceptance tests (declined / skipped).
+# mock installer with id: needs-elevation triggers the elevation prompt.
+version: 1
+tools:
+  - id: mocktool
+    name: Mock Tool
+    detect:
+      command: definitely-not-real-xyzzy-binary
+    install:
+      any: { type: mock, id: needs-elevation }

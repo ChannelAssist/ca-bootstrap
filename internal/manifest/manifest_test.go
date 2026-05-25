@@ -84,3 +84,59 @@ func TestLoadDefault_HonorsEnvVarOverride(t *testing.T) {
 		t.Errorf("env override didn't take effect; got %+v", m.Tools)
 	}
 }
+
+func TestLoad_ParsesInstallBlock(t *testing.T) {
+	// The embedded manifest has rich install blocks; load it and assert
+	// a few representative tools parsed their install spec correctly.
+	t.Setenv("CA_BOOTSTRAP_MANIFEST", "")
+	m, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	byID := map[string]Tool{}
+	for _, tool := range m.Tools {
+		byID[tool.ID] = tool
+	}
+
+	// git: windows winget, macos brew, linux debian/rhel apt/dnf
+	git, ok := byID["git"]
+	if !ok {
+		t.Fatal("git not in manifest")
+	}
+	if git.Install.Windows == nil || git.Install.Windows.Type != "winget" || git.Install.Windows.ID != "Git.Git" {
+		t.Errorf("git windows install: want winget/Git.Git, got %+v", git.Install.Windows)
+	}
+	if git.Install.Macos == nil || git.Install.Macos.Type != "brew" {
+		t.Errorf("git macos install: want brew, got %+v", git.Install.Macos)
+	}
+	if git.Install.Linux == nil || git.Install.Linux.Debian == nil || git.Install.Linux.Debian.Type != "apt" {
+		t.Errorf("git linux debian install: want apt, got %+v", git.Install.Linux)
+	}
+
+	// pwsh macos: brew with cask:true
+	pwsh, ok := byID["pwsh"]
+	if !ok {
+		t.Fatal("pwsh not in manifest")
+	}
+	if pwsh.Install.Macos == nil || !pwsh.Install.Macos.Cask {
+		t.Errorf("pwsh macos should be cask:true, got %+v", pwsh.Install.Macos)
+	}
+
+	// dotnet-10 linux: any → script
+	dotnet, ok := byID["dotnet-10"]
+	if !ok {
+		t.Fatal("dotnet-10 not in manifest")
+	}
+	if dotnet.Install.Linux == nil || dotnet.Install.Linux.Any == nil || dotnet.Install.Linux.Any.Type != "script" {
+		t.Errorf("dotnet-10 linux any: want script, got %+v", dotnet.Install.Linux)
+	}
+
+	// claude-code: npm global:true
+	cc, ok := byID["claude-code"]
+	if !ok {
+		t.Fatal("claude-code not in manifest")
+	}
+	if cc.Install.Windows == nil || cc.Install.Windows.Type != "npm" || !cc.Install.Windows.Global {
+		t.Errorf("claude-code windows npm global, got %+v", cc.Install.Windows)
+	}
+}

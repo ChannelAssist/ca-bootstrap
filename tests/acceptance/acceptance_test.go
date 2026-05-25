@@ -391,3 +391,95 @@ func TestSetup_JournalRecordsSession(t *testing.T) {
 		}
 	}
 }
+
+// ─────────────────────── alpha.3 repair tests ───────────────────────
+//
+// repair per docs/specs/2026-05-25-go-v2-0-alpha-3-spec.md. The
+// elevation tests use --unattended --config to provide the
+// elevation_action answer without interactive stdin. The mock install
+// type (in fixture manifests) lets repair exercise install dispatch
+// without mutating the real system. Lock acquire/release/force-unlock
+// are unit-tested in internal/lock (flock can't be faked from a
+// separate test process).
+
+// runRepair invokes `repair --target <id>` with optional --unattended
+// --config. Sets HOME to redirect the journal + lock into the sandbox.
+func runRepair(t *testing.T, binPath, manifestPath, target, configPath, fakeHome string) (string, string, int) {
+	t.Helper()
+	args := []string{"repair", "--target", target}
+	if configPath != "" {
+		args = append(args, "--unattended", "--config", configPath)
+	}
+	cmd := exec.Command(binPath, args...)
+	cmd.Env = append(os.Environ(),
+		"CA_BOOTSTRAP_MANIFEST="+manifestPath,
+		"HOME="+fakeHome,
+		"CA_BOOTSTRAP_ASCII=1",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exit := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exit = exitErr.ExitCode()
+	} else if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	return stdout.String(), stderr.String(), exit
+}
+
+func TestRepair_TargetNotInManifest_ExitsOne(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	_, stderr, exit := runRepair(t, bin, fixture(t, "two-real-tools.yaml"), "nonexistent-tool", "", home)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 for unknown target, got %d. stderr:\n%s", exit, stderr)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "not") {
+		t.Errorf("expected stderr to explain target not found. got:\n%s", stderr)
+	}
+}
+
+func TestRepair_AlreadyInstalled_ExitsZeroNoOp(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	// git is present on every test runner; two-real-tools.yaml lists it
+	// with a low min_version, so repair should no-op with exit 0.
+	stdout, _, exit := runRepair(t, bin, fixture(t, "two-real-tools.yaml"), "git", "", home)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for already-installed git, got %d. stdout:\n%s", exit, stdout)
+	}
+}
+
+func TestRepair_InstallFailure_ExitsTwo(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	_, _, exit := runRepair(t, bin, fixture(t, "repair-mock-fail.yaml"), "mocktool", "", home)
+	if exit != 2 {
+		t.Fatalf("expected exit 2 for install failure, got %d", exit)
+	}
+}
+
+func TestRepair_ElevationDeclined_ExitsOneThirty(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	cfg := fixture(t, "unattended-repair-deny.yaml")
+	_, _, exit := runRepair(t, bin, fixture(t, "repair-mock-elevation.yaml"), "mocktool", cfg, home)
+	if exit != 130 {
+		t.Fatalf("expected exit 130 when elevation declined, got %d", exit)
+	}
+}
+
+func TestRepair_ElevationSkipChosen_ExitsTwoWithManual(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	cfg := fixture(t, "unattended-repair-skip.yaml")
+	stdout, _, exit := runRepair(t, bin, fixture(t, "repair-mock-elevation.yaml"), "mocktool", cfg, home)
+	if exit != 2 {
+		t.Fatalf("expected exit 2 when elevation skipped, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "manual") {
+		t.Errorf("expected manual-install summary in output. got:\n%s", stdout)
+	}
+}

@@ -5,7 +5,6 @@ import (
 
 	"github.com/ChannelAssist/ca-bootstrap/internal/detect"
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
-	"github.com/ChannelAssist/ca-bootstrap/internal/prompt"
 	"github.com/ChannelAssist/ca-bootstrap/internal/wizard"
 )
 
@@ -24,14 +23,14 @@ func (Prereqs) Run(ctx *wizard.Context) (string, error) {
 	var ok, drift, missingOptional int
 	for _, tool := range m.Tools {
 		r := det.Probe(tool)
-		switch classifyTool(tool, r) {
-		case classOK:
+		switch detect.Classify(tool, r) {
+		case detect.ClassOK:
 			ok++
 			fmt.Fprintf(ctx.Out, "    ✓ %s %s\n", tool.ID, r.Version)
-		case classDrift:
+		case detect.ClassDrift:
 			drift++
 			fmt.Fprintf(ctx.Out, "    ✗ %s missing-or-below-min  → run `ca-bootstrap repair --target %s` later\n", tool.ID, tool.ID)
-		case classMissingOptional:
+		case detect.ClassMissingOptional:
 			missingOptional++
 			fmt.Fprintf(ctx.Out, "    ⚠ %s not found (optional)\n", tool.ID)
 		}
@@ -50,38 +49,5 @@ func (Prereqs) Run(ctx *wizard.Context) (string, error) {
 		// Drift rejected — explicit error path the wizard maps to exit 2.
 		return "", wizard.ErrDriftRejected
 	}
-	// Drift acknowledged.
-	_ = prompt.ErrQuit // keep import meaningful — Quit handled by Prompter.YesNo above
 	return "Acknowledged. Run `repair` (alpha.3) to install missing tools.", nil
-}
-
-type classification int
-
-const (
-	classOK classification = iota
-	classDrift
-	classMissingOptional
-)
-
-// classifyTool — mirrors internal/cli/doctor.go classify(); duplicated
-// here to avoid a cyclic dep (cli → wizard → cli would form one).
-// Refactor candidate: move to internal/detect or a shared utility
-// pkg in alpha.3.
-func classifyTool(t manifest.Tool, r detect.Result) classification {
-	if !r.Found {
-		if t.Optional {
-			return classMissingOptional
-		}
-		return classDrift
-	}
-	if t.MinVersion != "" {
-		ok, err := detect.VersionAtLeast(r.Version, t.MinVersion)
-		if err != nil || !ok {
-			if t.Optional {
-				return classMissingOptional
-			}
-			return classDrift
-		}
-	}
-	return classOK
 }

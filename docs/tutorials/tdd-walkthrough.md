@@ -1746,3 +1746,96 @@ ok    github.com/ChannelAssist/ca-bootstrap/tests/acceptance    7.328s
 ---
 
 *End of alpha.2 implementation chapters. Next subsystem (alpha.3 — `repair`) gets its own spec / plan / RED / GREEN cycle.*
+
+---
+
+# Part III — alpha.3: the `repair` subsystem
+
+## Chapter 20 — Extending the manifest + RED for repair
+
+> [The first schema change to shipped data] alpha.1 embedded `tools.yaml` with the `install:` block parsed as an opaque `yaml.Node` (doctor never read it). alpha.3 needs to actually dispatch installers, so the install block becomes a **typed `InstallSpec`**. The risk: the embedded 16-tool manifest must keep parsing. The test `TestLoad_ParsesInstallBlock` is the guard — it asserts git's winget/brew/apt-dnf targets, pwsh's brew cask, dotnet's linux-any script, and claude-code's npm-global all survive the typing.
+
+> [Why typed now and not in alpha.1] YAGNI. alpha.1's doctor only needed `detect:`. Typing `install:` then would have been speculative. Now repair needs it, so now it gets typed — driven by an actual consumer, not a guess.
+
+### The mock install type
+
+repair's acceptance tests can't run real `brew install` / `apt-get install` — they'd mutate the CI runner and need network + privileges. The solution is data-driven: a fixture manifest declares `install: { any: { type: mock, id: fail } }`. The real installer dispatch (chapter 23) recognizes `type: mock` and returns canned outcomes (`fail` → Failed, `needs-elevation` → triggers the elevation flow). Production manifests never use `type: mock`, so production never hits it.
+
+> [Why data-driven mock vs env-var mock] An earlier draft used `$CA_BOOTSTRAP_INSTALLER_OVERRIDE=mock`. The data-driven approach is cleaner: the test's intent is visible in the fixture (`type: mock, id: fail`), not hidden in an env var, and there's no global-state flag to leak between tests.
+
+### 5 acceptance tests (RED)
+
+| Test | Drives | Expected |
+|---|---|---|
+| `TargetNotInManifest_ExitsOne` | `--target nonexistent` | exit 1 + stderr |
+| `AlreadyInstalled_ExitsZeroNoOp` | `--target git` (present) | exit 0, no install |
+| `InstallFailure_ExitsTwo` | mock `id: fail` | exit 2 |
+| `ElevationDeclined_ExitsOneThirty` | mock elevation + `elevation_action: deny` | exit 130 |
+| `ElevationSkipChosen_ExitsTwoWithManual` | mock elevation + `elevation_action: skip` | exit 2 + manual summary |
+
+Lock acquire/release/force-unlock are **unit-tested** in `internal/lock` (chapter 26), not acceptance-tested — `flock` is tied to an open file descriptor and can't be "held" by a separate test process via a marker file.
+
+All 5 fail because `repair` isn't a registered subcommand yet. RED gate satisfied.
+
+---
+
+*Chapters 21-28 (installer dispatch, elevation, lock, repair command) land with the implementation.*
+
+## Chapters 21-28 — alpha.3 implementation (condensed)
+
+> [Why condensed] alpha.1 and alpha.2 chapters are exhaustively detailed because they introduce the project's patterns. alpha.3 reuses those patterns (interface + platform build-tags + table-driven tests + outside-in acceptance). This section covers what's *new* in alpha.3 rather than re-explaining established mechanics.
+
+### Ch 21 — the install package shape
+
+Same platform-polymorphism as `detect`: a shared `genericInstaller` holds the cross-platform flow (mock short-circuit, elevation decision), delegating actual command execution to a build-tag-selected `targetExecutor` (`install_unix.go` / `install_windows.go`). The `Installer` interface has one method; `Default()` returns the platform impl.
+
+### Ch 22 — the mock install type
+
+`type: mock` in a fixture manifest short-circuits `genericInstaller.Install` to canned results (`id: fail` → Failed, `id: needs-elevation` → triggers the elevation decision). This is how acceptance tests exercise the install flow without running real `brew`/`apt`. Production manifests never use `type: mock`.
+
+### Ch 23 — command construction, tested without running
+
+`buildUnixCommand(target, elevated)` returns a *string* — pure, table-testable. The actual `exec.Command("sh", "-c", cmdline)` is a separate `runShell` step. Separating construction from execution means we unit-test the dangerous part (what command gets built, does `sudo` get prepended) without ever running an installer in CI.
+
+### Ch 24 — Windows elevation via PowerShell RunAs
+
+`install_windows.go` wraps elevated commands in `Start-Process -Verb RunAs` (the UAC trigger). Cross-compile-verified only — the real UAC flow needs a Windows host + interactive session, deferred to manual smoke when CI is re-enabled.
+
+### Ch 25 — elevation rules as a pure function
+
+`NeedsElevation(InstallTarget) bool` — 10 table-test rows. apt/dnf/snap → true; brew/npm/user-winget → false; script-with-sudo → true. Pure, no OS calls. The "should we even ask for a password?" decision is one testable function.
+
+### Ch 26 — cross-platform file locking, two implementations
+
+`internal/lock` mirrors `internal/detect`'s build-tag split: `lock_unix.go` uses `syscall.Flock(LOCK_EX|LOCK_NB)`; `lock_windows.go` uses `golang.org/x/sys/windows.LockFileEx`. The Unix path has 3 unit tests (acquire/release, second-acquire-fails, force-unlock). The Windows path is **cross-compile-verified only** — `flock` can't be faked across test processes, and there's no Windows runner yet.
+
+> [The one new dependency] `golang.org/x/sys` — the canonical low-level syscall package (Go-team maintained, stdlib-adjacent). Pinned to v0.20.0 to keep the go directive at 1.23 (v0.45 would have forced 1.25). This is the first dep added since cobra+yaml.v3; justified because raw `syscall.NewLazyDLL("kernel32.dll")` for `LockFileEx` is far more error-prone and equally untestable on macOS.
+
+### Ch 27 — the repair command: lock → find → probe → install → verify
+
+`runRepair()` is a linear pipeline with explicit exit codes at each gate:
+1. Acquire session lock (`--ForceUnlock` breaks stale) → exit 1 on failure
+2. Find `--target` in manifest → exit 1 if absent
+3. Probe — already installed? → exit 0 no-op
+4. Install via `install.Default().Install(tool, opts)`
+5. Switch on `Result.Status`: Installed → re-probe to verify → exit 0/2; Failed → 2; Declined → 130; Skipped → manual summary + 2
+6. Every outcome journaled (`install_attempt`/`install_success`/`install_failed`/`install_skipped`/`manual_install_required`)
+
+### Ch 28 — REFACTOR: paying down the alpha.2 classification debt
+
+alpha.2 flagged a duplication: `cli/doctor.go`'s `classify` and `wizard/steps/prereqs.go`'s `classifyTool` were identical. alpha.3 added a *third* would-be caller (`repair`). Rather than triple the copy, we extracted `detect.Classify(tool, Result) Classification` into the `detect` package (which both `cli` and `wizard/steps` already import — no cycle). Three call sites, one rule. All 19 acceptance + every unit test stayed green through the extraction — the safety net working as designed.
+
+### State at end of alpha.3 implementation
+
+```text
+$ go vet ./...                                  # exit 0
+$ go test ./...                                 # all unit/integration PASS
+$ go test -tags acceptance ./tests/...          # 19/19 PASS (7+7+5)
+$ GOOS=windows go vet ./...                     # exit 0
+```
+
+`ca-bootstrap` now has four verbs: `version`, `doctor`, `setup`, `repair`. The next subsystem (alpha.4 — `undo`) replays the action journal in reverse to uninstall what `repair` installed.
+
+---
+
+*End of Part III. alpha.4 (`undo`) is the next subsystem.*
