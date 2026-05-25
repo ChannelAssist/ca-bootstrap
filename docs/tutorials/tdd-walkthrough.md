@@ -349,4 +349,114 @@ Next: we write the test file. All 7 tests at once. They all fail because no subc
 
 ---
 
-*Chapter 4 — RED: writing all 7 tests at once — coming next task.*
+## Chapter 4 — RED: writing all 7 tests at once
+
+> [The moment of truth] We're about to write code that **deliberately fails to run**. This feels backwards. It isn't. The point of RED is to prove the test *can* fail — that it tests something real. A test that's always green is worse than no test: it gives you false confidence.
+
+### The build tag
+
+The very first line of `acceptance_test.go`:
+
+```go
+//go:build acceptance
+```
+
+This is a Go **build tag**. Without `-tags acceptance` on the command line, the file is invisible to the compiler. So `go test ./...` (plain) skips this file entirely. `go test -tags acceptance ./tests/acceptance/...` is what runs it.
+
+> [Why a build tag] Each acceptance test builds the whole binary in a temp dir. That's slow (a few hundred ms per test, ~3 seconds total). We don't want every `go test` during dev to pay that cost. Build tag gates it cleanly.
+
+### The `buildBinary` helper
+
+Each test compiles a fresh `ca-bootstrap` into `t.TempDir()`:
+
+```go
+func buildBinary(t *testing.T) string {
+    tmpDir := t.TempDir()
+    binPath := filepath.Join(tmpDir, "ca-bootstrap")  // ".exe" on Windows
+
+    cmd := exec.Command("go", "build",
+        "-ldflags", "-X main.Version=2.0.0-test -X main.Commit=testcommit -X main.BuildTime=2026-05-25T00:00:00Z",
+        "-o", binPath,
+        "./cmd/ca-bootstrap")
+    cmd.Dir = repoRoot  // walks ../../ from the test file
+    // ...
+}
+```
+
+> [Why each test rebuilds] At first glance it looks wasteful — wouldn't a `TestMain` that builds once be cheaper? Yes, but it would couple the tests to a shared binary location, and the test would depend on test-execution order. Each test owning its own build in `t.TempDir()` (which Go auto-cleans) means tests are hermetic and parallel-safe. Cost: ~3 extra seconds total. Worth it.
+
+### The `run` helper
+
+```go
+func run(t *testing.T, binPath string, manifest string, args ...string) (string, string, int) {
+    cmd := exec.Command(binPath, args...)
+    if manifest != "" {
+        cmd.Env = append(os.Environ(), "CA_BOOTSTRAP_MANIFEST="+manifest)
+    } else {
+        cmd.Env = append(os.Environ(), "CA_BOOTSTRAP_MANIFEST=/tmp/this-file-does-not-exist-2026-acceptance.yaml")
+    }
+    // capture stdout, stderr, exit code
+}
+```
+
+> [Why always set the env var] If `manifest` is empty, we set the env var to a path that definitely doesn't exist. This means tests **never** accidentally pick up the embedded default manifest (which doesn't exist yet anyway, but that changes in Task 6). Hermeticity > convenience.
+
+### The 7 tests in summary
+
+| # | Test | Drives spec § | Expected exit |
+|---|---|---|---|
+| 1 | `Version_PrintsSemverCommitAndBuildTime` | §5.2 | 0 |
+| 2 | `Doctor_AllToolsPresent_ExitsZero` | §6.3 | 0 |
+| 3 | `Doctor_RequiredToolMissing_ExitsTwo` | §6.3 | 2 |
+| 4 | `Doctor_RequiredToolBelowMin_ExitsTwo` | §6.3 | 2 |
+| 5 | `Doctor_OptionalToolMissing_ExitsZeroWithWarning` | §6.3 | 0 |
+| 6 | `Doctor_ManifestMissing_ExitsOneToStderr` | §6.4 | 1 (stderr) |
+| 7 | `Doctor_ManifestParseError_ExitsOneToStderr` | §6.4 | 1 (stderr) |
+
+### Watching them all fail
+
+```text
+$ go test -tags acceptance ./tests/acceptance/...
+--- FAIL: TestVersion_PrintsSemverCommitAndBuildTime (0.43s)
+--- FAIL: TestDoctor_AllToolsPresent_ExitsZero (0.42s)
+--- FAIL: TestDoctor_RequiredToolMissing_ExitsTwo (0.42s)
+--- FAIL: TestDoctor_RequiredToolBelowMin_ExitsTwo (0.42s)
+--- FAIL: TestDoctor_OptionalToolMissing_ExitsZeroWithWarning (0.43s)
+--- FAIL: TestDoctor_ManifestMissing_ExitsOneToStderr (0.45s)
+--- FAIL: TestDoctor_ManifestParseError_ExitsOneToStderr (0.42s)
+FAIL    github.com/ChannelAssist/ca-bootstrap/tests/acceptance    3.179s
+FAIL
+```
+
+**7/7 fail. None error.** That's the right kind of red.
+
+### Reading the failure messages
+
+Looking at one:
+
+```text
+acceptance_test.go:135: doctor: expected exit 2 (drift), got 0. stdout:
+    ca-bootstrap takes a fresh laptop to a working ChannelAssist
+    development environment.
+    ...
+```
+
+The binary built (no `build failed:` error). It ran. It exited 0. And it printed the **root command's `Long` help text** — because `doctor` isn't registered as a subcommand, so cobra falls back to "I don't know that command, here's the help."
+
+That's exactly the diagnostic we want. Every test is failing because **the feature is missing**, not because the test infrastructure is broken.
+
+### The RED Gate is open
+
+This is the explicit checkpoint the spec demands (§9.2): *all 7 tests must exist and fail for the right reason before any non-test code in `internal/` or `cmd/` is committed*.
+
+We're satisfied. Time to start making them pass — one at a time, smallest thing first, refactoring between greens.
+
+### The takeaway
+
+We just wrote 7 tests for code that doesn't exist. We ran them. They failed predictably. That sequence — write test, watch fail, *then* write code — is what separates TDD from "tests as afterthought."
+
+The next chapter implements the easiest one: `version`. ~10 lines of Go. One test goes from RED to GREEN. The other 6 stay RED. That's the correct intermediate state.
+
+---
+
+*Chapter 5 — GREEN test 1: the smallest possible subcommand — coming next task.*
