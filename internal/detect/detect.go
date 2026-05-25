@@ -7,7 +7,13 @@
 // implementation; tests pass in stub Detectors.
 package detect
 
-import "github.com/ChannelAssist/ca-bootstrap/internal/manifest"
+import (
+	"errors"
+	"os/exec"
+	"strings"
+
+	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
+)
 
 // Detector probes one tool against the host. Implementations are
 // platform-specific.
@@ -24,9 +30,39 @@ type Result struct {
 	Err        error  // non-nil iff the probe failed unexpectedly
 }
 
+// runVersionProbe invokes <path> <version_flag tokens...> and parses
+// the resulting output. Shared by both platform Detectors so the
+// version-flag dispatch + regex-extract logic lives in one place.
+//
+// Semantics:
+//   - Non-zero exit codes are tolerated (some tools exit !=0 from --version).
+//   - "process can't start" failures propagate via r.Err.
+//   - Empty Version means the regex didn't match; downstream display
+//     handles this as "found but unknown version."
+func runVersionProbe(path string, t manifest.Tool) Result {
+	r := Result{ID: t.ID}
+	versionFlag := t.Detect.VersionFlag
+	if versionFlag == "" {
+		versionFlag = "--version"
+	}
+	args := strings.Fields(versionFlag) // multi-word flags like "version --client"
+
+	cmd := exec.Command(path, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			r.Err = err
+			return r
+		}
+		// Non-zero exit OK — fall through with output we have.
+	}
+	r.Found = true
+	r.VersionRaw = strings.TrimSpace(string(out))
+	r.Version = ExtractVersion(r.VersionRaw, t.Detect.VersionRegex)
+	return r
+}
+
 // Default returns the platform-appropriate Detector. The concrete
 // type is defined and selected by the per-platform source files
 // (detect_unix.go, detect_windows.go) via Go build tags.
-//
-// Defined in this shared file but the underlying type comes from
-// the platform file currently being compiled.

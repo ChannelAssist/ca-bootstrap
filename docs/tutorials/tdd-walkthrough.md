@@ -1165,4 +1165,127 @@ After that we open the implementation PR (Phase E in the workflow diagram) and s
 
 ---
 
-*Chapter 11 — REFACTOR — making it right after making it work — coming next task.*
+## Chapter 11 — REFACTOR — making it right after making it work
+
+> [The discipline of NOT changing behavior] REFACTOR is the R in Red-Green-Refactor. Its rule is simple: **the test suite is the contract; the refactor must not change which tests pass**. We're allowed to clean up code; we're not allowed to alter externally observable behavior. The green test suite is the safety net.
+
+### What we noticed during implementation
+
+After Tasks 8 and 9 we had **duplicated logic** in `detect_unix.go` and `detect_windows.go`:
+
+```go
+// Both files had something like:
+versionFlag := t.Detect.VersionFlag
+if versionFlag == "" { versionFlag = "--version" }
+args := strings.Fields(versionFlag)
+cmd := exec.Command(path, args...)
+out, err := cmd.CombinedOutput()
+if err != nil {
+    var exitErr *exec.ExitError
+    if !errors.As(err, &exitErr) { r.Err = err; return r }
+}
+r.Found = true
+r.VersionRaw = strings.TrimSpace(string(out))
+r.Version = ExtractVersion(r.VersionRaw, t.Detect.VersionRegex)
+```
+
+That's 10 lines, identical, in two files. Duplication is debt that gets paid by every future refactor. Extract.
+
+### The extraction
+
+Move the shared block into `detect.go` (the build-tag-free file) as `runVersionProbe(path string, t manifest.Tool) Result`:
+
+```go
+// detect.go (shared)
+func runVersionProbe(path string, t manifest.Tool) Result {
+    r := Result{ID: t.ID}
+    // ... the 10 lines that used to live in both files ...
+    return r
+}
+```
+
+Then `detect_unix.go` shrinks to:
+
+```go
+func (unixDetector) Probe(t manifest.Tool) Result {
+    path, err := exec.LookPath(t.Detect.Command)
+    if err != nil { return Result{ID: t.ID} }
+    return runVersionProbe(path, t)
+}
+```
+
+And `detect_windows.go`:
+
+```go
+func (windowsDetector) Probe(t manifest.Tool) Result {
+    if path, err := exec.LookPath(t.Detect.Command); err == nil {
+        return runVersionProbe(path, t)
+    }
+    if wingetAvailable() && wingetHasPackage(t.Detect.Command) {
+        return Result{ID: t.ID, Found: true, VersionRaw: "winget: present (not on PATH)"}
+    }
+    return Result{ID: t.ID}
+}
+```
+
+Each platform Probe is now 3 lines (Unix) or 7 lines (Windows). The dispatch story is obvious from the structure: PATH lookup, then a per-platform fallback (Windows has winget; Unix doesn't).
+
+### Verifying behavior didn't change
+
+```text
+$ go test ./...                            # all PASS
+$ go test -tags acceptance ./tests/...     # 7/7 PASS
+$ GOOS=windows go vet ./...                # exit 0
+```
+
+Zero new test cases, zero changed test expectations — the refactor moved code without changing what the system does.
+
+### The ASCII glyph fallback
+
+Spec §6.2 calls out a `CA_BOOTSTRAP_ASCII` env var that swaps `✓`/`✗`/`⚠` for `[ok]`/`[FAIL]`/`[warn]`. We deferred this from Task 10 — it has no acceptance test (the spec didn't require one), so it's strictly a quality-of-life enhancement.
+
+Added to `doctor.go`:
+
+```go
+var (
+    glyphOK   = "✓"
+    glyphFail = "✗"
+    glyphWarn = "⚠"
+)
+
+func init() {
+    if os.Getenv("CA_BOOTSTRAP_ASCII") != "" {
+        glyphOK, glyphFail, glyphWarn = "[ok]", "[FAIL]", "[warn]"
+    }
+}
+```
+
+Then the format strings change from `"  ✓ %s..."` to `"  %s %s..."` with `glyphOK` as the first arg.
+
+> [Why this is REFACTOR-shaped, not feature-shaped] It changes a single rendering detail (glyphs) without changing classification logic, exit codes, or output structure. The acceptance tests still assert on the UTF-8 glyphs because that's the default; they don't care about the ASCII path. We could add an acceptance test for `CA_BOOTSTRAP_ASCII=1`, but spec didn't require one, and alpha.2 has bigger concerns.
+
+> [Smoke-verifying the fallback]
+> ```text
+> $ CA_BOOTSTRAP_ASCII=1 /tmp/cab doctor
+> Checking installed tooling against manifest/tools.yaml...
+>
+>   [ok] git    2.54.0  (manifest min: 2.40.0)
+>   [ok] gh     2.92.0  (manifest min: 2.30.0)
+>   ...
+> ```
+
+### What we deliberately didn't refactor
+
+- **The 8 manifest validation rules in `parseAndValidate`.** They're a flat sequence of guards; extracting helpers would obfuscate the order. Sometimes a long function is the right answer.
+- **The `runDoctor` function's switch statement.** Three cases, three branches. Extracting per-case helpers would scatter the loop body across the file.
+- **The glyph const naming.** `glyphOK` / `glyphFail` / `glyphWarn` are mutable package-level vars (so `init()` can swap them based on env). Some teams prefer immutability + `func glyph(c classification) string`. The mutable-with-init pattern is small and obvious for one feature; we'd revisit if more output styling lands.
+
+### The takeaway
+
+The implementation surface is **stable**: 7/7 acceptance tests green, all unit tests green, Windows cross-compile clean. Two refactors landed without changing observable behavior. The codebase is ~700 LOC of Go (cmd + internal + tests) plus ~300 lines of embedded manifest. Onto Phase E: open the implementation PR.
+
+After this PR opens, Tasks 12 (`ci.yml`) and 13 (`release.yml`) are **deferred** per the cost-min directive. Next is alpha.2 — `setup` + interactive prompts + action journal — which gets its own spec/plan/test/code cycle starting from scratch.
+
+---
+
+*End of alpha.1 implementation chapters. Chapters 12-15 (CI, release, README, tag) deferred until CI re-enabled.*
