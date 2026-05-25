@@ -1,0 +1,13 @@
+# Acceptance-test fixture for TestDoctor_OptionalToolMissing_ExitsZeroWithWarning.
+#
+# Missing tool with optional: true → ⚠ warning line + exit 0 (no required
+# drift). Distinct from a missing required tool which exits 2.
+version: 1
+tools:
+  - id: xyzzy-optional
+    name: Xyzzy Optional
+    optional: true
+    detect:
+      command: xyzzy-optional
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'

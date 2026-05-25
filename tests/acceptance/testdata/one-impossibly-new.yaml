@@ -1,0 +1,15 @@
+# Acceptance-test fixture for TestDoctor_RequiredToolBelowMin_ExitsTwo.
+#
+# `go` exists on the runner (we need it to build the binary under test).
+# min_version 99.0.0 is impossibly high, so the present-but-below-min
+# code path triggers — drift, not missing.
+version: 1
+tools:
+  - id: go
+    name: Go
+    optional: false
+    min_version: "99.0.0"
+    detect:
+      command: go
+      version_flag: version
+      version_regex: 'go(\d+\.\d+(?:\.\d+)?)'

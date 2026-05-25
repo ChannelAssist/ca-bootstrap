@@ -30,10 +30,21 @@ wiki/
 /y/
 /n/
 
-# Python (cab-tui)
+# Python (cab-tui, legacy/)
 cab-tui/.venv/
 cab-tui/**/__pycache__/
 cab-tui/**/*.egg-info/
 cab-tui/.pytest_cache/
 cab-tui/dist/
 cab-tui/build/
+
+# ─── Go (v2.0.0+ rewrite) ──────────────────────────────────────────────
+/dist/
+/bin/
+*.test
+*.out
+coverage.out
+ca-bootstrap                              # local-build binary (root)
+ca-bootstrap.exe                          # local-build binary (Windows)
+/cmd/ca-bootstrap/ca-bootstrap            # local-build binary (in cmd dir)
+/cmd/ca-bootstrap/ca-bootstrap.exe
