@@ -143,4 +143,142 @@ The next chapter scaffolds the Go module on top of this clean root. **No Go file
 
 ---
 
-*Chapter 2 — Scaffolding the Go module — coming next task.*
+## Chapter 2 — Scaffolding the Go module
+
+> [Why this is Chapter 2, not part of Chapter 1] We could have done the `git mv` and the `go mod init` in the same commit. We deliberately didn't. **Discrete commits = bisectable history.** If something goes sideways at any point in this build, `git bisect` should be able to tell us *exactly* which change broke it. A 95-rename commit is already noisy; mixing in a Go module declaration would make it worse.
+
+### What we did
+
+```bash
+go mod init github.com/ChannelAssist/ca-bootstrap
+go get github.com/spf13/cobra@latest
+go mod tidy
+```
+
+That produces:
+
+```text
+$ cat go.mod
+module github.com/ChannelAssist/ca-bootstrap
+
+go 1.23
+
+require github.com/spf13/cobra v1.10.2
+
+require (
+    github.com/inconshreveable/mousetrap v1.1.0 // indirect
+    github.com/spf13/pflag v1.0.9 // indirect
+)
+```
+
+> [Why `go 1.23`] `go mod init` set this to the locally-installed version (we're on 1.26 as of writing). The convention is to declare the **minimum** version, and 1.23 is what the spec promises support for. Manually setting it to 1.23 means a developer on an older 1.23 toolchain can still build the project.
+
+### The two scaffold files
+
+`cmd/ca-bootstrap/main.go` — the entry point. Three responsibilities:
+
+1. Hold the build-time ldflag-injected vars (`Version`, `Commit`, `BuildTime`).
+2. Pass them into the `cli` package via `cli.SetBuildInfo`.
+3. Invoke `cli.Execute()` and exit 1 if it returns an error.
+
+```go
+package main
+
+import (
+    "os"
+    "github.com/ChannelAssist/ca-bootstrap/internal/cli"
+)
+
+var (
+    Version   = "dev"
+    Commit    = "unknown"
+    BuildTime = "unknown"
+)
+
+func main() {
+    cli.SetBuildInfo(Version, Commit, BuildTime)
+    if err := cli.Execute(); err != nil {
+        os.Exit(1)
+    }
+}
+```
+
+> [Why `internal/`] Go treats any package under `internal/` as private to the module it belongs to. Nothing outside `github.com/ChannelAssist/ca-bootstrap/...` can import it. This is enforced by the toolchain, not by convention — `go build` will fail if you try. For a CLI that has no library consumers, putting everything except `main` under `internal/` is the canonical pattern.
+
+`internal/cli/root.go` — the cobra root command. Empty (no subcommands yet) but it compiles and renders `--help`:
+
+```go
+package cli
+
+import "github.com/spf13/cobra"
+
+var (
+    version   = "dev"
+    commit    = "unknown"
+    buildTime = "unknown"
+)
+
+func SetBuildInfo(v, c, t string) {
+    version, commit, buildTime = v, c, t
+}
+
+var rootCmd = &cobra.Command{
+    Use:   "ca-bootstrap",
+    Short: "ChannelAssist developer bootstrap",
+    Long:  `...`,
+}
+
+func Execute() error {
+    return rootCmd.Execute()
+}
+```
+
+> [Why setter instead of exported vars] `main` shouldn't reach into `cli` and mutate package-level state directly. The setter encodes the injection contract: `main` calls `SetBuildInfo(...)` once at startup, and `cli` is free to use those values internally. If we change the storage later (move to a struct, add validation), `main` doesn't notice.
+
+### Confirming it compiles
+
+```bash
+$ go build -o /tmp/ca-bootstrap-scaffold-check ./cmd/ca-bootstrap
+$ /tmp/ca-bootstrap-scaffold-check --help
+ca-bootstrap takes a fresh laptop to a working ChannelAssist
+development environment.
+
+v2.0.0-alpha.1 implements:
+  ca-bootstrap version    Print version, commit, build time
+  ca-bootstrap doctor     Diagnose installed tooling (read-only)
+
+Future alphas add setup (alpha.2), repair (alpha.3), undo (alpha.4),
+and self-update (beta.1). See docs/specs/2026-05-25-go-rewrite-pivot.md.
+$ rm -f /tmp/ca-bootstrap-scaffold-check
+```
+
+> [Why `--help` works without subcommands] Cobra's root command has a default `--help` handler that prints the `Long` description. We get this for free without writing any subcommand. Running the binary with no args also prints help (the root cmd has no `Run` function — cobra defaults to "show help"). Useful sanity check.
+
+### `.gitignore` updates
+
+Added a Go section to `.gitignore`:
+
+```text
+# ─── Go (v2.0.0+ rewrite) ──────────────────────────────────────────────
+/dist/
+/bin/
+*.test
+*.out
+coverage.out
+ca-bootstrap                              # local-build binary (root)
+ca-bootstrap.exe                          # local-build binary (Windows)
+/cmd/ca-bootstrap/ca-bootstrap            # local-build binary (in cmd dir)
+/cmd/ca-bootstrap/ca-bootstrap.exe
+```
+
+> [Why ignore the binary in two places] `go build ./cmd/ca-bootstrap` (no `-o`) drops the binary in the **current** directory. `go build -o ./bin/ca-bootstrap ./cmd/ca-bootstrap` puts it in `./bin/`. Both are valid local-dev patterns; both should be ignored. Release builds will go in `/dist/`.
+
+### The takeaway
+
+We now have a Go module that compiles and has a cobra root command. **No subcommands. No tests. No production code.** That's deliberate — we add things only when a failing test demands them, starting in Chapter 4.
+
+The next chapter does test fixtures *before* the first test, because tests depend on fixtures, and we want each commit to leave the tree in a state where every file makes sense in isolation.
+
+---
+
+*Chapter 3 — Why fixtures come before tests — coming next task.*
