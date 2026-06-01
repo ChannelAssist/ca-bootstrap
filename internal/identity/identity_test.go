@@ -81,3 +81,27 @@ func TestGetWorkspaceIdentity_EmptyOnUnset(t *testing.T) {
 		t.Errorf("expected empty strings, got name=%q email=%q", name, email)
 	}
 }
+
+func TestRestoreWorkspaceIdentity_EmptyPriorValueUnsetsKey(t *testing.T) {
+	// A workspace whose .git/config had user.name but no user.email
+	// before identity_set ran records Before={name:X, email:""}. Undo
+	// must restore name and UNSET email, not write an empty email key.
+	ws := t.TempDir()
+	if err := SetWorkspaceIdentity(ws, "Current", "current@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RestoreWorkspaceIdentity(ws, "Old Name", ""); err != nil {
+		t.Fatalf("RestoreWorkspaceIdentity: %v", err)
+	}
+	name, email, _ := GetWorkspaceIdentity(ws)
+	if name != "Old Name" {
+		t.Errorf("name = %q, want Old Name", name)
+	}
+	if email != "" {
+		t.Errorf("email = %q, want empty (unset, not blank value)", email)
+	}
+	body, _ := os.ReadFile(filepath.Join(ws, ".git", "config"))
+	if strings.Contains(string(body), "email =") {
+		t.Errorf("stray empty email key left in config:\n%s", body)
+	}
+}

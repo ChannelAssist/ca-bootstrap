@@ -105,13 +105,32 @@ func RestoreWorkspaceIdentity(workspaceRoot, name, email string) error {
 	if name == "" && email == "" {
 		return ClearWorkspaceIdentity(workspaceRoot)
 	}
-	if err := setGitConfigKey(cfgPath, "user.name", name); err != nil {
+	// Restore each key independently. A non-empty prior value is written
+	// back; an empty prior value means that key was unset before
+	// identity_set ran, so unset it rather than writing an empty value —
+	// otherwise undo leaves a stray `name = ` / `email = ` that never
+	// existed in the pre-set state.
+	if err := restoreOrUnsetKey(cfgPath, "user.name", name); err != nil {
 		return err
 	}
-	if err := setGitConfigKey(cfgPath, "user.email", email); err != nil {
+	if err := restoreOrUnsetKey(cfgPath, "user.email", email); err != nil {
 		return err
 	}
-	return nil
+	// One side may now be empty, leaving the other; tidy only drops the
+	// [user] header when nothing remains under it (no-op when a key stays).
+	return tidyEmptySection(cfgPath, "user")
+}
+
+// restoreOrUnsetKey writes value when non-empty, otherwise unsets the
+// key so it returns to its pre-set "absent" state. The unset is
+// best-effort: git exits 5 when the key is already absent, which is the
+// desired end state, so the error is ignored.
+func restoreOrUnsetKey(cfgPath, key, value string) error {
+	if value == "" {
+		_ = exec.Command("git", "config", "--file", cfgPath, "--unset", key).Run()
+		return nil
+	}
+	return setGitConfigKey(cfgPath, key, value)
 }
 
 // ClearWorkspaceIdentity removes user.name and user.email from the
