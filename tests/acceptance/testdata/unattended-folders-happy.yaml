@@ -1,0 +1,12 @@
+# Unattended config for alpha.5 folder-taxonomy acceptance tests.
+# Extends unattended-happy.yaml with folders.continue: true so the
+# new folders wizard step proceeds without prompting.
+welcome:
+  consent: true
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: true

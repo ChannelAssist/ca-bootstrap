@@ -82,6 +82,7 @@ func runSetup() int {
 		steps.Welcome{},
 		steps.Prereqs{},
 		steps.Identity{},
+		steps.Folders{},
 	}
 	exit := wizard.Run(stepList, ctx)
 	_ = sess.End(exit)

@@ -8,3 +8,5 @@ prereqs:
 identity:
   name: "Test User"
   email: "test@example.com"
+folders:
+  continue: true
