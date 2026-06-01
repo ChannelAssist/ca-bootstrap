@@ -8,3 +8,5 @@ identity:
   name: "Test User"
   email: "test@example.com"
   # workspace_root is filled in at test time via env var substitution.
+folders:
+  continue: true

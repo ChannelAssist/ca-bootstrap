@@ -1,8 +1,10 @@
 // Package main is the entry point for ca-bootstrap.
 //
 // ca-bootstrap takes a fresh laptop to a working ChannelAssist development
-// environment. v2.0.0-alpha.1 implements `version` and `doctor` (read-only).
-// See docs/specs/2026-05-25-go-v2-0-alpha-1-spec.md for the full spec.
+// environment. It implements `version`, `doctor` (read-only), `setup`
+// (wizard: prereqs, git identity, folder taxonomy), `repair` (install a
+// missing tool), and `undo` (reverse journalled changes).
+// See docs/specs/2026-05-25-go-rewrite-pivot.md for the roadmap.
 package main
 
 import (

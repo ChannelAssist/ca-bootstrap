@@ -1,0 +1,12 @@
+# Unattended config for alpha.4 undo acceptance tests.
+#
+# Used in combination with --force on the command line (which the spec
+# requires for unattended undo runs). The per-tool consent map covers
+# every mock tool ID the tests reference so --include-tools paths can
+# resolve a consent answer without prompting.
+undo:
+  proceed: true
+  uninstall:
+    mocktool: true
+    tool-a:   true
+    tool-b:   true

@@ -1,6 +1,7 @@
 package journal
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -69,14 +70,21 @@ func (s *Session) End(exitCode int) error {
 	return s.f.Close()
 }
 
-// write marshals an Entry to JSON, prepends timestamp and sessionID
-// if missing, and appends one line to the journal file.
+// write marshals an Entry to JSON, prepends timestamp, sessionID,
+// and entry ID if missing, and appends one line to the journal file.
+//
+// alpha.4: ID is populated when empty. This makes every entry
+// referenceable (e.g., undo's `entry_undone` markers point at the
+// reversed entry's ID).
 func (s *Session) write(e Entry) error {
 	if e.TS.IsZero() {
 		e.TS = time.Now().UTC()
 	}
 	if e.SessionID == "" {
 		e.SessionID = s.ID
+	}
+	if e.ID == "" {
+		e.ID = newID()
 	}
 	line, err := json.Marshal(e)
 	if err != nil {
@@ -86,6 +94,45 @@ func (s *Session) write(e Entry) error {
 		return fmt.Errorf("journal: write to %s: %w", s.path, err)
 	}
 	return nil
+}
+
+// Read parses the NDJSON journal file and returns all entries in file
+// order (chronological, since the file is append-only). Used by undo's
+// reverse walk.
+//
+// Returns nil, nil when the file doesn't exist — the caller treats
+// "no journal" as "nothing to reverse".
+func Read(path string) ([]Entry, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("journal: open %s: %w", path, err)
+	}
+	defer f.Close()
+
+	var out []Entry
+	scanner := bufio.NewScanner(f)
+	// Default scanner buffer caps at 64KB per line — journal lines
+	// shouldn't approach that, but raise the cap so a future entry
+	// type with a large Before/After payload doesn't silently truncate.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var e Entry
+		if err := json.Unmarshal(line, &e); err != nil {
+			return nil, fmt.Errorf("journal: parse %s line: %w", path, err)
+		}
+		out = append(out, e)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("journal: scan %s: %w", path, err)
+	}
+	return out, nil
 }
 
 // newID returns a short random session identifier. Not a full ULID

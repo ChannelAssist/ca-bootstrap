@@ -9,13 +9,16 @@ package acceptance
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 // buildBinary compiles ca-bootstrap into a temp directory and returns
@@ -481,5 +484,1096 @@ func TestRepair_ElevationSkipChosen_ExitsTwoWithManual(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(stdout), "manual") {
 		t.Errorf("expected manual-install summary in output. got:\n%s", stdout)
+	}
+}
+
+// ─────────────────────── alpha.4 undo tests ───────────────────────
+//
+// undo per docs/specs/2026-05-28-go-v2-0-alpha-4-spec.md. All tests
+// seed a pre-populated journal.ndjson in fakeHome/.ca-bootstrap/ then
+// invoke `ca-bootstrap undo` with appropriate flags. Tests stay
+// black-box: they read/write the journal as raw NDJSON rather than
+// importing internal/journal, so the test surface survives refactors
+// of the internal representation.
+//
+// RED gate: these tests fail until alpha.4 phase C lands. Initial
+// failure mode is `unknown command "undo" for "ca-bootstrap"` because
+// the subcommand isn't wired into root yet.
+
+// journalEntry is a local mirror of internal/journal.Entry used only
+// for seeding the journal in tests. Kept independent of the internal
+// type on purpose — acceptance tests should not import internal/.
+type journalEntry struct {
+	ID        string            `json:"id,omitempty"`
+	TS        time.Time         `json:"ts"`
+	SessionID string            `json:"sessionID"`
+	Action    string            `json:"action"`
+	Target    string            `json:"target,omitempty"`
+	Before    map[string]string `json:"before,omitempty"`
+	After     map[string]string `json:"after,omitempty"`
+	Result    string            `json:"result"`
+}
+
+// seedJournal writes the given entries as NDJSON to
+// fakeHome/.ca-bootstrap/journal.ndjson. Each entry becomes one line.
+// Creates the .ca-bootstrap directory if needed.
+func seedJournal(t *testing.T, fakeHome string, entries []journalEntry) string {
+	t.Helper()
+	dir := filepath.Join(fakeHome, ".ca-bootstrap")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("seedJournal: mkdir %s: %v", dir, err)
+	}
+	path := filepath.Join(dir, "journal.ndjson")
+	var buf bytes.Buffer
+	for _, e := range entries {
+		line, err := json.Marshal(e)
+		if err != nil {
+			t.Fatalf("seedJournal: marshal entry: %v", err)
+		}
+		buf.Write(line)
+		buf.WriteByte('\n')
+	}
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatalf("seedJournal: write %s: %v", path, err)
+	}
+	return path
+}
+
+// readJournal reads the NDJSON journal back as a slice of entries.
+// Used by post-undo assertions to verify entry_undone markers were
+// appended.
+func readJournal(t *testing.T, journalPath string) []journalEntry {
+	t.Helper()
+	body, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatalf("readJournal: %v", err)
+	}
+	var out []journalEntry
+	for _, line := range strings.Split(strings.TrimRight(string(body), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var e journalEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("readJournal: parse line %q: %v", line, err)
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// writeWorkspaceGitConfig writes a minimal .git/config to workspace
+// with the given user.name + user.email. Used to set up the pre-undo
+// state so identity reversal has something to clear/restore.
+func writeWorkspaceGitConfig(t *testing.T, workspace, name, email string) {
+	t.Helper()
+	gitDir := filepath.Join(workspace, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatalf("writeWorkspaceGitConfig: mkdir: %v", err)
+	}
+	body := "[user]\n\tname = " + name + "\n\temail = " + email + "\n"
+	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(body), 0o644); err != nil {
+		t.Fatalf("writeWorkspaceGitConfig: write: %v", err)
+	}
+}
+
+// runUndo invokes `ca-bootstrap undo` with optional extra args, setting
+// HOME to redirect journal + lock into the sandbox. Returns
+// (stdout, stderr, exit).
+func runUndo(t *testing.T, binPath, fakeHome string, extraArgs ...string) (string, string, int) {
+	t.Helper()
+	args := append([]string{"undo"}, extraArgs...)
+	cmd := exec.Command(binPath, args...)
+	cmd.Env = append(os.Environ(),
+		"HOME="+fakeHome,
+		"CA_BOOTSTRAP_ASCII=1",
+	)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exit := 0
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		exit = exitErr.ExitCode()
+	} else if err != nil {
+		t.Fatalf("runUndo failed: %v", err)
+	}
+	return stdout.String(), stderr.String(), exit
+}
+
+// identityEntry builds an identity_set entry for use in seedJournal.
+// Pass empty strings for Before to model "no prior identity recorded".
+func identityEntry(id, sessionID, workspace, beforeName, beforeEmail, afterName, afterEmail string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 26, 12, 0, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "identity_set",
+		Target:    filepath.Join(workspace, ".git", "config"),
+		Before:    map[string]string{"user.name": beforeName, "user.email": beforeEmail},
+		After:     map[string]string{"user.name": afterName, "user.email": afterEmail},
+		Result:    "ok",
+	}
+}
+
+// installSuccessEntry builds an install_success entry, including the
+// alpha.4 spec-amendment fields (after.method, after.package_id).
+func installSuccessEntry(id, sessionID, toolID, method, packageID string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 26, 12, 1, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "install_success",
+		Target:    toolID,
+		After:     map[string]string{"method": method, "package_id": packageID},
+		Result:    "ok",
+	}
+}
+
+// entryUndoneEntry builds an entry_undone marker referencing the
+// reversed entry's ID. Used to test "already undone" behavior.
+func entryUndoneEntry(id, sessionID, undoneID string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 27, 9, 0, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "entry_undone",
+		Target:    undoneID,
+		Result:    "ok",
+	}
+}
+
+// ──── the 19 alpha.4 acceptance tests ────
+
+func TestUndo_NoJournal_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	// No journal file exists.
+	stdout, _, exit := runUndo(t, bin, fakeHome)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 when no journal, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "nothing") && !strings.Contains(strings.ToLower(stdout), "no reversible") {
+		t.Errorf("expected stdout to say nothing/no reversible. got:\n%s", stdout)
+	}
+}
+
+func TestUndo_EmptyJournal_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	// Journal exists but holds only bookkeeping (session_start/end) — no reversible entries.
+	seedJournal(t, fakeHome, []journalEntry{
+		{ID: "s1", TS: time.Now().UTC(), SessionID: "sess1", Action: "session_start", Result: "ok"},
+		{ID: "s2", TS: time.Now().UTC(), SessionID: "sess1", Action: "session_end", Result: "exit_0"},
+	})
+	_, _, exit := runUndo(t, bin, fakeHome)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 when only bookkeeping entries, got %d", exit)
+	}
+}
+
+func TestUndo_IdentitySet_RestoresPreviousConfig(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	// Current state on disk: "New User". Journal says previous was "Old User".
+	writeWorkspaceGitConfig(t, workspace, "New User", "new@example.com")
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace,
+			"Old User", "old@example.com",
+			"New User", "new@example.com"),
+	})
+	// Unattended undo with --force so no prompt blocks.
+	_, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for identity restore, got %d", exit)
+	}
+	body, err := os.ReadFile(filepath.Join(workspace, ".git", "config"))
+	if err != nil {
+		t.Fatalf("read .git/config: %v", err)
+	}
+	if !strings.Contains(string(body), "Old User") || !strings.Contains(string(body), "old@example.com") {
+		t.Errorf(".git/config not restored to previous identity. got:\n%s", body)
+	}
+}
+
+func TestUndo_IdentitySet_EmptyBefore_RemovesUserBlock(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "Only User", "only@example.com")
+	// Before is empty → identity was set on a clean workspace; undo should remove the [user] block.
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace,
+			"", "",
+			"Only User", "only@example.com"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for empty-Before identity, got %d", exit)
+	}
+	body, _ := os.ReadFile(filepath.Join(workspace, ".git", "config"))
+	if strings.Contains(string(body), "Only User") {
+		t.Errorf("[user] block should have been removed but \"Only User\" still present. got:\n%s", body)
+	}
+}
+
+func TestUndo_IdentitySet_AlreadyAbsent_NoOp(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	// No .git/config exists. Reverser should noop, not fail.
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace,
+			"Old User", "old@example.com",
+			"New User", "new@example.com"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 when .git/config already absent, got %d", exit)
+	}
+}
+
+func TestUndo_ToolInstall_Default_Skips(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	// install_success entry present, but --include-tools NOT set → must not uninstall.
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	stdout, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with tools opt-in not set, got %d", exit)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "include-tools") && !strings.Contains(strings.ToLower(stdout), "skipped") && !strings.Contains(strings.ToLower(stdout), "kept") {
+		t.Errorf("expected stdout to indicate tools were kept / require --include-tools. got:\n%s", stdout)
+	}
+}
+
+func TestUndo_ToolInstall_IncludeTools_Uninstalls(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force", "--include-tools",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with mock uninstall, got %d", exit)
+	}
+	// Verify an entry_undone marker was appended targeting the install_success entry.
+	entries := readJournal(t, filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson"))
+	found := false
+	for _, e := range entries {
+		if e.Action == "entry_undone" && e.Target == "id-tool" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected entry_undone marker targeting id-tool. journal:\n%+v", entries)
+	}
+}
+
+func TestUndo_ToolInstall_MissingMethodField_Fails(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	// install_success entry without after.method — should fail per spec §7.2 step 1.
+	seedJournal(t, fakeHome, []journalEntry{
+		{
+			ID:        "id-tool",
+			TS:        time.Date(2026, 5, 26, 12, 1, 0, 0, time.UTC),
+			SessionID: "sess1",
+			Action:    "install_success",
+			Target:    "mocktool",
+			Result:    "ok",
+			// No After.
+		},
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force", "--include-tools",
+	)
+	if exit != 7 {
+		t.Fatalf("expected exit 7 (partial failure) for missing method, got %d", exit)
+	}
+}
+
+func TestUndo_InstallFailedEntry_NoOp(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		{ID: "id-fail", TS: time.Now().UTC(), SessionID: "sess1", Action: "install_failed", Target: "mocktool", Result: "error"},
+	})
+	_, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 (install_failed is not reversible / noop), got %d", exit)
+	}
+}
+
+func TestUndo_AlreadyUndone_SkipsReversedEntry(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "New User", "new@example.com")
+	// identity_set followed by entry_undone targeting it → second undo run must skip.
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace,
+			"Old User", "old@example.com",
+			"New User", "new@example.com"),
+		entryUndoneEntry("id-marker", "sess2", "id-identity"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with no remaining reversible entries, got %d", exit)
+	}
+	// The .git/config should be UNCHANGED — still "New User", since the original undo already ran.
+	body, _ := os.ReadFile(filepath.Join(workspace, ".git", "config"))
+	if !strings.Contains(string(body), "New User") {
+		t.Errorf("expected .git/config to remain at New User (already-undone entry should be skipped). got:\n%s", body)
+	}
+}
+
+func TestUndo_TargetIdentity_ScopesOnly(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "New User", "new@example.com")
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace, "Old", "old@e", "New User", "new@example.com"),
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--target", "identity",
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force", "--include-tools",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with --target identity, got %d", exit)
+	}
+	// identity entry should have a marker; tool entry should NOT.
+	entries := readJournal(t, filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson"))
+	identityUndone, toolUndone := false, false
+	for _, e := range entries {
+		if e.Action == "entry_undone" && e.Target == "id-identity" {
+			identityUndone = true
+		}
+		if e.Action == "entry_undone" && e.Target == "id-tool" {
+			toolUndone = true
+		}
+	}
+	if !identityUndone {
+		t.Errorf("expected entry_undone for id-identity, got none. journal:\n%+v", entries)
+	}
+	if toolUndone {
+		t.Errorf("--target identity should not have reversed id-tool, but found entry_undone marker")
+	}
+}
+
+func TestUndo_TargetToolID_ScopesOnly(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-a", "sess1", "tool-a", "mock", "tool-a-pkg"),
+		installSuccessEntry("id-b", "sess1", "tool-b", "mock", "tool-b-pkg"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--target", "tool:tool-a",
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force", "--include-tools",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with --target tool:tool-a, got %d", exit)
+	}
+	entries := readJournal(t, filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson"))
+	aUndone, bUndone := false, false
+	for _, e := range entries {
+		if e.Action == "entry_undone" && e.Target == "id-a" {
+			aUndone = true
+		}
+		if e.Action == "entry_undone" && e.Target == "id-b" {
+			bUndone = true
+		}
+	}
+	if !aUndone {
+		t.Errorf("expected entry_undone for id-a, got none")
+	}
+	if bUndone {
+		t.Errorf("--target tool:tool-a should not have reversed id-b")
+	}
+}
+
+func TestUndo_TargetUnknown_ExitsOneWithMsg(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	_, stderr, exit := runUndo(t, bin, fakeHome,
+		"--target", "tool:does-not-exist",
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 for unknown target, got %d", exit)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "no reversible") && !strings.Contains(strings.ToLower(stderr), "no match") && !strings.Contains(strings.ToLower(stderr), "not match") {
+		t.Errorf("expected stderr to explain no match. got:\n%s", stderr)
+	}
+}
+
+func TestUndo_LegacyEntryNoID_SkippedWithInfo(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "Legacy User", "legacy@example.com")
+	// Legacy entry — no ID field (the field is omitempty so the JSON line lacks "id").
+	seedJournal(t, fakeHome, []journalEntry{
+		{
+			// No ID — legacy.
+			TS:        time.Date(2026, 5, 20, 9, 0, 0, 0, time.UTC),
+			SessionID: "sess-legacy",
+			Action:    "identity_set",
+			Target:    filepath.Join(workspace, ".git", "config"),
+			Before:    map[string]string{"user.name": "Prior", "user.email": "prior@example.com"},
+			After:     map[string]string{"user.name": "Legacy User", "user.email": "legacy@example.com"},
+			Result:    "ok",
+		},
+	})
+	stdout, _, exit := runUndo(t, bin, fakeHome, "--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"), "--force")
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with legacy entry skipped, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "legacy") && !strings.Contains(strings.ToLower(stdout), "no id") && !strings.Contains(strings.ToLower(stdout), "skipping") {
+		t.Errorf("expected stdout to note the legacy/no-id skip. got:\n%s", stdout)
+	}
+	// .git/config must remain untouched.
+	body, _ := os.ReadFile(filepath.Join(workspace, ".git", "config"))
+	if !strings.Contains(string(body), "Legacy User") {
+		t.Errorf("legacy entry should NOT have been reversed; .git/config was modified. got:\n%s", body)
+	}
+}
+
+func TestUndo_LockHeld_ExitsOne(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("flock-based lock-holder is POSIX-only; Windows lock semantics covered in internal/lock unit tests")
+	}
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	// Acquire the lock in *this* test process via syscall.Flock so the
+	// spawned ca-bootstrap undo finds it genuinely held. Stale-file
+	// presence alone does NOT register as held for flock — alpha.3
+	// spec §6.4 — so this test must hold a real advisory lock to
+	// exercise the lock-busy code path.
+	lockDir := filepath.Join(fakeHome, ".ca-bootstrap")
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	lockPath := filepath.Join(lockDir, "session.lock")
+	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatalf("open lock: %v", err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("flock: %v", err)
+	}
+	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck — best-effort cleanup
+
+	_, stderr, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 when lock is held, got %d. stderr:\n%s", exit, stderr)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "lock") {
+		t.Errorf("expected stderr to mention lock state. got:\n%s", stderr)
+	}
+}
+
+func TestUndo_ForceUnlock_ClearsExistingLock_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		// Empty-Before identity is the simplest reversible action with no real side effects.
+		identityEntry("id-identity", "sess1", t.TempDir(), "", "", "User", "user@e"),
+	})
+	// Seed a stale lock that --ForceUnlock will clear.
+	lockDir := filepath.Join(fakeHome, ".ca-bootstrap")
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(lockDir, "session.lock"), nil, 0o600); err != nil {
+		t.Fatalf("seed lock: %v", err)
+	}
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--ForceUnlock",
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with --ForceUnlock + stale lock, got %d", exit)
+	}
+}
+
+func TestUndo_Unattended_RequiresForce(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	seedJournal(t, fakeHome, []journalEntry{
+		installSuccessEntry("id-tool", "sess1", "mocktool", "mock", "mocktool-pkg"),
+	})
+	_, stderr, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		// --force OMITTED
+	)
+	if exit != 1 {
+		t.Fatalf("expected exit 1 when --unattended without --force, got %d", exit)
+	}
+	if !strings.Contains(strings.ToLower(stderr), "--force") && !strings.Contains(strings.ToLower(stderr), "force") {
+		t.Errorf("expected stderr to mention --force requirement. got:\n%s", stderr)
+	}
+}
+
+func TestUndo_Unattended_WithForce_Runs(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "User", "user@example.com")
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace, "", "", "User", "user@example.com"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with --unattended --force, got %d", exit)
+	}
+}
+
+func TestUndo_AuditSnapshot_Written(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "User", "user@example.com")
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace, "", "", "User", "user@example.com"),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for audit snapshot test, got %d", exit)
+	}
+	// Look for a journal.ndjson.undone-<timestamp> file.
+	dir := filepath.Join(fakeHome, ".ca-bootstrap")
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir %s: %v", dir, err)
+	}
+	snapshotPattern := regexp.MustCompile(`^journal\.ndjson\.undone-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z$`)
+	found := false
+	for _, f := range files {
+		if snapshotPattern.MatchString(f.Name()) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		var names []string
+		for _, f := range files {
+			names = append(names, f.Name())
+		}
+		t.Errorf("expected an audit snapshot file matching %s. dir contents: %v", snapshotPattern, names)
+	}
+}
+
+// ─────────────────────── alpha.5 folder-taxonomy tests ───────────────────────
+//
+// folder taxonomy producer + reversers per
+// docs/specs/2026-05-28-go-v2-0-alpha-5-spec.md. Producer-side tests
+// drive `setup --unattended` and assert on workspace filesystem state.
+// Reverser-side tests seed journal entries (action: create_folder,
+// rename_folder, seed_readme, remove_empty_folder) and drive `undo`
+// to verify reversal behavior.
+
+// folderCreateEntry builds a create_folder journal entry for use in
+// seedJournal. Target is the full filesystem path of the created
+// folder (matches what the alpha.5 producer emits).
+func folderCreateEntry(id, sessionID, path string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "create_folder",
+		Target:    path,
+		Result:    "ok",
+	}
+}
+
+// renameFolderEntry builds a rename_folder entry. The Before map
+// carries from + to (the rename source and destination paths).
+func renameFolderEntry(id, sessionID, from, to string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 28, 12, 1, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "rename_folder",
+		Before:    map[string]string{"from": from, "to": to},
+		Result:    "ok",
+	}
+}
+
+// seedReadmeEntry builds a seed_readme entry. Target = the README
+// path on disk; Before.template = the embed key the producer copied
+// from. The reverser hashes embedded bytes from the template key and
+// compares to the on-disk file.
+func seedReadmeEntry(id, sessionID, target, templateKey string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 28, 12, 2, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "seed_readme",
+		Target:    target,
+		Before:    map[string]string{"template": templateKey},
+		Result:    "ok",
+	}
+}
+
+// removeEmptyFolderEntry builds a remove_empty_folder entry.
+func removeEmptyFolderEntry(id, sessionID, path string) journalEntry {
+	return journalEntry{
+		ID:        id,
+		TS:        time.Date(2026, 5, 28, 12, 3, 0, 0, time.UTC),
+		SessionID: sessionID,
+		Action:    "remove_empty_folder",
+		Target:    path,
+		Result:    "ok",
+	}
+}
+
+// requiredFolders is the alpha.5 required-folder set (matches
+// manifest/folders.yaml entries without optional:true). Tests assert
+// on these; if folders.yaml changes, update here.
+var requiredFolders = []string{
+	"ca-tools",
+	"ca-docs",
+	"ca-platform",
+	"cm-product",
+	"ca-training",
+	"ca-work-dirs",
+}
+
+func TestSetupFolders_HappyPath_CreatesAllRequired(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, stderr, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup with folders step: expected exit 0, got %d\nstderr:\n%s", exit, stderr)
+	}
+	for _, f := range requiredFolders {
+		if _, err := os.Stat(filepath.Join(workspace, f)); err != nil {
+			t.Errorf("expected required folder %q to exist: %v", f, err)
+		}
+		if _, err := os.Stat(filepath.Join(workspace, f, "README.md")); err != nil {
+			t.Errorf("expected README in %q: %v", f, err)
+		}
+	}
+}
+
+func TestSetupFolders_Idempotent_KeepsExisting(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	// Pre-create one required folder with a custom file inside.
+	preExisting := filepath.Join(workspace, "ca-tools")
+	if err := os.MkdirAll(preExisting, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(preExisting, "sentinel.txt")
+	if err := os.WriteFile(sentinel, []byte("preserve me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup idempotent run: expected exit 0, got %d", exit)
+	}
+	if _, err := os.Stat(sentinel); err != nil {
+		t.Errorf("pre-existing sentinel was destroyed: %v", err)
+	}
+	// Also asserts that the folders step ran (a sibling required folder exists with seeded README).
+	if _, err := os.Stat(filepath.Join(workspace, "ca-docs", "README.md")); err != nil {
+		t.Errorf("sibling required folder ca-docs/README.md missing — folders step didn't run: %v", err)
+	}
+}
+
+func TestSetupFolders_OptionalNotCreated(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup expected exit 0, got %d", exit)
+	}
+	// First, confirm the folders step actually ran (a required folder exists).
+	if _, err := os.Stat(filepath.Join(workspace, "ca-tools", "README.md")); err != nil {
+		t.Fatalf("folders step didn't run — ca-tools/README.md missing: %v", err)
+	}
+	// Then assert the optional folder was NOT auto-created.
+	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments")); !os.IsNotExist(err) {
+		t.Errorf("optional folder ca-experiments should not have been created (err=%v)", err)
+	}
+}
+
+func TestSetupFolders_RenamedFrom_MigratesPredecessor(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	// ca-experiments has renamed_from: experiments. Seed `experiments/` with content.
+	// (ca-experiments is optional in folders.yaml, so this exercises optional rename.)
+	old := filepath.Join(workspace, "experiments")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(old, "carryover.txt")
+	if err := os.WriteFile(sentinel, []byte("must survive rename"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup with rename: expected exit 0, got %d", exit)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments", "carryover.txt")); err != nil {
+		t.Errorf("rename should have moved 'experiments/carryover.txt' → 'ca-experiments/carryover.txt': %v", err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("old path 'experiments' should be gone after rename (err=%v)", err)
+	}
+}
+
+func TestSetupFolders_CollisionNonDirectory_ExitsOne(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	// Write a regular file where a required folder needs to go.
+	if err := os.WriteFile(filepath.Join(workspace, "ca-tools"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	stdout, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit == 0 {
+		t.Fatalf("expected non-zero exit on collision, got 0")
+	}
+	// Wizard step errors flow to ctx.Out (stdout) via wizard.go's
+	// `fmt.Fprintln(ctx.Out, "  error:", err)` path. Assert there.
+	if !strings.Contains(strings.ToLower(stdout), "not a directory") &&
+		!strings.Contains(strings.ToLower(stdout), "exists") {
+		t.Errorf("expected stdout to mention the collision. got:\n%s", stdout)
+	}
+}
+
+func TestSetupFolders_SkipReadmeWhenAlreadyExists(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	// Pre-create ca-tools/README.md with custom content.
+	if err := os.MkdirAll(filepath.Join(workspace, "ca-tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := "# Custom README — keep me\n"
+	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	if err := os.WriteFile(readmePath, []byte(sentinel), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup: expected exit 0, got %d", exit)
+	}
+	// Confirm folders step ran (a sibling required folder's README exists).
+	if _, err := os.Stat(filepath.Join(workspace, "ca-docs", "README.md")); err != nil {
+		t.Fatalf("folders step didn't run — ca-docs/README.md missing: %v", err)
+	}
+	body, _ := os.ReadFile(readmePath)
+	if string(body) != sentinel {
+		t.Errorf("pre-existing README was overwritten. got:\n%s", body)
+	}
+}
+
+func TestSetupFolders_ContinueDeclined_ExitsZeroSkip(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-folders-decline.yaml", workspace)
+	stdout, _, exit := runSetup(t, bin, fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("declined folders step should exit 0, got %d", exit)
+	}
+	// No required folder should be created.
+	for _, f := range requiredFolders {
+		if _, err := os.Stat(filepath.Join(workspace, f)); err == nil {
+			t.Errorf("folder %q should not have been created when folders.continue=false", f)
+		}
+	}
+	// stdout must show the folders step ran (and was declined) — distinguishes
+	// the GREEN-state "skip" path from the RED-state "step not present" path.
+	// "Folder structure" is the step title (matches PS-era); checking that
+	// avoids false positives from incidental "folder" mentions in temp paths
+	// (e.g. /var/folders/... on macOS).
+	if !strings.Contains(stdout, "Folder structure") {
+		t.Errorf("expected stdout to print the 'Folder structure' step header. got:\n%s", stdout)
+	}
+}
+
+// ── undo / reverser side ──
+
+func TestUndo_CreateFolder_Empty_Removes(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, "ca-tools")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seedJournal(t, fakeHome, []journalEntry{
+		folderCreateEntry("id-folder", "sess1", folder),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for empty-folder undo, got %d", exit)
+	}
+	if _, err := os.Stat(folder); !os.IsNotExist(err) {
+		t.Errorf("empty folder should have been removed (err=%v)", err)
+	}
+}
+
+func TestUndo_CreateFolder_NonEmpty_Refused(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, "ca-tools")
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Put a file inside so the folder is non-empty.
+	if err := os.WriteFile(filepath.Join(folder, "leave-me.txt"), []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedJournal(t, fakeHome, []journalEntry{
+		folderCreateEntry("id-folder", "sess1", folder),
+	})
+	stdout, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force", // --force = unattended gate, NOT the destructive-folder override
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 with refused folder, got %d. stdout:\n%s", exit, stdout)
+	}
+	// Folder should still be on disk; reverser refuses non-empty by default.
+	if _, err := os.Stat(folder); err != nil {
+		t.Errorf("non-empty folder was incorrectly removed: %v", err)
+	}
+	// stdout must mention the "not empty" / "use --force" path from the
+	// CreateFolder reverser. Generic "refused" can leak in via t.TempDir()
+	// paths (test name embedded), so we check for the reverser's
+	// literal detail string instead.
+	low := strings.ToLower(stdout)
+	if !strings.Contains(low, "not empty") && !strings.Contains(low, "use --force") {
+		t.Errorf("expected stdout to indicate non-empty refusal from CreateFolder reverser. got:\n%s", stdout)
+	}
+}
+
+func TestUndo_RenameFolder_ReverseRename(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	from := filepath.Join(workspace, "experiments")
+	to := filepath.Join(workspace, "ca-experiments")
+	// Simulate a previous renamed_from migration: `to` exists, `from` does not.
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(to, "data.txt"), []byte("payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	seedJournal(t, fakeHome, []journalEntry{
+		renameFolderEntry("id-rename", "sess1", from, to),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for rename reversal, got %d", exit)
+	}
+	if _, err := os.Stat(from); err != nil {
+		t.Errorf("rename should have moved back to %s: %v", from, err)
+	}
+	if _, err := os.Stat(to); !os.IsNotExist(err) {
+		t.Errorf("destination %s should be empty after rename reversal", to)
+	}
+}
+
+func TestUndo_RenameFolder_DestGone_NoOp(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	from := filepath.Join(workspace, "experiments")
+	to := filepath.Join(workspace, "ca-experiments")
+	// Neither path exists.
+	seedJournal(t, fakeHome, []journalEntry{
+		renameFolderEntry("id-rename", "sess1", from, to),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 (noop) when destination already gone, got %d", exit)
+	}
+	// Verify the noop produced an entry_undone marker — that distinguishes
+	// the GREEN-state noop reverser from RED-state "action not registered".
+	entries := readJournal(t, filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson"))
+	found := false
+	for _, e := range entries {
+		if e.Action == "entry_undone" && e.Target == "id-rename" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected entry_undone marker for id-rename (noop should still mark entry as handled). journal:\n%+v", entries)
+	}
+}
+
+func TestUndo_SeedReadme_TemplateMatch_Removes(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, buildBinary(t), fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup precondition failed (exit %d)", exit)
+	}
+	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	// Precondition: setup actually seeded the README. In RED this fails,
+	// which is the point — without alpha.5 the test can't proceed.
+	if _, err := os.Stat(readmePath); err != nil {
+		t.Fatalf("precondition failed: ca-tools/README.md not seeded by setup (err=%v)", err)
+	}
+	_, _, exit = runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("undo expected exit 0, got %d", exit)
+	}
+	if _, err := os.Stat(readmePath); !os.IsNotExist(err) {
+		t.Errorf("README that hash-matched the template should have been removed (err=%v)", err)
+	}
+}
+
+func TestUndo_SeedReadme_Diverged_Skipped(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
+	_, _, exit := runSetup(t, buildBinary(t), fixture(t, "two-real-tools.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup precondition failed (exit %d)", exit)
+	}
+	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	// Precondition — same as the match test.
+	if _, err := os.Stat(readmePath); err != nil {
+		t.Fatalf("precondition failed: ca-tools/README.md not seeded by setup (err=%v)", err)
+	}
+	if err := os.WriteFile(readmePath, []byte("# User-edited content — preserve me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("undo with diverged README: expected exit 0 (skip not fail), got %d", exit)
+	}
+	if _, err := os.Stat(readmePath); err != nil {
+		t.Errorf("user-edited README should have been preserved: %v", err)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "diverged") &&
+		!strings.Contains(strings.ToLower(stdout), "preserv") {
+		t.Errorf("expected stdout to mention the divergence/preservation. got:\n%s", stdout)
+	}
+}
+
+func TestUndo_RemoveEmptyFolder_Recreates(t *testing.T) {
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	folder := filepath.Join(workspace, "ca-tools")
+	// Folder does not exist; the entry says it was previously removed.
+	seedJournal(t, fakeHome, []journalEntry{
+		removeEmptyFolderEntry("id-removed", "sess1", folder),
+	})
+	_, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("expected exit 0 for remove_empty_folder recreation, got %d", exit)
+	}
+	if _, err := os.Stat(folder); err != nil {
+		t.Errorf("folder should have been recreated: %v", err)
+	}
+}
+
+func TestUndo_AuditSnapshot_FailureWarnsNotFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX-only: relies on chmod to force a copy failure")
+	}
+	bin := buildBinary(t)
+	fakeHome := t.TempDir()
+	workspace := t.TempDir()
+	writeWorkspaceGitConfig(t, workspace, "User", "user@example.com")
+	seedJournal(t, fakeHome, []journalEntry{
+		identityEntry("id-identity", "sess1", workspace, "", "", "User", "user@example.com"),
+	})
+	// Pre-create session.lock so the binary can OPEN it for write
+	// (file already exists; flock on an existing fd doesn't need dir
+	// write perm). After the chmod, *creating* new files in the dir
+	// (the snapshot copy) fails — that's the failure we're exercising.
+	dir := filepath.Join(fakeHome, ".ca-bootstrap")
+	if err := os.WriteFile(filepath.Join(dir, "session.lock"), nil, 0o600); err != nil {
+		t.Fatalf("seed lock: %v", err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	defer func() { _ = os.Chmod(dir, 0o755) }() // let TempDir cleanup work
+
+	stdout, _, exit := runUndo(t, bin, fakeHome,
+		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
+		"--force",
+	)
+	if exit != 0 {
+		t.Fatalf("snapshot failure should be warn-not-fail; got exit %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "snapshot") {
+		t.Errorf("expected stdout to mention the snapshot failure/warning. got:\n%s", stdout)
 	}
 }
