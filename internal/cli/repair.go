@@ -131,7 +131,14 @@ func runRepair() int {
 	case install.Installed:
 		// Post-install verification (spec §5.1).
 		if detect.Classify(tool, det.Probe(tool)) == detect.ClassOK {
-			_ = sess.Append(journal.Entry{Action: "install_success", Target: tool.ID, Result: "ok"})
+			// alpha.4 spec §7.2: include after.method + after.package_id
+			// so undo's tool reverser can dispatch the matching uninstall.
+			_ = sess.Append(journal.Entry{
+				Action: "install_success",
+				Target: tool.ID,
+				After:  map[string]string{"method": res.Method, "package_id": res.PackageID},
+				Result: "ok",
+			})
 			fmt.Printf("%s %s installed.\n", glyphOK, tool.ID)
 			exit = 0
 		} else {
