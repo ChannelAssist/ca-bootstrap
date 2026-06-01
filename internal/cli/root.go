@@ -31,12 +31,14 @@ var rootCmd = &cobra.Command{
 	Long: `ca-bootstrap takes a fresh laptop to a working ChannelAssist
 development environment.
 
-v2.0.0-alpha.1 implements:
+Commands:
   ca-bootstrap version    Print version, commit, build time
   ca-bootstrap doctor     Diagnose installed tooling (read-only)
+  ca-bootstrap setup      Interactive wizard: prereqs, git identity, folders
+  ca-bootstrap repair     Install a missing tool by id from the manifest
+  ca-bootstrap undo       Reverse changes recorded in the action journal
 
-Future alphas add setup (alpha.2), repair (alpha.3), undo (alpha.4),
-and self-update (beta.1). See docs/specs/2026-05-25-go-rewrite-pivot.md.`,
+self-update lands in beta.1. See docs/specs/2026-05-25-go-rewrite-pivot.md.`,
 }
 
 // Execute runs the cobra dispatcher. Returns non-nil if a subcommand

@@ -6,6 +6,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added (Go rewrite — v2.0.0-alpha.5)
+
+- **Workspace folder taxonomy** in the `setup` wizard. New step (`Folder structure`) runs after identity: reads `internal/manifest/folders.yaml`, creates each required folder under the workspace, migrates a `renamed_from:` predecessor (scalar OR list, most-recent → oldest) into the new path so prior-naming carryover folders move with their contents, and seeds a per-folder `README.md` from embedded templates. Optional folders are not auto-created but DO get migrated when a predecessor is on disk. Spec: [`docs/specs/2026-05-28-go-v2-0-alpha-5-spec.md`](docs/specs/2026-05-28-go-v2-0-alpha-5-spec.md). 14/14 acceptance tests GREEN. (AB#40189)
+- **Four new undo reversers** registered in the alpha.4 dispatch map: `create_folder`, `rename_folder`, `seed_readme`, `remove_empty_folder`. CreateFolder refuses non-empty folders unless `--include-folders` is set (matches PS-era). SeedReadme uses an SHA-256 hash discipline: removes only when the on-disk content matches the embedded template — preserves user edits otherwise.
+- **`internal/folders`** package with embedded README templates at `internal/folders/templates/folder-readmes/`. Copied from `legacy/templates/folder-readmes/`; the two trees diverge from this point.
+- **`internal/manifest.FoldersManifest` + `LoadFoldersDefault()`** — parses `manifest/folders.yaml` from the embed (or `$CA_BOOTSTRAP_FOLDERS` override). `renamed_from` polymorphism (scalar vs list) handled via yaml.v3's `UnmarshalYAML` hook.
+- **`--include-folders`** flag on `undo` (CLI). Split from the existing `--force` to disentangle the unattended-mode gate from the destructive-folder override (PS-era convention).
+
+### Changed (Go rewrite — v2.0.0-alpha.5)
+
+- **`undo.Options.IncludeFolders`** field; CreateFolder reverser reads this instead of the overloaded `Force`.
+- `tests/acceptance/testdata/unattended-happy.yaml` + `unattended-drift-acknowledge.yaml` gain `folders.continue: true` so existing setup tests survive the new folders step.
+
+### Added (Go rewrite — v2.0.0-alpha.4)
+
+- **`ca-bootstrap undo`** — reverses changes recorded in the action journal. Closes phase D of the pivot roadmap (alpha.3 shipped `repair --target`; alpha.4 ships `undo`). Scoped to action types alpha.1–3 actually emit: `identity_set` (restores or removes the workspace `.git/config` `[user]` block) and `install_success` (uninstalls via the recorded package manager — opt-in via `--include-tools`, with per-tool consent). Honors `--target identity | tools | tool:<id>`, `--ForceUnlock`, `--force`, and `--unattended --config`. Spec: [`docs/specs/2026-05-28-go-v2-0-alpha-4-spec.md`](docs/specs/2026-05-28-go-v2-0-alpha-4-spec.md). 20/20 acceptance tests GREEN. (AB#40188)
+- **Append-only `entry_undone` journal marker.** The PS-era `Set-CABEntryUndone` model (which mutates a YAML doc in place) does not port to the Go journal's append-only NDJSON. Successful reversals append a new `entry_undone` entry whose `target` carries the reversed entry's ID. Future undo runs skip any entry that already has a matching `entry_undone` marker.
+- **`Entry.ID`** field on journal entries (random 20-hex from `crypto/rand`, populated at `Append` time). Entries from pre-alpha.4 sessions without an ID are skipped by `undo` with an info-level message — production users have no such entries since no release shipped before alpha.1.
+- **`journal.Read(path)`** — parse the NDJSON journal back into a slice of `Entry`. The undo orchestrator's only journal reader.
+- **`install.Uninstall(method, packageID)`** — alpha.4 counterpart of `Install`. Dispatches to `winget uninstall` / `brew uninstall` / `apt-get remove` / `dnf remove` / `snap remove` / `npm uninstall -g`, plus the mock outcome for acceptance tests.
+- **`identity.RestoreWorkspaceIdentity` + `ClearWorkspaceIdentity`** — write or remove the workspace `.git/config` `[user]` block; the empty-section tidy-up keeps the file matching "as-if identity_set never ran".
+
+### Changed (Go rewrite — v2.0.0-alpha.4)
+
+- **`install_success` journal entry** now carries `after.method` (the package manager that succeeded) and `after.package_id`. Backwards-compatible additive change. Required so `undo`'s tool reverser can dispatch the matching uninstall.
+
 ### Project status
 
 - **2026-05-25 — Go-rewrite pivot.** The PowerShell implementation of `ca-bootstrap` is being archived in place and replaced by a Go CLI distributed as pre-built static binaries per platform via GitHub Releases. Trigger: three independent first-use bugs surfaced in a single session (broken Windows install one-liner, mojibake'd `make` output, frozen `./make.ps1 setup`), all symptoms of a recurring stdio/console/encoding bug class that six prior commits have addressed without eliminating. Rationale and roadmap: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md). No new features will land on the PowerShell codebase; the last PS-era commit is tagged for archival reference. Process going forward: spec → tests → code, strict order. Authored by Peter Giannopoulos with Claude Code (AI-assisted).
