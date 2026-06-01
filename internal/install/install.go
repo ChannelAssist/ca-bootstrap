@@ -216,19 +216,33 @@ func Uninstall(method, packageID string) error {
 // nil for an unknown method so the caller surfaces "manual removal
 // required" rather than running something unexpected.
 func buildUninstallCommand(method, packageID string) (string, []string) {
+	// Defense-in-depth against argv flag smuggling: a packageID that
+	// begins with '-' would be parsed as an option by the package
+	// manager rather than a package name. Refuse it — the caller then
+	// surfaces "manual removal required". Package IDs normally come
+	// from the trusted manifest, but they flow through the journal
+	// (a user-writable file) before reaching undo, so validate here.
+	if strings.HasPrefix(packageID, "-") {
+		return "", nil
+	}
 	switch method {
 	case "winget":
+		// winget does not reliably honor a "--" separator, so the
+		// leading-dash rejection above is the defense here.
 		return "winget", []string{"uninstall", "--silent", packageID}
 	case "brew":
+		// brew likewise does not honor "--"; rely on the rejection.
 		return "brew", []string{"uninstall", packageID}
 	case "apt":
-		return "sudo", []string{"apt-get", "remove", "-y", packageID}
+		// apt-get/dnf/npm honor "--" to end option parsing.
+		return "sudo", []string{"apt-get", "remove", "-y", "--", packageID}
 	case "dnf":
-		return "sudo", []string{"dnf", "remove", "-y", packageID}
+		return "sudo", []string{"dnf", "remove", "-y", "--", packageID}
 	case "snap":
+		// snap does not honor "--"; rely on the rejection.
 		return "sudo", []string{"snap", "remove", packageID}
 	case "npm":
-		return "npm", []string{"uninstall", "-g", packageID}
+		return "npm", []string{"uninstall", "-g", "--", packageID}
 	default:
 		return "", nil
 	}
