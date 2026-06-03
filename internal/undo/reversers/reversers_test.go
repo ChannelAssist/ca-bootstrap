@@ -371,3 +371,45 @@ func TestGhAuthLogin_IncludeTools_LogsOut(t *testing.T) {
 		t.Errorf("status = %q (%s), want ok with --include-tools", out.Status, out.Details)
 	}
 }
+
+// ---- CloneRepo ----
+
+func TestCloneRepo_RefusedWithoutIncludeFolders(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ca-tools", "repo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644)
+	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo", Target: dir}, undo.Options{})
+	if out.Status != "refused" {
+		t.Errorf("status = %q, want refused", out.Status)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Errorf("refused clone must be preserved: %v", err)
+	}
+}
+
+func TestCloneRepo_IncludeFolders_Removes(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "ca-tools", "repo")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644)
+	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo", Target: dir}, undo.Options{IncludeFolders: true})
+	if out.Status != "ok" {
+		t.Errorf("status = %q (%s), want ok", out.Status, out.Details)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("clone should be removed; stat err=%v", err)
+	}
+}
+
+func TestCloneRepo_Absent_Noop(t *testing.T) {
+	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo", Target: filepath.Join(t.TempDir(), "gone")}, undo.Options{IncludeFolders: true})
+	if out.Status != "noop" {
+		t.Errorf("status = %q, want noop", out.Status)
+	}
+}
+
+func TestCloneRepo_MissingTarget_Fails(t *testing.T) {
+	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo"}, undo.Options{})
+	if out.Status != "fail" {
+		t.Errorf("status = %q, want fail", out.Status)
+	}
+}

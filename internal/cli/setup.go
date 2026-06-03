@@ -84,6 +84,7 @@ func runSetup() int {
 		steps.GhAuth{},
 		steps.Identity{},
 		steps.Folders{},
+		steps.Repos{},
 	}
 	exit := wizard.Run(stepList, ctx)
 	_ = sess.End(exit)

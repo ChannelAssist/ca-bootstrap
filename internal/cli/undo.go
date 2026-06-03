@@ -130,6 +130,7 @@ func runUndo() int {
 		"identity_set":        reversers.Identity{},
 		"install_success":     reversers.ToolInstall{},
 		"gh_auth_login":       reversers.GhAuthLogin{},
+		"clone_repo":          reversers.CloneRepo{},
 		"create_folder":       reversers.CreateFolder{},
 		"rename_folder":       reversers.RenameFolder{},
 		"remove_empty_folder": reversers.RemoveEmptyFolder{},
