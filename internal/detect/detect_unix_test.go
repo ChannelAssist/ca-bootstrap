@@ -3,10 +3,45 @@
 package detect
 
 import (
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
 )
+
+// TestRunVersionProbe_Timeout proves a hanging --version probe can't
+// wedge detection: with a short probeTimeout, a `sleep`-backed probe
+// returns promptly with Found=false and a timeout error. Guards the
+// fresh-Windows hang fix at the shared-probe layer (sleep is POSIX, so
+// this lives in the unix-tagged test file).
+func TestRunVersionProbe_Timeout(t *testing.T) {
+	sleepPath, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skip("sleep not available")
+	}
+	orig := probeTimeout
+	probeTimeout = 150 * time.Millisecond
+	defer func() { probeTimeout = orig }()
+
+	tool := manifest.Tool{
+		ID:     "sleepy",
+		Detect: manifest.Detect{Command: "sleep", VersionFlag: "5"},
+	}
+	start := time.Now()
+	r := runVersionProbe(sleepPath, tool)
+	elapsed := time.Since(start)
+
+	if r.Found {
+		t.Error("expected Found=false when the probe times out")
+	}
+	if r.Err == nil {
+		t.Error("expected a timeout error")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("probe ignored the timeout (took %s)", elapsed)
+	}
+}
 
 func TestProbe_GoBinary(t *testing.T) {
 	d := Default()
@@ -53,7 +88,7 @@ func TestProbe_MultiArgVersionFlag(t *testing.T) {
 	// multiple args to exec.Command.
 	d := Default()
 	r := d.Probe(manifest.Tool{
-		ID:   "go-env",
+		ID: "go-env",
 		Detect: manifest.Detect{
 			Command:      "go",
 			VersionFlag:  "env GOOS",

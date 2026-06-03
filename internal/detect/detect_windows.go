@@ -3,6 +3,7 @@
 package detect
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 
@@ -42,8 +43,16 @@ func wingetAvailable() bool {
 }
 
 func wingetHasPackage(id string) bool {
-	cmd := exec.Command("winget", "list", "--id", id, "--exact")
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "winget", wingetListArgs(id)...)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		// winget wedged (e.g. an interactive prompt despite the flags,
+		// or a slow source). Report "not present via winget" rather
+		// than hang doctor.
+		return false
+	}
 	if err != nil {
 		return false
 	}

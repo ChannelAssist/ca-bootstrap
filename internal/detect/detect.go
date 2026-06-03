@@ -8,12 +8,21 @@
 package detect
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
 )
+
+// probeTimeout bounds every external detection command so a hanging or
+// interactive tool (e.g. a first-run winget source-agreement prompt, or
+// a --version that blocks on stdin) can never wedge `doctor`/`setup`.
+// Generous enough for slow CLIs like `az`. Overridable in tests.
+var probeTimeout = 10 * time.Second
 
 // Detector probes one tool against the host. Implementations are
 // platform-specific.
@@ -47,8 +56,16 @@ func runVersionProbe(path string, t manifest.Tool) Result {
 	}
 	args := strings.Fields(versionFlag) // multi-word flags like "version --client"
 
-	cmd := exec.Command(path, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, args...)
 	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		// The probe hung (interactive prompt, stdin block, wedged tool).
+		// Treat as "couldn't determine" rather than letting doctor stall.
+		r.Err = fmt.Errorf("version probe for %q timed out after %s", t.Detect.Command, probeTimeout)
+		return r
+	}
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
@@ -61,6 +78,20 @@ func runVersionProbe(path string, t manifest.Tool) Result {
 	r.VersionRaw = strings.TrimSpace(string(out))
 	r.Version = ExtractVersion(r.VersionRaw, t.Detect.VersionRegex)
 	return r
+}
+
+// wingetListArgs builds the argv for the Windows winget-presence probe.
+// It lives here (platform-neutral) so it can be unit-tested on any OS.
+//
+// --accept-source-agreements + --disable-interactivity are mandatory:
+// without them, a fresh machine's first winget call blocks on an
+// interactive source-agreement prompt, hanging detection indefinitely.
+func wingetListArgs(id string) []string {
+	return []string{
+		"list", "--id", id, "--exact",
+		"--accept-source-agreements",
+		"--disable-interactivity",
+	}
 }
 
 // Default returns the platform-appropriate Detector. The concrete
