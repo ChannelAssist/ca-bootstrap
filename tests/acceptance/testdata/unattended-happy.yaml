@@ -14,3 +14,7 @@ folders:
 repos:
   group:
     core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false
