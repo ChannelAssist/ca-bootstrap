@@ -129,6 +129,7 @@ func runUndo() int {
 	dispatch := map[string]undo.Reverser{
 		"identity_set":        reversers.Identity{},
 		"install_success":     reversers.ToolInstall{},
+		"gh_auth_login":       reversers.GhAuthLogin{},
 		"create_folder":       reversers.CreateFolder{},
 		"rename_folder":       reversers.RenameFolder{},
 		"remove_empty_folder": reversers.RemoveEmptyFolder{},

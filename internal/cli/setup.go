@@ -81,6 +81,7 @@ func runSetup() int {
 	stepList := []wizard.Step{
 		steps.Welcome{},
 		steps.Prereqs{},
+		steps.GhAuth{},
 		steps.Identity{},
 		steps.Folders{},
 	}
