@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -64,7 +65,7 @@ func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
 
 	var okCount, driftCount, missingOptionalCount int
 	for _, tool := range m.Tools {
-		r := d.Probe(tool)
+		r := probeWithSpinner(w, tool.ID, func() detect.Result { return d.Probe(tool) })
 		switch detect.Classify(tool, r) {
 		case detect.ClassOK:
 			minNote := ""
@@ -89,6 +90,52 @@ func runDoctor(w io.Writer, m *manifest.Manifest, d detect.Detector) int {
 		return 2
 	}
 	return 0
+}
+
+// probeWithSpinner runs probe(), showing a transient in-place spinner
+// labelled with the tool id while it runs — so a slow probe (e.g. az,
+// or a winget fallback) reads as "working", not "hung". The spinner is
+// drawn only when w is an interactive terminal; when output is piped or
+// redirected (CI, the smoke script's capture) probe() runs silently and
+// only the result line is emitted, keeping captured output clean.
+//
+// Overwrite uses a carriage return + space padding (no ANSI escapes) so
+// it works on every Windows console, not just VT-capable ones.
+func probeWithSpinner(w io.Writer, label string, probe func() detect.Result) detect.Result {
+	if !isTerminal(w) {
+		return probe()
+	}
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	if os.Getenv("CA_BOOTSTRAP_ASCII") != "" {
+		frames = []string{"-", "\\", "|", "/"}
+	}
+	done := make(chan detect.Result, 1)
+	go func() { done <- probe() }()
+	for i := 0; ; i++ {
+		select {
+		case r := <-done:
+			fmt.Fprintf(w, "\r%-44s\r", "") // clear the spinner line
+			return r
+		case <-time.After(90 * time.Millisecond):
+			fmt.Fprintf(w, "\r  %s %s  probing…", frames[i%len(frames)], label)
+		}
+	}
+}
+
+// isTerminal reports whether w is an interactive character device
+// (a real console), so progress animation is suppressed when output is
+// a pipe or file. A non-*os.File writer (e.g. the test bytes.Buffer)
+// is treated as non-interactive.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
 }
 
 // displayVersion returns "not found" if no version was parsed, else the version.

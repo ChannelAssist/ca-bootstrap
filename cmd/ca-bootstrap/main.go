@@ -22,6 +22,9 @@ var (
 )
 
 func main() {
+	// On Windows, switch the console to UTF-8 so the wizard's glyphs
+	// (✓ ⚠ → — …) render instead of mojibake. No-op elsewhere.
+	enableConsoleUTF8()
 	cli.SetBuildInfo(Version, Commit, BuildTime)
 	if err := cli.Execute(); err != nil {
 		os.Exit(1)
