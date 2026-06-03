@@ -10,3 +10,7 @@ identity:
   email: "test@example.com"
 folders:
   continue: true
+
+repos:
+  group:
+    core: false

@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added (Go rewrite — parity: repo cloning)
+
+- **`repos` setup step** (legacy step 60) — the core bootstrap function. After folders, `setup` reads `internal/manifest/repos.yaml` and clones each group's repos into the workspace: a per-group prompt (`repos.group.<name>`, default skip when every repo is opt-in), a per-opt-in-repo prompt (`repos.repo.<slug>`, with `large`/`warn` notices), already-cloned skip + fetch, and a collision guard that flags a path that exists but isn't a valid clone of the expected repo rather than overwriting it. `requires_membership` repos are skipped with a note. New `internal/repos` package wraps `gh repo clone` with a clone timeout and a `CA_BOOTSTRAP_CLONE_MOCK` test seam. Successful clones journal `clone_repo` (reversed by `undo`, opt-in via `--include-folders`); a failed clone is non-fatal and cleaned up (the slot is restored to its pre-run absent state; nothing is journaled). Parallel cloning (`clone_concurrency`) and the legacy 3-way "Some" group choice are deferred. (AB#40227)
+
 ### Added (Go rewrite — parity: GitHub authentication)
 
 - **`gh-auth` setup step** (legacy step 30). After prerequisites, `setup` checks `gh auth status`; an authenticated user passes as ✓, an unauthenticated one is offered the `gh auth login --git-protocol https --web` flow (answer key `gh-auth.login`). Declining or a missing `gh` soft-skips so identity/folders still run (cloning will be unavailable until authenticated). New `internal/ghauth` package wraps gh with timeouts and a `CA_BOOTSTRAP_GH_MOCK` test seam; `gh_auth_login` is journaled and reversed by `undo` (logout, opt-in via `--include-tools`). (AB#40226)
