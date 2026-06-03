@@ -156,3 +156,38 @@ func TestCheckClone_States(t *testing.T) {
 		}
 	}
 }
+
+func TestApply_Idempotent_Mock(t *testing.T) {
+	t.Setenv("CA_BOOTSTRAP_CLONE_MOCK", "ok")
+	ws := t.TempDir()
+	if _, err := Apply(oneGroup(false), opts(ws, mapPrompter{def: true})); err != nil {
+		t.Fatal(err)
+	}
+	// Second run: the mock-recorded slug lets checkClone see it as
+	// already cloned → skip + fetch, not a fresh clone or a mismatch.
+	s, err := Apply(oneGroup(false), opts(ws, mapPrompter{def: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Cloned != 0 || s.Mismatch != 0 || s.Fetched != 1 {
+		t.Errorf("re-run: Cloned=%d Mismatch=%d Fetched=%d, want 0/0/1", s.Cloned, s.Mismatch, s.Fetched)
+	}
+}
+
+func TestRemoteMatches(t *testing.T) {
+	cases := []struct {
+		url, expected string
+		want          bool
+	}{
+		{"https://github.com/ChannelAssist/.github.git\n", "ChannelAssist/.github", true},
+		{"https://github.com/ChannelAssist/.github-private.git", "ChannelAssist/.github", false}, // no substring false-positive
+		{"git@github.com:ChannelAssist/ca-bootstrap.git", "ChannelAssist/ca-bootstrap", true},
+		{"https://github.com/ChannelAssist/ca-bootstrap", "ChannelAssist/ca-boot", false},
+		{"https://github.com/ChannelAssist/CA-Bootstrap.git", "channelassist/ca-bootstrap", true}, // case-insensitive
+	}
+	for _, c := range cases {
+		if got := remoteMatches(c.url, c.expected); got != c.want {
+			t.Errorf("remoteMatches(%q,%q)=%v, want %v", c.url, c.expected, got, c.want)
+		}
+	}
+}

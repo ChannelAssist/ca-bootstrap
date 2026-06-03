@@ -33,6 +33,11 @@ import (
 // take 10+ minutes, so this is generous; overridable in tests.
 var cloneTimeout = 30 * time.Minute
 
+// fetchTimeout bounds the best-effort fetch of an already-cloned repo.
+// Much shorter than cloneTimeout — a fetch shouldn't take minutes, and
+// a hung fetch must not stall the wizard.
+var fetchTimeout = 2 * time.Minute
+
 // Options drive Apply.
 type Options struct {
 	Out          io.Writer
@@ -167,17 +172,14 @@ func (opts Options) cloneRepo(r manifest.Repo, defaultProtocol string, s *Summar
 		s.Failed++
 		s.Failures = append(s.Failures, fmt.Sprintf("%s: %v", r.Repo, err))
 		fmt.Fprintf(opts.Out, "    ✗ %s failed: %v\n", r.Repo, err)
-		// Partial-failure cleanup: if we created the dest this run and
-		// it's now a partial/empty clone, remove it and journal a
-		// remove_empty_folder so undo can recreate the slot.
+		// Partial-failure cleanup: the slot was absent before this run,
+		// so restore that state by removing the partial clone. Nothing
+		// is journaled — the net effect on this path is zero, and
+		// journaling a removal would make undo recreate a folder that
+		// never existed before bootstrap ran. (We never remove a dir
+		// that pre-existed, so user data is safe.)
 		if !preexisted && dirExists(into) {
-			if err := os.RemoveAll(into); err == nil && opts.Session != nil {
-				_ = opts.Session.Append(journal.Entry{
-					Action: "remove_empty_folder",
-					Target: into,
-					Result: "ok",
-				})
-			}
+			_ = os.RemoveAll(into)
 		}
 		return false, nil
 	}
@@ -212,15 +214,40 @@ func checkClone(dest, expectedRepo string) cloneState {
 		}
 		return stateMismatch
 	}
+	// Mock seam: a mock clone records its slug in .git/mock so re-runs
+	// can exercise the already-cloned path without a real git remote.
+	if os.Getenv("CA_BOOTSTRAP_CLONE_MOCK") != "" {
+		b, err := os.ReadFile(filepath.Join(dest, ".git", "mock"))
+		if err == nil && strings.EqualFold(strings.TrimSpace(string(b)), expectedRepo) {
+			return stateMatches
+		}
+		return stateMismatch
+	}
 	out, err := exec.Command("git", "-C", dest, "remote", "get-url", "origin").Output()
 	if err != nil {
 		return stateMismatch
 	}
-	// Match on the org/name slug appearing in the remote URL.
-	if strings.Contains(strings.ToLower(string(out)), strings.ToLower(expectedRepo)) {
+	if remoteMatches(string(out), expectedRepo) {
 		return stateMatches
 	}
 	return stateMismatch
+}
+
+// remoteMatches reports whether a git remote URL points at exactly the
+// expected org/name slug. It compares the last two path segments
+// case-insensitively rather than a substring, so e.g. ".github" does
+// not falsely match a ".github-private" remote.
+func remoteMatches(remoteURL, expected string) bool {
+	norm := strings.TrimSpace(remoteURL)
+	norm = strings.TrimSuffix(norm, ".git")
+	norm = strings.TrimSuffix(norm, "/")
+	norm = strings.ReplaceAll(norm, ":", "/") // git@github.com:org/name → .../org/name
+	parts := strings.Split(norm, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	gotSlug := parts[len(parts)-2] + "/" + parts[len(parts)-1]
+	return strings.EqualFold(gotSlug, expected)
 }
 
 // fetch runs a best-effort `git fetch` in an already-cloned repo.
@@ -228,7 +255,7 @@ func fetch(dest string) bool {
 	if os.Getenv("CA_BOOTSTRAP_CLONE_MOCK") != "" {
 		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	return exec.CommandContext(ctx, "git", "-C", dest, "fetch", "--quiet").Run() == nil
 }
