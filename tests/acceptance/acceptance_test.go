@@ -96,7 +96,9 @@ func fixture(t *testing.T, name string) string {
 // TestVersion_PrintsSemverCommitAndBuildTime: spec §5.2.
 //
 // `ca-bootstrap version` must print exactly one line matching the regex
-//   ^ca-bootstrap (\S+) \(commit (\S+), built (\S+)\)$
+//
+//	^ca-bootstrap (\S+) \(commit (\S+), built (\S+)\)$
+//
 // with the ldflag-injected values, then exit 0.
 func TestVersion_PrintsSemverCommitAndBuildTime(t *testing.T) {
 	bin := buildBinary(t)
@@ -276,6 +278,7 @@ func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string 
 //   - $CA_BOOTSTRAP_MANIFEST (override path)
 //   - $HOME (so the journal lands in the test sandbox)
 //   - $CA_BOOTSTRAP_ASCII=1 (so output is grep-able regardless of console)
+//
 // Returns stdout, stderr, exit code.
 func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome string) (string, string, int) {
 	t.Helper()
@@ -284,6 +287,10 @@ func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome s
 		"CA_BOOTSTRAP_MANIFEST="+manifestPath,
 		"HOME="+fakeHome,
 		"CA_BOOTSTRAP_ASCII=1",
+		// Make the gh-auth step deterministic: pretend the user is
+		// already authenticated, so setup never shells out to real gh
+		// or prompts. The gh-auth-specific paths are covered separately.
+		"CA_BOOTSTRAP_GH_MOCK=authed:acceptance-bot",
 	)
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer

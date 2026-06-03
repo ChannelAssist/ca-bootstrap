@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added (Go rewrite — parity: GitHub authentication)
+
+- **`gh-auth` setup step** (legacy step 30). After prerequisites, `setup` checks `gh auth status`; an authenticated user passes as ✓, an unauthenticated one is offered the `gh auth login --git-protocol https --web` flow (answer key `gh-auth.login`). Declining or a missing `gh` soft-skips so identity/folders still run (cloning will be unavailable until authenticated). New `internal/ghauth` package wraps gh with timeouts and a `CA_BOOTSTRAP_GH_MOCK` test seam; `gh_auth_login` is journaled and reversed by `undo` (logout, opt-in via `--include-tools`). (AB#40226)
+
 ### Fixed (Windows robustness — found by live smoke test)
 
 - **Console UTF-8 on Windows.** The wizard's glyphs (`✓ ⚠ → —`) rendered as mojibake (`Γ£ô`) in conhost / Windows PowerShell. `ca-bootstrap` now sets the console output code page to UTF-8 (65001) at startup on Windows (stdlib `syscall`, no new dependency; no-op elsewhere). (AB#40225)

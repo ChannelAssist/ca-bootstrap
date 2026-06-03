@@ -354,3 +354,20 @@ func TestRemoveEmptyFolder_MissingTarget_Fails(t *testing.T) {
 		t.Errorf("status = %q, want fail", out.Status)
 	}
 }
+
+// ---- GhAuthLogin ----
+
+func TestGhAuthLogin_DefaultSkips(t *testing.T) {
+	out := GhAuthLogin{}.Reverse(journal.Entry{Action: "gh_auth_login", Target: "octocat"}, undo.Options{})
+	if out.Status != "skip" {
+		t.Errorf("status = %q, want skip without --include-tools", out.Status)
+	}
+}
+
+func TestGhAuthLogin_IncludeTools_LogsOut(t *testing.T) {
+	t.Setenv("CA_BOOTSTRAP_GH_MOCK", "authed:octocat") // mock logout = noop ok
+	out := GhAuthLogin{}.Reverse(journal.Entry{Action: "gh_auth_login", Target: "octocat"}, undo.Options{IncludeTools: true})
+	if out.Status != "ok" {
+		t.Errorf("status = %q (%s), want ok with --include-tools", out.Status, out.Details)
+	}
+}
