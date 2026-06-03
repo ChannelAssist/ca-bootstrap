@@ -10,3 +10,7 @@ identity:
   # workspace_root is filled in at test time via env var substitution.
 folders:
   continue: true
+
+repos:
+  group:
+    core: false

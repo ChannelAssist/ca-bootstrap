@@ -291,6 +291,11 @@ func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome s
 		// already authenticated, so setup never shells out to real gh
 		// or prompts. The gh-auth-specific paths are covered separately.
 		"CA_BOOTSTRAP_GH_MOCK=authed:acceptance-bot",
+		// Make the repos step deterministic: a minimal one-group manifest
+		// and a mocked clone, so setup never hits the network. The clone
+		// paths are covered by unit tests + a dedicated repos test.
+		"CA_BOOTSTRAP_REPOS="+fixture(t, "repos-core.yaml"),
+		"CA_BOOTSTRAP_CLONE_MOCK=ok",
 	)
 	cmd.Env = env
 	var stdout, stderr bytes.Buffer

@@ -1,0 +1,9 @@
+# Minimal repos manifest for acceptance tests (CA_BOOTSTRAP_REPOS override).
+# One group, one normal repo — keeps the repos step deterministic and fast.
+version: 1
+default_protocol: https
+groups:
+  - name: core
+    description: Test group
+    repos:
+      - { repo: ChannelAssist/test-repo, into: ca-tools/test-repo, branch: main }
