@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed (Windows robustness — found by live smoke test)
+
+- **Console UTF-8 on Windows.** The wizard's glyphs (`✓ ⚠ → —`) rendered as mojibake (`Γ£ô`) in conhost / Windows PowerShell. `ca-bootstrap` now sets the console output code page to UTF-8 (65001) at startup on Windows (stdlib `syscall`, no new dependency; no-op elsewhere). (AB#40225)
+- **`doctor` can no longer hang on a fresh Windows machine.** The winget presence probe now passes `--accept-source-agreements --disable-interactivity` (a first-run winget call otherwise blocks on an interactive prompt), and every detection probe — winget and `--version` alike — is bounded by a 10s timeout. (AB#40225)
+- **`doctor` shows live progress.** A per-tool spinner is drawn while each probe runs (interactive terminals only; piped/unattended output stays plain), so a slow probe reads as working rather than frozen. (AB#40225)
+
 ### Added (Go rewrite — v2.0.0-alpha.5)
 
 - **Workspace folder taxonomy** in the `setup` wizard. New step (`Folder structure`) runs after identity: reads `internal/manifest/folders.yaml`, creates each required folder under the workspace, migrates a `renamed_from:` predecessor (scalar OR list, most-recent → oldest) into the new path so prior-naming carryover folders move with their contents, and seeds a per-folder `README.md` from embedded templates. Optional folders are not auto-created but DO get migrated when a predecessor is on disk. Spec: [`docs/specs/2026-05-28-go-v2-0-alpha-5-spec.md`](docs/specs/2026-05-28-go-v2-0-alpha-5-spec.md). 14/14 acceptance tests GREEN. (AB#40189)
