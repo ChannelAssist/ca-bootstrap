@@ -413,3 +413,61 @@ func TestCloneRepo_MissingTarget_Fails(t *testing.T) {
 		t.Errorf("status = %q, want fail", out.Status)
 	}
 }
+
+// ---- CreateFile ----
+
+func TestCreateFile_Removes(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "ChannelAssist.code-workspace")
+	os.WriteFile(p, []byte("{}"), 0o644)
+	out := CreateFile{}.Reverse(journal.Entry{Action: "create_file", Target: p}, undo.Options{})
+	if out.Status != "ok" {
+		t.Fatalf("status=%q (%s), want ok", out.Status, out.Details)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Errorf("file should be removed; err=%v", err)
+	}
+}
+
+func TestCreateFile_Absent_Noop(t *testing.T) {
+	out := CreateFile{}.Reverse(journal.Entry{Action: "create_file", Target: filepath.Join(t.TempDir(), "gone")}, undo.Options{})
+	if out.Status != "noop" {
+		t.Errorf("status=%q, want noop", out.Status)
+	}
+}
+
+func TestCreateFile_Dir_Skips(t *testing.T) {
+	d := t.TempDir()
+	out := CreateFile{}.Reverse(journal.Entry{Action: "create_file", Target: d}, undo.Options{})
+	if out.Status != "skip" {
+		t.Errorf("status=%q, want skip", out.Status)
+	}
+}
+
+// ---- CaClaudePlugin ----
+
+func TestCaClaudePlugin_RemovesLink(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "repo")
+	os.MkdirAll(target, 0o755)
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	out := CaClaudePlugin{}.Reverse(journal.Entry{Action: "install_ca_claude_plugin", Target: link}, undo.Options{})
+	if out.Status != "ok" {
+		t.Fatalf("status=%q (%s), want ok", out.Status, out.Details)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Error("link should be removed")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Error("target repo must NOT be removed")
+	}
+}
+
+func TestCaClaudePlugin_Absent_Noop(t *testing.T) {
+	out := CaClaudePlugin{}.Reverse(journal.Entry{Action: "install_ca_claude_plugin", Target: filepath.Join(t.TempDir(), "gone")}, undo.Options{})
+	if out.Status != "noop" {
+		t.Errorf("status=%q, want noop", out.Status)
+	}
+}

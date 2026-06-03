@@ -1,0 +1,51 @@
+// Workspace-root debugger launch configurations.
+//
+// ca-bootstrap copies this into <workspace>/.vscode/launch.json so
+// VS Code's "Run and Debug" picker offers these launchers across the
+// whole multi-root workspace. The same file also serves as a starter
+// per-repo template — copy it into a repo's own .vscode/ folder when
+// the repo's language stack needs launchers different from (or in
+// addition to) the workspace ones.
+//
+// Each repo should keep only the configurations its language stack
+// actually uses — listing every possible launcher pollutes the picker.
+// Common starters for ChannelAssist stacks are commented below.
+{
+  "version": "0.2.0",
+  "configurations": [
+    // ─── .NET (cm-* services) ───────────────────────────────────────
+    // {
+    //   "name": ".NET: launch (Development)",
+    //   "type": "coreclr",
+    //   "request": "launch",
+    //   "preLaunchTask": "build",
+    //   "program": "${workspaceFolder}/src/<Project>/bin/Debug/net10.0/<Project>.dll",
+    //   "args": [],
+    //   "cwd": "${workspaceFolder}/src/<Project>",
+    //   "env": { "ASPNETCORE_ENVIRONMENT": "Development" },
+    //   "console": "internalConsole",
+    //   "stopAtEntry": false
+    // },
+
+    // ─── Python (claims-validator, dictionary-generator) ────────────
+    // {
+    //   "name": "Python: current file",
+    //   "type": "debugpy",
+    //   "request": "launch",
+    //   "program": "${file}",
+    //   "console": "integratedTerminal",
+    //   "justMyCode": true
+    // },
+
+    // ─── Node / Astro (Keystone) ────────────────────────────────────
+    // {
+    //   "name": "Node: dev server",
+    //   "type": "node",
+    //   "request": "launch",
+    //   "runtimeExecutable": "npm",
+    //   "runtimeArgs": ["run", "dev"],
+    //   "skipFiles": ["<node_internals>/**"],
+    //   "console": "integratedTerminal"
+    // }
+  ]
+}

@@ -1,0 +1,43 @@
+// Workspace-root task definitions.
+//
+// ca-bootstrap copies this into <workspace>/.vscode/tasks.json by
+// default, so these tasks apply across the whole multi-root workspace.
+// The same file also serves as a starter per-repo template — copy it
+// into a repo's own .vscode/ folder when you want repo-scoped tasks
+// that override or extend the workspace ones.
+//
+// Most ChannelAssist repos drive build / test / lint via a Makefile —
+// the default tasks below shell out to it. If your repo doesn't have
+// a Makefile, replace these with native invocations (dotnet, npm, etc.)
+// or remove this file entirely.
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "make: build",
+      "type": "shell",
+      "command": "make build",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "make: test",
+      "type": "shell",
+      "command": "make test",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "make: lint",
+      "type": "shell",
+      "command": "make lint",
+      "problemMatcher": []
+    }
+
+    // Per-language alternatives (uncomment as needed):
+    //
+    // { "label": "dotnet: build",  "type": "shell", "command": "dotnet build" },
+    // { "label": "npm: dev",       "type": "shell", "command": "npm run dev"  },
+    // { "label": "python: pytest", "type": "shell", "command": "pytest"       }
+  ]
+}

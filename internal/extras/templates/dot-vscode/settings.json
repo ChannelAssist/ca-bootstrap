@@ -1,0 +1,49 @@
+// Workspace-root VS Code settings.
+//
+// ca-bootstrap copies this into <workspace>/.vscode/settings.json so
+// the defaults below apply across every cloned ChannelAssist repo when
+// the multi-root workspace is opened. The same file is also a starter
+// per-repo template — copy it into a repo's own .vscode/ folder when
+// you need settings that diverge from the workspace defaults (per-repo
+// settings override workspace settings in VS Code's resolution order).
+{
+  // Format on save with the language's default formatter. Override
+  // per-language with `[language-id]` blocks if needed.
+  "editor.formatOnSave": true,
+  "editor.rulers": [100, 120],
+  "editor.tabSize": 2,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": true,
+
+  // Files: ensure a trailing newline, strip trailing whitespace,
+  // normalize to LF (Windows clones still get CRLF on disk via
+  // core.autocrlf, but the editor writes LF).
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.trimFinalNewlines": true,
+
+  // Hide common build artefacts from the explorer / quick-open.
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/node_modules": true,
+    "**/.next": true,
+    "**/dist": true,
+    "**/__pycache__": true
+  },
+  "search.exclude": {
+    "**/bin": true,
+    "**/obj": true,
+    "**/node_modules": true,
+    "**/dist": true,
+    "**/.next": true,
+    "**/wiki": true
+  }
+
+  // Per-language overrides (uncomment as needed):
+  //
+  // "[csharp]":     { "editor.defaultFormatter": "ms-dotnettools.csharp" },
+  // "[python]":     { "editor.defaultFormatter": "ms-python.python", "editor.tabSize": 4 },
+  // "[typescript]": { "editor.defaultFormatter": "dbaeumer.vscode-eslint" }
+}
