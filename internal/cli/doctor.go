@@ -10,6 +10,13 @@ import (
 
 	"github.com/ChannelAssist/ca-bootstrap/internal/detect"
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
+	"github.com/ChannelAssist/ca-bootstrap/internal/prompt"
+	"github.com/ChannelAssist/ca-bootstrap/internal/selftest"
+)
+
+var (
+	doctorDeep bool
+	doctorFull bool
 )
 
 // Output glyphs. Default to UTF-8 (✓/✗/⚠). If $CA_BOOTSTRAP_ASCII is
@@ -43,14 +50,49 @@ var doctorCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
-		exit := runDoctor(os.Stdout, m, detect.Default())
+		det := detect.Default()
+		exit := runDoctor(os.Stdout, m, det)
+		// --full implies --deep.
+		if doctorDeep || doctorFull {
+			if runSelfTest(os.Stdout, m, det) {
+				exit = 2 // a failed capability probe is drift-equivalent
+			}
+		}
 		os.Exit(exit)
 		return nil // unreachable; os.Exit short-circuits
 	},
 }
 
 func init() {
+	doctorCmd.Flags().BoolVar(&doctorDeep, "deep", false, "also run capability self-test probes (workspace write, link, package manager, gh auth)")
+	doctorCmd.Flags().BoolVar(&doctorFull, "full", false, "with --deep, also run a real install→uninstall round-trip on a probe tool (invasive)")
 	rootCmd.AddCommand(doctorCmd)
+}
+
+// runSelfTest runs the capability probes and prints them. Returns true if any
+// probe hard-failed (skips don't count). Drives selftest with a real prompter
+// and the live manifest/detector (the --full round-trip needs them).
+func runSelfTest(w io.Writer, m *manifest.Manifest, d detect.Detector) bool {
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Capability self-test:")
+	results := selftest.Run(selftest.Options{
+		Full:     doctorFull,
+		Manifest: m,
+		Detector: d,
+		Out:      w,
+		Prompter: prompt.New(),
+	})
+	for _, r := range results {
+		glyph := glyphOK
+		switch r.Status {
+		case selftest.StatusFail:
+			glyph = glyphFail
+		case selftest.StatusSkip:
+			glyph = glyphWarn
+		}
+		fmt.Fprintf(w, "  %s %s\t%s\n", glyph, r.Name, r.Detail)
+	}
+	return selftest.AnyFailed(results)
 }
 
 // runDoctor probes every tool in the manifest, prints a report to w,

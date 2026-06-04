@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.0-alpha.7] - 2026-06-04
+
+### Added (Go rewrite — v2.0.0-alpha.7: doctor capability self-test)
+
+- **`doctor --deep`** runs a capability self-test after the detection report — verifying the host can actually *do* the operations bootstrap depends on, not just that tools exist. Four safe, self-reversing probes: workspace-root writable, symlink/junction create+remove, platform package manager reachable, and `gh auth` live. A failed probe is drift-equivalent (exit 2); bare `doctor` is unchanged (fast, read-only). (AB#40270)
+- **`doctor --deep --full`** adds a real install→uninstall round-trip on a probe tool (default `kubectl`, override via `$CA_BOOTSTRAP_SELFTEST_PROBE`) to prove the full install path works. **Absent-only** — if the probe tool is already present it skips, so a tool you depend on is never removed. (AB#40270)
+- New **`internal/selftest`** package — the cross-platform Go port of the real legs the PowerShell smoke harness exercised (`dist/smoke-windows.ps1`), so `doctor` and the smoke can share one source of truth. Mock seams: `CA_BOOTSTRAP_PKGMGR_MOCK`, reused `CA_BOOTSTRAP_SYMLINK_MOCK` / `CA_BOOTSTRAP_GH_MOCK`, and the install `type: mock` seam for the round-trip. No new external dependencies. (AB#40270)
+
+### Fixed (alpha.6 review follow-ups)
+
+- **Unattended `setup` can now express an elevation choice for the inline install step.** A new optional `prereqs.elevation_action` key (`allow` | `deny` | `skip`, default `skip`) is threaded into the install path, so a missing required tool that needs elevation no longer falls through to the install package's interactive elevation prompt — whose answer keys live under `repair.*` and aren't present in setup answer files (which would error the strict unattended prompter). (AB#40272)
+- **Removed a redundant post-install re-probe** in the prereqs step: it now reads the `InstallMissing` summary (which already verified each tool post-install) instead of re-scanning the whole manifest a second time. (AB#40272)
+
 ## [2.0.0-alpha.6] - 2026-06-04
 
 ### Changed (Go rewrite — v2.0.0-alpha.6: repair/setup actually install)
@@ -107,7 +120,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Pre-overwrite README content is scanned for credential patterns BEFORE base64-encoding** (`repair --target folder-readmes`). The scan tries UTF-8, UTF-16LE, AND UTF-16BE decodes and matches the same `Test-CABContainsSensitive` pattern set the journal's existing string-value guard uses (GH/AWS/Slack/JWT/PEM prefixes). On a match the snapshot is held back (`previous_content_captured: false`) — the overwrite still proceeds, only the journaling is suppressed, so secrets can't round-trip into `~/.ca-bootstrap/journal.yaml` via base64. (#83, AB#40024)
 - **`undo refresh_readme` refuses to overwrite a diverged README**. Before writing the captured bytes, it compares `SHA256(current README)` to `SHA256(recorded template)`. Mismatch → `skip` with a recovery recipe; hash-compute failure → `fail` (refuse blind write); template missing on disk → `skip` (mirrors the existing `seed_readme` discipline). User edits made after `repair --target folder-readmes` are now preserved across `undo`. (#83, AB#40024)
 
-[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.6...HEAD
+[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.7...HEAD
+[2.0.0-alpha.7]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.6...v2.0.0-alpha.7
 [2.0.0-alpha.6]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.5...v2.0.0-alpha.6
 [2.0.0-alpha.5]: https://github.com/ChannelAssist/ca-bootstrap/compare/v1.9.0...v2.0.0-alpha.5
 [1.9.0]: https://github.com/ChannelAssist/ca-bootstrap/compare/v1.8.0...v1.9.0

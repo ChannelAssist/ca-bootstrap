@@ -1,0 +1,26 @@
+# Unattended config for TestSetup_PrereqsInstall_ElevationDeclined_ExitsOneThirty.
+# Paired with one-elevation-required-mock.yaml. User accepts the install offer,
+# but the tool needs elevation and elevation_action: deny declines it — so the
+# step aborts with exit 130 (like repair), proving the elevation action is
+# honored in setup and the install package's repair.* elevation prompt keys
+# are NEVER reached (they're absent here; if they were hit, the strict prompter
+# would error → exit 1 instead).
+welcome:
+  consent: true
+prereqs:
+  install_missing: true
+  elevation_action: deny
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: true
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false

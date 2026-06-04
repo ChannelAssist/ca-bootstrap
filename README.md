@@ -93,9 +93,9 @@ ca-bootstrap undo       Reverse changes recorded in the action journal
 | `setup` | `--unattended --config <file>` (non-interactive; reads a YAML answer file) |
 | `repair` | *(no flags)* installs all missing **required** tools; `--all` also installs optional; `--target <id>` installs one; `--unattended --config <file>`, `--ForceUnlock` |
 | `undo` | `--target identity\|tools\|tool:<id>`, `--include-folders` (remove non-empty folders), `--include-tools` (uninstall), `--force` (skip confirm; required for `--unattended`), `--ForceUnlock` |
-| `doctor` | *(none — read-only)* |
+| `doctor` | `--deep` runs capability self-test probes (workspace write, symlink/junction, package manager reachable, gh auth); `--deep --full` adds a real install→uninstall round-trip on an absent probe tool |
 
-`doctor` exit codes: **0** = all good, **2** = a required tool is missing or below its minimum version (informational, not an error), **1** = a manifest/IO failure.
+`doctor` exit codes: **0** = all good, **2** = a required tool is missing or below its minimum version, or (under `--deep`) a capability probe failed; **1** = a manifest/IO failure. Bare `doctor` is fast and read-only; `--deep` is opt-in because its probes write (and clean up) temp files.
 
 ### Unattended mode
 
