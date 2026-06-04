@@ -1,9 +1,11 @@
 # Unattended config for TestSetup_PrereqsDrift_Acknowledged_ExitsZero.
 # Paired with one-missing-required.yaml — required tool absent → drift.
-# User pre-consents to continue despite drift, so exit code stays 0.
+# User declines the inline install offer, then pre-consents to continue
+# despite the remaining drift, so exit code stays 0.
 welcome:
   consent: true
 prereqs:
+  install_missing: false
   continue_with_drift: true
 identity:
   name: "Test User"

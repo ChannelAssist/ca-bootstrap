@@ -34,8 +34,8 @@ development environment.
 Commands:
   ca-bootstrap version    Print version, commit, build time
   ca-bootstrap doctor     Diagnose installed tooling (read-only)
-  ca-bootstrap setup      Interactive wizard: prereqs, git identity, folders
-  ca-bootstrap repair     Install a missing tool by id from the manifest
+  ca-bootstrap setup      Interactive wizard: prereqs (installs missing), git identity, folders
+  ca-bootstrap repair     Install missing tools (all required by default; --all adds optional; --target <id> for one)
   ca-bootstrap undo       Reverse changes recorded in the action journal
 
 self-update lands in beta.1. See docs/specs/2026-05-25-go-rewrite-pivot.md.`,
