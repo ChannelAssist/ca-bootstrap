@@ -8,6 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed (Go rewrite — required prerequisites)
 
+- **`psql` (PostgreSQL client) is now a required tool** (`optional: false`), joining the required set below. Needed by cm-currency-service staging scripts; `doctor`/`setup` now flag a missing `psql` as drift. `TestLoadDefault_RequiredToolSet` extended to cover it. (AB#40260)
 - **`az`, `jq`, and `copilot-cli` are now required tools** (`optional: false`) in the embedded manifest, joining the already-required `git`, `gh`, `make`, and `pwsh`. The org's mandatory CLIs must all be present; `doctor`/`setup` now flag any missing one as drift rather than silently passing. A new `TestLoadDefault_RequiredToolSet` guards the az/gh/jq/git/make/copilot-cli set against accidental re-flipping. (AB#40233)
 - **Detection probe timeout raised from 10s to 30s.** A cold-start `az --version` on Windows (a Python app) could exceed the prior 10s bound and be falsely reported missing even though it was present. 30s is generous for a slow first invocation while still bounding genuine hangs. (AB#40233)
 

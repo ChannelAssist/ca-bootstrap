@@ -143,13 +143,14 @@ func TestLoad_ParsesInstallBlock(t *testing.T) {
 
 // TestLoadDefault_RequiredToolSet guards the org's required prerequisites:
 // these tools must NOT be optional in the embedded manifest. (Directed by
-// Peter 2026-06-03 — az/gh/jq/git/make/copilot-cli are mandatory.)
+// Peter 2026-06-03 — az/gh/jq/git/make/copilot-cli are mandatory; psql added
+// 2026-06-04.)
 func TestLoadDefault_RequiredToolSet(t *testing.T) {
 	m, err := LoadDefault()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}
-	required := map[string]bool{"az": true, "gh": true, "jq": true, "git": true, "make": true, "copilot-cli": true}
+	required := map[string]bool{"az": true, "gh": true, "jq": true, "git": true, "make": true, "copilot-cli": true, "psql": true}
 	seen := map[string]bool{}
 	for _, tool := range m.Tools {
 		if required[tool.ID] {
