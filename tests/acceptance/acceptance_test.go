@@ -195,6 +195,54 @@ func TestDoctor_OptionalToolMissing_ExitsZeroWithWarning(t *testing.T) {
 	}
 }
 
+// TestDoctorDeep_AllProbesOK_ExitsZero (alpha.7): doctor --deep runs the
+// capability self-test after detection; with detection clean and every safe
+// probe mocked-ok, the exit stays 0 and the probes are reported.
+func TestDoctorDeep_AllProbesOK_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	t.Setenv("CA_BOOTSTRAP_PKGMGR_MOCK", "ok")
+	t.Setenv("CA_BOOTSTRAP_SYMLINK_MOCK", "1")
+	t.Setenv("CA_BOOTSTRAP_GH_MOCK", "authed:tester")
+	stdout, _, exit := run(t, bin, fixture(t, "two-real-tools.yaml"), "doctor", "--deep")
+	if exit != 0 {
+		t.Fatalf("doctor --deep, all probes ok: expected exit 0, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(stdout, "Capability self-test") {
+		t.Errorf("doctor --deep: expected a capability self-test section. got:\n%s", stdout)
+	}
+}
+
+// TestDoctorDeep_PkgMgrUnreachable_ExitsTwo (alpha.7): a failed safe probe is
+// drift-equivalent — exit 2 even when tool detection is clean.
+func TestDoctorDeep_PkgMgrUnreachable_ExitsTwo(t *testing.T) {
+	bin := buildBinary(t)
+	t.Setenv("CA_BOOTSTRAP_PKGMGR_MOCK", "fail")
+	t.Setenv("CA_BOOTSTRAP_SYMLINK_MOCK", "1")
+	t.Setenv("CA_BOOTSTRAP_GH_MOCK", "authed:tester")
+	_, _, exit := run(t, bin, fixture(t, "two-real-tools.yaml"), "doctor", "--deep")
+	if exit != 2 {
+		t.Fatalf("doctor --deep, package manager unreachable: expected exit 2, got %d", exit)
+	}
+}
+
+// TestDoctorDeepFull_RoundTrip_ExitsZero (alpha.7): doctor --deep --full runs
+// a real install→uninstall round-trip on an absent probe tool (mocked here),
+// reporting it without leaving anything installed.
+func TestDoctorDeepFull_RoundTrip_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	t.Setenv("CA_BOOTSTRAP_PKGMGR_MOCK", "ok")
+	t.Setenv("CA_BOOTSTRAP_SYMLINK_MOCK", "1")
+	t.Setenv("CA_BOOTSTRAP_GH_MOCK", "authed:tester")
+	t.Setenv("CA_BOOTSTRAP_SELFTEST_PROBE", "mocktool")
+	stdout, _, exit := run(t, bin, fixture(t, "selftest-full-mock.yaml"), "doctor", "--deep", "--full")
+	if exit != 0 {
+		t.Fatalf("doctor --deep --full, mock round-trip: expected exit 0, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(stdout, "install-round-trip") {
+		t.Errorf("doctor --deep --full: expected the install-round-trip probe. got:\n%s", stdout)
+	}
+}
+
 // TestDoctor_ManifestMissing_ExitsOneToStderr: spec §6.4.
 //
 // $CA_BOOTSTRAP_MANIFEST points at a nonexistent file → exit 1 (system
