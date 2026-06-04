@@ -1,208 +1,136 @@
 # ca-bootstrap
 
-[![Ci](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml/badge.svg)](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml)
+One command to take a fresh laptop to a working ChannelAssist development environment. A single static binary — no runtime to install — for Windows, macOS, and Linux.
 
-> ### ⚠️ Project pivot — 2026-05-25
->
-> This PowerShell implementation is being **archived in place** and replaced by a Go CLI distributed as **pre-built static binaries per platform via GitHub Releases**. The rationale, scope, and roadmap live in [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md) — read it before opening new issues or PRs against this codebase.
->
-> The PowerShell version remains usable in the interim (subject to the known limitations the rewrite is escaping). **No new features are landing here.** The last PS-era commit is tagged for archival reference. New work proceeds **spec → tests → code** in that strict order.
-
-One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
-
-> **Status: v1.9.0 (PowerShell, lame-duck)** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`). See the pivot notice above; new development is happening in the Go rewrite, not here.
+> **Status: v2.0.0-alpha.5 (Go).** This is the **Go rewrite**, distributed as pre-built per-platform binaries via [GitHub Releases](https://github.com/ChannelAssist/ca-bootstrap/releases). It replaces the original PowerShell implementation, now archived under [`legacy/`](legacy/) (last PS release: `v1.9.0`). Rationale and roadmap: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md). New work proceeds **spec → tests → code**, in that strict order.
 
 ---
 
-## Quick start
+## Install
 
-### Windows
+Download the binary for your platform from the [latest release](https://github.com/ChannelAssist/ca-bootstrap/releases/latest), verify it against `SHA256SUMS.txt`, and put it on your `PATH`.
+
+> The alpha binaries are **unsigned** (code signing is deferred to the v2.0.0 final). On Windows, SmartScreen may warn "unknown publisher" → **More info → Run anyway**. That's expected, not a failure.
+
+### Windows (PowerShell)
 
 ```powershell
-iwr -useb https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/bootstrap.ps1 | iex
+# x64 (use ..._windows_arm64.exe on an ARM device)
+$asset = 'ca-bootstrap_v2.0.0-alpha.5_windows_amd64.exe'
+irm "https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download/$asset" -OutFile ca-bootstrap.exe
+
+# optional: verify the checksum
+irm "https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download/SHA256SUMS.txt" -OutFile SHA256SUMS.txt
+(Get-FileHash ca-bootstrap.exe -Algorithm SHA256).Hash.ToLower()   # compare against the matching line
+
+.\ca-bootstrap.exe doctor
 ```
 
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ChannelAssist/ca-bootstrap/main/bootstrap.sh | bash
+# pick your platform asset:
+#   macOS Apple Silicon : ca-bootstrap_v2.0.0-alpha.5_darwin_arm64
+#   macOS Intel         : ca-bootstrap_v2.0.0-alpha.5_darwin_amd64
+#   Linux x64           : ca-bootstrap_v2.0.0-alpha.5_linux_amd64
+#   Linux ARM64         : ca-bootstrap_v2.0.0-alpha.5_linux_arm64
+ASSET=ca-bootstrap_v2.0.0-alpha.5_darwin_arm64
+BASE=https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download
+
+curl -fsSL "$BASE/$ASSET" -o ca-bootstrap
+curl -fsSL "$BASE/SHA256SUMS.txt" -o SHA256SUMS.txt
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing   # macOS; on Linux: sha256sum -c --ignore-missing
+
+chmod +x ca-bootstrap
+sudo mv ca-bootstrap /usr/local/bin/ca-bootstrap
+
+ca-bootstrap doctor
 ```
 
-(Pin to a release tag instead of `main` if you want stability — e.g. swap `main` for `v1.0.0`.)
+---
 
-That's it. The bootstrap script ensures PowerShell 7+ and git are installed (prompting first; uses `winget` on Windows, `brew` on macOS, `apt`/`dnf` on Linux), clones this repository to a cache directory, and launches the interactive onboarding wizard.
-
-### From a clone
-
-If you've cloned this repo (e.g. for development), the daily-driver invocation is the make targets:
+## Quick start
 
 ```bash
-make setup                          # the interactive wizard
-make doctor                         # diagnose (drift = ok, not a make failure)
-make repair ARGS='--all'            # fix everything
-make repair ARGS='--target dotnet-10'  # fix one thing
-make undo ARGS='--force'            # reverse
-make smoke                          # quick end-to-end test
-make test                           # Pester
-make release VERSION=X.Y.Z          # cut a new release
+ca-bootstrap setup     # the interactive onboarding wizard
+ca-bootstrap doctor    # read-only diagnosis (exit 2 = a required tool is missing/old)
 ```
 
-Or directly invoke any of the three equivalent entry points:
-
-```bash
-pwsh ./ca-bootstrap.ps1 doctor      # the orchestrator itself
-./bootstrap.sh doctor               # forwards to ca-bootstrap.ps1 from a clone
-./bootstrap.ps1 doctor              # likewise on Windows
-```
-
-> `bootstrap.sh` / `bootstrap.ps1` are the curl-pipe entrypoints. From a clone they auto-detect their sibling `ca-bootstrap.ps1` and forward args, so you never need to remember which is which.
-
-### Recovering from a stale lock
-
-ca-bootstrap holds an exclusive `~/.ca-bootstrap/session.lock` so two parallel `setup` runs can't corrupt the journal. If a previous run crashed, the next run normally auto-detects the stale lock and clears it. If that heuristic fails:
-
-```bash
-./ca-bootstrap.ps1 setup -ForceUnlock     # break the lock and retry
-```
-
-`doctor` doesn't take the lock (read-only).
-
-### Manual prerequisite install
-
-If you'd rather install PowerShell 7 yourself first:
-
-| OS | Command |
-|---|---|
-| Windows | `winget install Microsoft.PowerShell` |
-| macOS | `brew install --cask powershell` |
-| Debian/Ubuntu | See [Microsoft's install guide](https://learn.microsoft.com/powershell/scripting/install/install-debian) |
-| RHEL/Fedora | `sudo dnf install powershell` (after adding the Microsoft repo) |
-
-Then:
-
-```bash
-git clone https://github.com/ChannelAssist/ca-bootstrap
-cd ca-bootstrap
-pwsh ./ca-bootstrap.ps1 setup
-```
+`setup` is interactive, idempotent, and safe to re-run — a second run acts as a "verify my setup" check and only does new work.
 
 ---
 
 ## What it does
 
-1. **Welcome** — explains what's about to happen and lets you back out
-2. **Check prerequisites** — detects which tools are installed at which versions
-3. **Install missing tools** — git, GitHub CLI, PowerShell 7+, GNU Make, .NET SDK 10, Node.js 20 LTS, Python 3.12, Docker, VS Code, VS Code extensions, Claude Code, GitHub Copilot CLI, gh-copilot extension
-4. **Authenticate** — runs `gh auth login` so private repos can clone
-5. **Pick a workspace location** — defaults to `~/Documents/Projects/ChannelAssistDev/` (Windows: `%USERPROFILE%\Documents\Projects\ChannelAssistDev\`). On a headless box where `~/Documents/` doesn't exist, the default falls back to `~/Projects/ChannelAssistDev/`.
-6. **Create the folder structure** — required: `ca-tools/`, `ca-docs/`, `ca-platform/`, `cm-product/`, `ca-training/`, `ca-work-dirs/`; optional (opt-in): `ado-legacy/`, `ca-experiments/`. Every folder gets a generated `README.md` from `templates/folder-readmes/` (required folders seeded by step 50; optional folders seeded after their repo group is cloned in step 60, or on demand via `repair --target folder-readmes`). See [`docs/specs/2026-05-22-folder-taxonomy-design.md`](docs/specs/2026-05-22-folder-taxonomy-design.md) for the full taxonomy + safety contract.
-7. **Clone repositories** — group by group, individually selectable, respects your team membership
-8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
-9. **Optional extras** — VS Code multi-root workspace file, workspace-root `.vscode/` defaults (extensions/settings/launch/tasks), ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
+`setup` runs seven steps, each optional, with sensible defaults; quit any time:
 
-   *(Claude Code itself, the GitHub Copilot CLI, the gh-copilot extension, and the GitHub Copilot VS Code extensions are installed earlier as part of step 3, "Install missing tools" — they live in `manifest/tools.yaml`, not in this Optional extras step.)*
+1. **Welcome** — explains what's about to happen and lets you back out.
+2. **Prerequisites** — detects installed tooling against the embedded manifest and reports version drift (read-only; `repair` fixes it).
+3. **GitHub authentication** — checks `gh auth status`; offers `gh auth login --git-protocol https --web` if you're not signed in (needed to clone private repos).
+4. **Git identity** — writes a workspace-scoped `.git/config` `[user]` block, so personal repos elsewhere stay untouched. Default workspace root: `~/Documents/Projects/ChannelAssistDev` (falls back to `~/Projects/ChannelAssistDev` on a headless box).
+5. **Folder structure** — creates the workspace taxonomy (`ca-tools/`, `ca-docs/`, `ca-platform/`, `cm-product/`, `ca-training/`, `ca-work-dirs/`), migrates renamed predecessors, and seeds a per-folder `README.md`.
+6. **Repository cloning** — clones each group's repos into the workspace, group by group, individually selectable; already-cloned repos are skipped + fetched.
+7. **Optional extras** — VS Code multi-root `.code-workspace` file, workspace `.vscode/` defaults, a `ca-claude-plugin` activation link (junction on Windows), `ca-copilot-plugin` usage notes, and a Windows-only WSL2 offer.
 
-Every step is **interactive and optional**. Defaults are sensible. You can quit any time. Re-running is safe and acts as a "verify my setup" check.
-
----
-
-## What gets installed
-
-See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable list. Summary:
-
-| Tool | Windows | macOS | Linux |
-|---|---|---|---|
-| git | winget Git.Git | brew git | apt/dnf git |
-| GitHub CLI | winget GitHub.cli | brew gh | apt/dnf gh |
-| PowerShell 7+ | winget Microsoft.PowerShell | brew --cask powershell | apt/dnf powershell (MS repo) |
-| GNU Make | winget GnuWin32.Make | brew make | apt/dnf make |
-| .NET SDK 10 | winget Microsoft.DotNet.SDK.10 | brew dotnet@10 | dotnet-install.sh |
-| Node.js 20 | winget OpenJS.NodeJS.LTS | brew node@20 | nvm |
-| Python 3.12 | winget Python.Python.3.12 | brew python@3.12 | apt/dnf python3.12 |
-| Docker Desktop | winget Docker.DockerDesktop | brew Docker | apt docker-ce |
-| VS Code | winget Microsoft.VisualStudioCode | brew --cask visual-studio-code | apt code |
-| Claude Code (CLI) | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
-| Claude Desktop (GUI) | winget Anthropic.Claude | brew --cask claude | n/a (no official Linux build) |
-| Claude Code VS Code extension | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) |
-| GitHub Copilot CLI | npm i -g @github/copilot | npm i -g @github/copilot | npm i -g @github/copilot |
-| gh-copilot extension | gh extension install github/gh-copilot | gh extension install github/gh-copilot | gh extension install github/gh-copilot |
-| WSL2 + Ubuntu | wsl --install (optional) | n/a | n/a |
-
-All installs are **optional and confirmable**. If you already have a tool at the right version, the script detects it and skips.
+Every mutating step is recorded in an append-only action journal (`~/.ca-bootstrap/journal.ndjson`) so `undo` can reverse the session.
 
 ---
 
 ## Commands
 
-ca-bootstrap is a multi-command CLI. The bootstrap one-liner runs the default `setup` command; once installed you can invoke any of the four:
-
-| Command | Purpose |
-|---|---|
-| `setup` (default) | Full interactive onboarding wizard |
-| `doctor` | Diagnose current state. No changes; exits non-zero if anything's wrong |
-| `repair` | Fix issues identified by doctor. Targeted (`--target tool-id`) or full (`--all`) |
-| `undo` | Reverse changes ca-bootstrap made (per the action journal) |
-
-```powershell
-./ca-bootstrap.ps1                          # same as: setup
-./ca-bootstrap.ps1 setup                    # full wizard
-./ca-bootstrap.ps1 doctor                   # diagnose
-./ca-bootstrap.ps1 repair --all             # fix everything doctor found
-./ca-bootstrap.ps1 repair --target dotnet-10
-./ca-bootstrap.ps1 undo                     # interactive reversal
-./ca-bootstrap.ps1 undo --target identity   # reverse just one thing
+```
+ca-bootstrap version    Print version, commit, build time
+ca-bootstrap doctor     Diagnose installed tooling against the manifest (read-only)
+ca-bootstrap setup      Interactive wizard (welcome → prereqs → gh-auth → identity → folders → repos → extras)
+ca-bootstrap repair     Install missing tools — all required by default; --all adds optional; --target <id> for one
+ca-bootstrap undo       Reverse changes recorded in the action journal
 ```
 
-### Common flags (all commands)
+`setup`'s prerequisites step **offers to install** any missing required tools inline (the same install path as `repair`); `repair` with no arguments fixes everything that's missing. You don't need to know tool ids.
 
-| Flag | Effect |
+| Command | Key flags |
 |---|---|
-| `-Unattended -ConfigFile <path>` | Non-interactive run; all decisions from YAML. See [`manifest/answers.example.yaml`](manifest/answers.example.yaml). |
-| `-WhatIf` | Dry-run; show what would happen, change nothing. |
-| `-Verbose` | Stream every shell command to console (in addition to the transcript log). |
-| `-LogPath <path>` | Override the default transcript location. |
+| `setup` | `--unattended --config <file>` (non-interactive; reads a YAML answer file) |
+| `repair` | *(no flags)* installs all missing **required** tools; `--all` also installs optional; `--target <id>` installs one; `--unattended --config <file>`, `--ForceUnlock` |
+| `undo` | `--target identity\|tools\|tool:<id>`, `--include-folders` (remove non-empty folders), `--include-tools` (uninstall), `--force` (skip confirm; required for `--unattended`), `--ForceUnlock` |
+| `doctor` | *(none — read-only)* |
 
-### Typical usage
+`doctor` exit codes: **0** = all good, **2** = a required tool is missing or below its minimum version (informational, not an error), **1** = a manifest/IO failure.
 
-| Situation | Command |
-|---|---|
-| First day on the job | `setup` (via the bootstrap one-liner) |
-| "Is my machine still set up correctly?" | `doctor` |
-| Doctor reported a missing tool / drifted config | `repair --all` (or targeted) |
-| "Add the new repo we created last week" | `setup` again — it's idempotent and only does new work |
-| Leaving the company / refreshing the laptop | `undo` |
-| CI / IT pre-provisioning a new VM | `setup -Unattended -ConfigFile <answers>.yaml` |
+### Unattended mode
 
-See [`docs/commands.md`](docs/commands.md) for the full reference.
+`setup`, `repair`, and `undo` accept `--unattended --config <file>`, reading every decision from a YAML answer file (keys map to the interactive prompts). Used for CI / IT pre-provisioning. `undo --unattended` additionally requires `--force`.
 
-### One-off helper scripts
+---
 
-Standalone scripts in `scripts/` that aren't part of the wizard but are useful after onboarding:
+## Tools
 
-| Script | Purpose |
-|---|---|
-| [`scripts/install-commit-hooks.ps1`](scripts/install-commit-hooks.ps1) | Install commitlint `commit-msg` hooks in every cloned ChannelAssist repo that has a `commitlint.config.*`. Lets `git commit` reject a non-conforming header (e.g. >72 chars) locally, before CI does. Idempotent; preserves existing foreign hooks unless `-Force`. |
+The required/optional tool set lives in the embedded manifest ([`internal/manifest/tools.yaml`](internal/manifest/tools.yaml)).
 
-Run directly or via the developer task runner:
+**Required** (`doctor` flags any missing one as drift): `git`, `gh` (GitHub CLI), `pwsh` (PowerShell 7+), `make` (GNU Make), `az` (Azure CLI), `jq`, `psql` (PostgreSQL client), `copilot-cli` (GitHub Copilot CLI).
 
-```powershell
-# Direct:
-./scripts/install-commit-hooks.ps1
-./scripts/install-commit-hooks.ps1 -WorkspacePath ~/MyWorkspace -WhatIf
-./scripts/install-commit-hooks.ps1 -Force
+**Optional** (detected, installable on demand): `dotnet-10`, `kubectl`, `helm`, `node-20`, `python-312`, `docker`, `vscode`, `claude-code`.
 
-# Via ./make.ps1 (Windows-native; also works anywhere pwsh runs):
-./make.ps1 install-commit-hooks
-./make.ps1 install-commit-hooks -WhatIf
-./make.ps1 install-commit-hooks -WorkspacePath ~/MyWorkspace
-./make.ps1 install-commit-hooks -Force
+`ca-bootstrap repair` installs all missing required tools (add `--all` for optional too, or `--target <id>` for just one) — it reads the per-OS install block (winget on Windows, brew on macOS, apt/dnf/snap/script on Linux, npm for the Node-based CLIs) and runs it after a single confirmation.
 
-# Via make (macOS / Linux):
-make install-commit-hooks
-make install-commit-hooks WHATIF=1
-make install-commit-hooks WORKSPACE=~/MyWorkspace
-make install-commit-hooks FORCE=1
+---
+
+## Build from source
+
+Requires Go 1.23+.
+
+```bash
+git clone https://github.com/ChannelAssist/ca-bootstrap
+cd ca-bootstrap
+go build -o ca-bootstrap ./cmd/ca-bootstrap
+./ca-bootstrap version
+
+# tests
+go test ./...                          # unit
+go test -tags acceptance ./tests/acceptance   # acceptance
 ```
+
+Manifests are embedded at build time. For local experiments you can override them: `CA_BOOTSTRAP_MANIFEST`, `CA_BOOTSTRAP_REPOS`, `CA_BOOTSTRAP_FOLDERS` point at alternate YAML files.
 
 ---
 
@@ -210,141 +138,44 @@ make install-commit-hooks FORCE=1
 
 ```
 ca-bootstrap/
-├── README.md                  # this file
-├── DESIGN.md                  # comprehensive design specification
-├── bootstrap.sh               # *nix entry point (installs pwsh, clones repo, hands off)
-├── bootstrap.ps1              # Windows entry point
-├── ca-bootstrap.ps1           # multi-command orchestrator (setup/doctor/repair/undo)
-├── Makefile                   # developer task runner (macOS/Linux; bash + GNU make)
-├── make.ps1                   # developer task runner (Windows-native; pure pwsh 7+)
-├── lib/                       # shared helpers (UI, platform detection, git ops, journal)
-├── commands/                  # one file per top-level command
-│   ├── setup.ps1
-│   ├── doctor.ps1
-│   ├── repair.ps1
-│   └── undo.ps1
-├── steps/                     # numbered step modules used by setup/doctor/repair
-│   ├── 10-welcome.ps1
-│   ├── 20-prereqs.ps1
-│   ├── 30-gh-auth.ps1
-│   ├── 40-workspace.ps1
-│   ├── 50-folders.ps1
-│   ├── 60-repos.ps1
-│   ├── 70-git-identity.ps1
-│   └── 80-extras.ps1
-├── manifest/                  # YAML data
-│   ├── folders.yaml           # folder structure to create
-│   ├── repos.yaml             # repos to clone, grouped
-│   ├── tools.yaml             # tools to detect and install per OS
-│   └── answers.example.yaml   # unattended-mode template
-├── docs/                      # extended documentation
-│   ├── commands.md            # full reference for setup/doctor/repair/undo
-│   └── action-journal.md      # how state is tracked for undo
-├── templates/                 # files copied into the developer's workspace
-│   └── dot-vscode/            # → `<workspace>/.vscode/` (extensions/settings/launch/tasks)
-├── wiki/                      # GitHub Wiki working tree (gitignored; sync via wiki-update)
-├── scripts/                   # release/nuke/wiki-sync — each ships as .sh (bash) + .ps1 (pwsh)
-└── tests/                     # Pester tests for lib/, steps/, commands/
+├── cmd/ca-bootstrap/         # main package; console UTF-8 shim; ldflags version vars
+├── internal/
+│   ├── cli/                  # cobra commands: version, doctor, setup, repair, undo
+│   ├── detect/               # tool detection + version parsing (per-OS probes)
+│   ├── manifest/             # embedded tools.yaml / repos.yaml / folders.yaml + loaders
+│   ├── ghauth/               # gh auth status/login/logout wrappers
+│   ├── identity/             # workspace git identity read/write/restore
+│   ├── folders/              # folder taxonomy + embedded README templates
+│   ├── repos/                # gh repo clone orchestration
+│   ├── extras/               # VS Code workspace, .vscode defaults, plugin link, WSL
+│   ├── install/              # per-package-manager install / uninstall dispatch
+│   ├── journal/              # append-only NDJSON action journal
+│   ├── lock/                 # exclusive session lock
+│   ├── undo/                 # undo orchestrator + reversers/
+│   └── wizard/               # wizard engine + steps/
+├── tests/acceptance/         # build-tagged end-to-end tests + YAML fixtures
+├── docs/specs/               # spec-first design docs (one per alpha)
+├── dist/                     # release artifacts + the Windows smoke harness (gitignored)
+└── legacy/                   # archived PowerShell implementation (v1.9.0)
 ```
 
 ---
 
 ## Contributing
 
-Most changes are YAML edits, no code required:
+New work is **spec → tests → code**, in that strict order; each alpha has a spec in [`docs/specs/`](docs/specs/). Conventional Commits, GPG-signed, bisected (one logical change per commit).
 
-| Change | Edit |
-|---|---|
-| Add a repo | [`manifest/repos.yaml`](manifest/repos.yaml) |
-| Add a tool / change install method | [`manifest/tools.yaml`](manifest/tools.yaml) |
-| Add a folder to the workspace skeleton | [`manifest/folders.yaml`](manifest/folders.yaml) |
-| Adjust default unattended answers | [`manifest/answers.example.yaml`](manifest/answers.example.yaml) |
-| Change the workspace `.vscode/` defaults | [`templates/dot-vscode/`](templates/dot-vscode/) (renamed at copy-time to `.vscode/`) |
-
-For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
-
-### Developer commands: `make` (Unix) vs `./make.ps1` (Windows)
-
-The repo ships two equivalent developer task surfaces. Pick by host OS — no Git Bash or WSL required on Windows:
-
-| Surface | Host OS | Notes |
-|---|---|---|
-| [`Makefile`](Makefile) (`make <target>`) | macOS, Linux | Requires GNU make + bash. Uses `ARGS=...` / `VAR=value` style. |
-| [`make.ps1`](make.ps1) (`./make.ps1 <target>`) | Windows (also works on macOS/Linux with `pwsh`) | Pure PowerShell 7+. Typed parameters per target (e.g. `-Tool dotnet-10`). |
-
-Both surfaces invoke the same underlying `ca-bootstrap.ps1` commands and produce identical results. `./make.ps1` mirrors every Makefile target — `setup`, `doctor`, `repair`, `undo`, `nuke`, `tool-*`, `manifest-*`, `wiki-*`, `release`, `release-full`, `clean`, etc. Run `./make.ps1 help` to see the full list.
-
-Parameter style differs because PowerShell prefers typed switches over environment variables:
-
-```powershell
-# Windows (PowerShell)
-./make.ps1 tool-install -Tool dotnet-10
-./make.ps1 repair -All
-./make.ps1 nuke -IncludeTools -Confirm
-./make.ps1 release -Version 1.5.0
-```
-
-```bash
-# macOS / Linux (GNU make)
-make tool-install TOOL=dotnet-10
-make repair ARGS='--all'
-make nuke INCLUDE_TOOLS=1 CONFIRM=1
-make release VERSION=1.5.0
-```
-
-The bash shell scripts under `scripts/` (`release.sh`, `nuke.sh`, `wiki-sync.sh`, `release-full.sh`) and their PowerShell peers (`*.ps1`) are kept in lockstep; if you change behaviour in one, mirror it in the other so both host platforms stay supported.
-
-### Branch model
-
-Following the ChannelAssist org convention:
+### Branch & release model
 
 | Branch | Role |
 |---|---|
-| `dev` | Default. Feature PRs target this branch. CI runs on every PR. |
-| `main` | Release source of truth. Only advances via fast-forward from `dev` at release time. Tagged `vX.Y.Z` on every release. |
+| `dev` | Default. Feature PRs target this branch (squash-merged). |
+| `main` | Release source of truth. `dev` is promoted to `main` via a **merge commit** at release time, then tagged `vX.Y.Z` and a GitHub Release is cut with per-platform binaries + `SHA256SUMS.txt`. |
 
-The bootstrap one-liners pin to `main`, so end-users always pull the most recently released code (not work-in-progress on `dev`).
-
-### Cutting a release
-
-```bash
-# 1. Open a PR to dev that bumps $Script:CABootstrapVersion in ca-bootstrap.ps1
-#    (and adds a CHANGELOG entry if you keep one).
-# 2. Merge that PR.
-# 3. From the repo root, one of:
-make release VERSION=1.5.0            # macOS / Linux
-./make.ps1 release -Version 1.5.0     # Windows (or any host with pwsh)
-```
-
-Either entrypoint runs in this order: dependency check (`gh`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1` / `-SkipManifestEdit`), smoke + Pester (skip with `SKIP_SMOKE=1` / `-SkipSmoke` and `SKIP_TESTS=1` / `-SkipTests`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. A trap / `try/finally` restores main-protection even if a mid-flight step fails.
-
-`make release-dry-run VERSION=1.5.0` (bash) or `./make.ps1 release-dry-run -Version 1.5.0` (pwsh) validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
-
-#### One-shot variant: `release-full`
-
-Skip the manual bump-PR step:
-
-```bash
-make release-full VERSION=1.5.0            # macOS / Linux
-./make.ps1 release-full -Version 1.5.0     # Windows
-```
-
-Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same release chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use the plain `release` target if your team wants the bump PR to go through normal review.
-
-`release-full-dry-run` validates the bump+merge plan without mutating. If the bump is genuinely needed (dev's version differs from the target) the dry-run short-circuits before invoking the release step — it can't simulate "dev would be bumped, then release runs against the new version" without actually bumping. To dry-run the release half too, manually bump dev first then run `release-dry-run`.
+Branch from `dev`, PR back into `dev`. See [`CHANGELOG.md`](CHANGELOG.md) for the release history and [`CLAUDE.md`](CLAUDE.md) for the SDLC conventions this repo follows.
 
 ---
 
 ## License
 
-Proprietary to ChannelAssist Inc. Public-readable for the bootstrap one-liner; the manifest enumerates private repos but does not expose their contents.
-
----
-
-## See also
-
-- [`DESIGN.md`](DESIGN.md) — full design specification (architecture, data shapes, design rationale)
-- [`docs/commands.md`](docs/commands.md) — per-command reference: flags, exit codes, output formats
-- [`docs/action-journal.md`](docs/action-journal.md) — journal format, recovery, per-action reversal rules
-- [Wiki](https://github.com/ChannelAssist/ca-bootstrap/wiki) — same docs, GitHub-rendered
-- [Public org profile](https://github.com/ChannelAssist) — the repo landscape this bootstraps
+Proprietary to ChannelAssist Inc.

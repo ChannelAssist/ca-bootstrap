@@ -1,8 +1,9 @@
 # Unattended config for TestSetup_PrereqsDrift_Rejected_ExitsTwo.
-# Drift found + user declined to continue → exit 2.
+# Drift found, user declines the install offer AND declines to continue → exit 2.
 welcome:
   consent: true
 prereqs:
+  install_missing: false
   continue_with_drift: false
 identity:
   name: "Test User"

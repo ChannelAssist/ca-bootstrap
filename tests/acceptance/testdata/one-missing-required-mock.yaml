@@ -1,0 +1,17 @@
+# Fixture for TestSetup_PrereqsDrift_OffersInstall.
+# A required tool that is missing (detect.command is a name no real binary
+# uses) but DOES have an install block — a mock installer that "succeeds".
+# The setup prereqs step should offer to install it. (Post-install detection
+# still can't find the fake binary, so it stays drift — the test pairs this
+# with continue_with_drift: true and asserts the install was attempted.)
+version: 1
+tools:
+  - id: xyzzy-nonexistent
+    name: Xyzzy Nonexistent
+    optional: false
+    detect:
+      command: definitely-not-real-xyzzy-binary
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'
+    install:
+      any: { type: mock, id: success }

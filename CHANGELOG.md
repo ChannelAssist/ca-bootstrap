@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.0-alpha.6] - 2026-06-04
+
+### Changed (Go rewrite — v2.0.0-alpha.6: repair/setup actually install)
+
+- **`repair` now fixes everything by default.** Running `ca-bootstrap repair` with no `--target` scans the manifest and installs every missing/below-min **required** tool after a single batch confirmation (`Install these N tools? [Y/n]`); `repair --all` also installs missing **optional** tools. `repair --target <id>` still installs one tool by id. Previously `--target` was mandatory, so you had to know the tool id and repair one at a time. (AB#40272)
+- **`setup` installs missing tools inline.** The prerequisites step now offers to install missing required tools right there (prompt key `prereqs.install_missing`), using the same install path as `repair`, instead of only detecting drift and telling you to run `repair` later (which made it behave like `doctor`). Tools that can't be installed fall back to the existing continue-with-drift gate. (AB#40272)
+- New **`internal/provision`** package — the shared "install what's missing" orchestrator (`Missing` + `InstallMissing`) used by both `repair` and the setup prereqs step, so they behave identically. Each install is journaled (`install_attempt` → `install_success`/`install_failed`) so `undo` can reverse it. No new external dependencies. (AB#40272)
+
 ## [2.0.0-alpha.5] - 2026-06-04
 
 ### Changed (Go rewrite — required prerequisites)
@@ -99,6 +107,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Pre-overwrite README content is scanned for credential patterns BEFORE base64-encoding** (`repair --target folder-readmes`). The scan tries UTF-8, UTF-16LE, AND UTF-16BE decodes and matches the same `Test-CABContainsSensitive` pattern set the journal's existing string-value guard uses (GH/AWS/Slack/JWT/PEM prefixes). On a match the snapshot is held back (`previous_content_captured: false`) — the overwrite still proceeds, only the journaling is suppressed, so secrets can't round-trip into `~/.ca-bootstrap/journal.yaml` via base64. (#83, AB#40024)
 - **`undo refresh_readme` refuses to overwrite a diverged README**. Before writing the captured bytes, it compares `SHA256(current README)` to `SHA256(recorded template)`. Mismatch → `skip` with a recovery recipe; hash-compute failure → `fail` (refuse blind write); template missing on disk → `skip` (mirrors the existing `seed_readme` discipline). User edits made after `repair --target folder-readmes` are now preserved across `undo`. (#83, AB#40024)
 
-[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.5...HEAD
+[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.6...HEAD
+[2.0.0-alpha.6]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.5...v2.0.0-alpha.6
 [2.0.0-alpha.5]: https://github.com/ChannelAssist/ca-bootstrap/compare/v1.9.0...v2.0.0-alpha.5
 [1.9.0]: https://github.com/ChannelAssist/ca-bootstrap/compare/v1.8.0...v1.9.0
