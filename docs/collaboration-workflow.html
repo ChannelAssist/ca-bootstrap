@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ca-bootstrap Go rewrite — how we work</title>
+<meta name="description" content="The collaboration workflow Peter Giannopoulos + Claude Code use to spec, test, and ship the ca-bootstrap Go rewrite (v2.0.0-alpha.1).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ctext y='26' font-size='28'%3E%E2%9A%99%EF%B8%8F%3C/text%3E%3C/svg%3E">
+
+<style>
+:root {
+  --bg-deep:        #0a0e1a;
+  --bg-base:        #0f172a;
+  --bg-surface:     rgba(30, 41, 59, 0.6);
+  --bg-surface-hi:  rgba(51, 65, 85, 0.4);
+  --border:         rgba(148, 163, 184, 0.12);
+  --border-strong:  rgba(148, 163, 184, 0.25);
+  --text-primary:   #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary:  #64748b;
+  --accent:         #818cf8;
+  --accent-glow:    rgba(129, 140, 248, 0.4);
+  --success:        #34d399;
+  --warning:        #fbbf24;
+  --danger:         #f87171;
+  --phase-0:        #34d399;  /* green - pivot */
+  --phase-1:        #fbbf24;  /* orange - spec - WE ARE HERE */
+  --phase-2:        #c084fc;  /* purple - plan */
+  --phase-3:        #f472b6;  /* pink - tests */
+  --phase-4:        #60a5fa;  /* blue - code */
+  --phase-5:        #22d3ee;  /* teal - PR */
+  --phase-6:        #a3e635;  /* lime - release */
+  --font-sans:      -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif;
+  --font-mono:      "SF Mono", "Monaco", "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+  --shadow-sm:      0 1px 2px 0 rgba(0,0,0,0.3);
+  --shadow-md:      0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.2);
+  --shadow-lg:      0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.3);
+  --shadow-glow:    0 0 32px var(--accent-glow);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background:
+    radial-gradient(ellipse 1200px 800px at 0% 0%, rgba(129, 140, 248, 0.08), transparent 60%),
+    radial-gradient(ellipse 1000px 600px at 100% 30%, rgba(52, 211, 153, 0.06), transparent 60%),
+    var(--bg-deep);
+  min-height: 100vh;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 4rem 2rem 6rem;
+}
+
+@media (max-width: 768px) {
+  main { padding: 2.5rem 1rem 4rem; }
+}
+
+/* ───────────────────── HEADER / HERO ───────────────────── */
+header.hero {
+  margin-bottom: 4rem;
+  position: relative;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 1rem;
+}
+.eyebrow::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  margin: 0 0 1rem;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 1.125rem;
+  color: var(--text-secondary);
+  max-width: 720px;
+  margin: 0 0 2rem;
+}
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+.pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+.pill.active {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.4);
+  color: var(--phase-1);
+}
+.pill.active .dot {
+  background: var(--phase-1);
+  box-shadow: 0 0 8px var(--phase-1);
+  animation: pulse 2s ease-in-out infinite;
+}
+.pill.done {
+  background: rgba(52, 211, 153, 0.08);
+  border-color: rgba(52, 211, 153, 0.3);
+  color: var(--success);
+}
+.pill.done .dot {
+  background: var(--success);
+}
+
+/* ───────────────────── SECTIONS ───────────────────── */
+section {
+  margin: 4rem 0;
+  scroll-margin-top: 2rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 1rem;
+}
+
+.section-num {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  letter-spacing: 0.1em;
+}
+
+h2 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.lede {
+  color: var(--text-secondary);
+  margin: 0 0 2rem;
+  max-width: 820px;
+}
+
+/* ───────────────────── DIAGRAM HOST ───────────────────── */
+.diagram-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(20px);
+  overflow-x: auto;
+}
+
+.diagram-host {
+  min-width: 800px;
+}
+.diagram-host .mermaid {
+  background: transparent !important;
+}
+
+/* ───────────────────── DECISION GRID ───────────────────── */
+.decisions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+.decision-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  transition: all 0.2s;
+}
+.decision-card:hover {
+  background: var(--bg-surface-hi);
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.decision-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0.5rem;
+}
+.decision-value {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+.decision-note {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ───────────────────── PHASE LIST ───────────────────── */
+.phases {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.phase-row {
+  display: grid;
+  grid-template-columns: 80px 60px 1fr 120px;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all 0.2s;
+}
+.phase-row.current {
+  border-color: var(--phase-1);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2), 0 0 24px rgba(251, 191, 36, 0.1);
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.04), var(--bg-surface) 80%);
+}
+.phase-row:hover {
+  background: var(--bg-surface-hi);
+  border-color: var(--border-strong);
+}
+.phase-row.current:hover {
+  border-color: var(--phase-1);
+}
+.phase-id {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-tertiary);
+}
+.phase-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.phase-title {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.phase-detail {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.15rem;
+}
+.phase-status {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  text-align: right;
+}
+.phase-status.done {
+  color: var(--success);
+}
+.phase-status.current {
+  color: var(--phase-1);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .phase-row {
+    grid-template-columns: 40px 1fr;
+    gap: 0.75rem;
+  }
+  .phase-id, .phase-status { display: none; }
+}
+
+/* ───────────────────── TERMINAL ───────────────────── */
+.terminal {
+  background: #020617;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.terminal-bar {
+  background: #1e293b;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.terminal-bar .dot-r { width: 12px; height: 12px; border-radius: 50%; background: #ef4444; }
+.terminal-bar .dot-y { width: 12px; height: 12px; border-radius: 50%; background: #eab308; }
+.terminal-bar .dot-g { width: 12px; height: 12px; border-radius: 50%; background: #22c55e; }
+.terminal-bar .title {
+  margin-left: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+.terminal-body {
+  padding: 1.5rem;
+  color: #e2e8f0;
+  line-height: 1.7;
+  white-space: pre;
+  overflow-x: auto;
+}
+.terminal-body .prompt { color: var(--accent); }
+.terminal-body .cmd    { color: #f8fafc; }
+.terminal-body .ok     { color: var(--success); }
+.terminal-body .fail   { color: var(--danger); }
+.terminal-body .warn   { color: var(--warning); }
+.terminal-body .muted  { color: var(--text-tertiary); }
+
+/* ───────────────────── RELEASE MATRIX ───────────────────── */
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.matrix-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+.matrix-card:hover {
+  background: var(--bg-surface-hi);
+  border-color: var(--border-strong);
+}
+.matrix-os {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.3rem;
+}
+.matrix-arch {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+.matrix-asset {
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  margin-top: 0.5rem;
+  word-break: break-all;
+}
+
+/* ───────────────────── LINK CARDS ───────────────────── */
+.links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.75rem;
+}
+a.link-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: all 0.2s;
+}
+a.link-card:hover {
+  background: var(--bg-surface-hi);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.link-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.link-title {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.link-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* ───────────────────── FOOTER ───────────────────── */
+footer {
+  margin-top: 6rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+footer code { font-family: var(--font-mono); color: var(--text-secondary); }
+footer a { color: var(--accent); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* ───────────────────── INLINE BITS ───────────────────── */
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.4em;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+code.inline {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  background: rgba(129,140,248,0.1);
+  border-radius: 4px;
+  color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<main>
+
+<!-- ════════════════════════ HERO ════════════════════════ -->
+<header class="hero">
+  <div class="eyebrow">live status · 2026-05-25 (overnight session)</div>
+  <h1>ca-bootstrap → Go rewrite</h1>
+  <p class="subtitle">
+    How Peter Giannopoulos and Claude Code collaborate to spec, test, and ship the
+    v2.0.0 alphas. Every phase, every gate, every loop.
+  </p>
+
+  <h2 style="margin-top:2.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.1 — <code class="inline">version</code> + <code class="inline">doctor</code></h2>
+  <div class="status-row">
+    <span class="pill done"><span class="dot"></span>Phase 0 — Pivot</span>
+    <span class="pill done"><span class="dot"></span>Phase A — Spec</span>
+    <span class="pill done"><span class="dot"></span>Phase B — Plan</span>
+    <span class="pill done"><span class="dot"></span>Phase C — RED (7/7)</span>
+    <span class="pill done"><span class="dot"></span>Phase D — GREEN (7/7)</span>
+    <span class="pill active"><span class="dot"></span>Phase E — PR #90 open</span>
+    <span class="pill"><span class="dot"></span>Phase F — Release (CI paused)</span>
+  </div>
+
+  <h2 style="margin-top:1.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.2 — <code class="inline">setup</code> + journal + prompt model</h2>
+  <div class="status-row">
+    <span class="pill done"><span class="dot"></span>Phase A — Spec</span>
+    <span class="pill done"><span class="dot"></span>Phase B — Plan</span>
+    <span class="pill done"><span class="dot"></span>Phase C — RED (7/7)</span>
+    <span class="pill done"><span class="dot"></span>Phase D — GREEN (14/14)</span>
+    <span class="pill active"><span class="dot"></span>Phase E — PR #93 open</span>
+    <span class="pill"><span class="dot"></span>Phase F — Release (CI paused)</span>
+  </div>
+
+  <h2 style="margin-top:1.5rem; font-size:1.15rem; color:var(--text-secondary); font-weight:500;">alpha.3 — <code class="inline">repair</code> (install logic)</h2>
+  <div class="status-row">
+    <span class="pill"><span class="dot"></span>Not started — pending Peter's review of alpha.1/alpha.2</span>
+  </div>
+</header>
+
+<!-- ════════════════════════ THE PIVOT ════════════════════════ -->
+<section id="why">
+  <div class="section-header">
+    <span class="section-num">§1</span>
+    <h2>Why we're rewriting</h2>
+  </div>
+  <p class="lede">
+    A single 90-minute session on 2026-05-25 surfaced three unrelated bugs in normal
+    first-use paths of the PowerShell ca-bootstrap: the documented Windows install
+    one-liner has never worked (<code class="inline">#requires</code> +
+    <code class="inline">[CmdletBinding()]</code> are incompatible with <code class="inline">iex</code>);
+    <code class="inline">make</code> on Windows emits literal <code class="inline">\033[…]</code> escapes
+    and mojibake'd box characters; <code class="inline">./make.ps1 setup</code> freezes silently.
+    These are not isolated. Six prior commits across the project's history addressed bugs
+    in the same stdio/console/encoding class — including PR #17 which literally dropped the
+    TUI to escape it — yet the class persists. The signal is structural, not surface.
+    PowerShell's interactive-console model is the wrong abstraction for a cross-platform
+    "make a fresh laptop usable" tool.
+  </p>
+  <p class="lede">
+    The Go rewrite ships as a single static binary per platform via GitHub Releases.
+    No pwsh-version dance, no execution-policy fights, no <code class="inline">iex</code>/scriptblock
+    puzzles, no child-process stdio inheritance bugs. The PowerShell tree is archived at
+    tag <code class="inline">legacy/v1.9.0</code> and moves to <code class="inline">legacy/</code>.
+    Strict process: <strong>spec → tests → code</strong>. No code lands before its acceptance
+    tests exist.
+  </p>
+</section>
+
+<!-- ════════════════════════ WORKFLOW DIAGRAM ════════════════════════ -->
+<section id="workflow">
+  <div class="section-header">
+    <span class="section-num">§2</span>
+    <h2>The collaboration workflow</h2>
+  </div>
+  <p class="lede">
+    Phases run top-to-bottom. Within each phase, feedback loops are explicit
+    (review gates, retry arrows). The two highlighted nodes in Phase A — write spec,
+    user reviews spec — are <strong>where we are right now</strong>.
+  </p>
+  <div class="diagram-card">
+    <div class="diagram-host">
+      <pre class="mermaid">
+flowchart TD
+    Start(["Peter directive:<br/>'rebuild this thing'"]) --> Phase0
+
+    subgraph Phase0 ["🏛 Phase 0 — Pivot Decision (DONE)"]
+        direction TB
+        P0_1[Claude saves context<br/>to memory files] --> P0_2[Tag PS lineage<br/>legacy/v1.9.0 signed]
+        P0_2 --> P0_3[Create PBI AB#40028 in ADO]
+        P0_3 --> P0_4[PR #87: pivot doc + README banner +<br/>CHANGELOG entry · 12 metadata fields verified]
+    end
+
+    Phase0 --> Phase1
+
+    subgraph Phase1 ["📋 Phase A — Spec (WE ARE HERE)"]
+        direction TB
+        P1_1[Invoke brainstorming skill] --> P1_Q
+        P1_Q{Question N of ~10<br/>multi-choice + preview} --> P1_A[Peter picks option]
+        P1_A --> P1_D{All foundational<br/>decisions locked?}
+        P1_D -->|no, next| P1_Q
+        P1_D -->|yes| P1_DES[Propose design in 2 chunks]
+        P1_DES --> P1_OK{Chunk OK?}
+        P1_OK -->|redirect| P1_DES
+        P1_OK -->|yes, next chunk| P1_DES
+        P1_OK -->|yes, all done| P1_W[★ Write spec doc<br/>docs/specs/...alpha-1-spec.md ★]
+        P1_W --> P1_SR[Inline self-review:<br/>placeholders / contradictions /<br/>scope / ambiguity]
+        P1_SR --> P1_REV{★ Peter reviews written spec ★}
+        P1_REV -->|changes| P1_W
+        P1_REV -->|approved| Phase2
+    end
+
+    subgraph Phase2 ["🗺 Phase B — Plan"]
+        direction TB
+        P2_1[Invoke writing-plans skill] --> P2_2[Spec broken into discrete tasks<br/>with deps + acceptance criteria]
+        P2_2 --> P2_3{Peter reviews plan}
+        P2_3 -->|changes| P2_2
+        P2_3 -->|approved| Phase3
+    end
+
+    subgraph Phase3 ["🧪 Phase C — Tests First (TDD discipline)"]
+        direction TB
+        P3_1[Write 7 acceptance tests<br/>from spec §9.2] --> P3_2[All 7 tests RED<br/>binary doesn't exist yet]
+        P3_2 --> P3_3{Peter reviews tests}
+        P3_3 -->|changes| P3_1
+        P3_3 -->|approved| Phase4
+    end
+
+    subgraph Phase4 ["⚒ Phase D — Code"]
+        direction TB
+        P4_1[Implement smallest unit] --> P4_2[go test ./...]
+        P4_2 --> P4_3{One more<br/>test now green?}
+        P4_3 -->|no, fix| P4_1
+        P4_3 -->|yes| P4_4[Conventional Commit<br/>signed, bisected,<br/>AI co-author footer]
+        P4_4 --> P4_5{All 7 tests green<br/>on 3 CI runners?}
+        P4_5 -->|no| P4_1
+        P4_5 -->|yes| Phase5
+    end
+
+    subgraph Phase5 ["📬 Phase E — PR + Review"]
+        direction TB
+        P5_1[Open PR with all 12<br/>metadata fields] --> P5_2[ci.yml: vet + lint + test<br/>on 3 OS]
+        P5_2 --> P5_3{CI green?}
+        P5_3 -->|no| P4_1
+        P5_3 -->|yes| P5_4[Peter + Copilot review]
+        P5_4 --> P5_5{Comments?}
+        P5_5 -->|yes| P5_6[Address, commit, push,<br/>reply, resolve threads]
+        P5_6 --> P5_2
+        P5_5 -->|no| P5_7[Peter merges to dev]
+        P5_7 --> Phase6
+    end
+
+    subgraph Phase6 ["📦 Phase F — Release"]
+        direction TB
+        P6_1[Tag v2.0.0-alpha.1] --> P6_2[release.yml fires:<br/>5-platform build matrix]
+        P6_2 --> P6_3[GH Releases:<br/>5 binaries + SHA256SUMS]
+        P6_3 --> P6_4[Peter installs on real Windows<br/>+ smokes]
+        P6_4 --> P6_5{Smoke pass?}
+        P6_5 -->|no, regression| P4_1
+        P6_5 -->|yes| Done(["alpha.1 shipped 🚀<br/>next: alpha.2 spec"])
+    end
+
+    Note1["⟂ Cross-cutting throughout every phase ⟂<br/>━━━━━━━━━━━━━━━━━━━━━━━━━━━<br/>• TodoWrite task list kept current<br/>• Memory updates for recurring patterns<br/>• AB# verification before any reference<br/>• Conventional Commits, GPG-signed, bisected<br/>• Engineering journal entry at session end<br/>• PR metadata: 12 fields, zero (MISSING)"]
+
+    classDef phase0 fill:#064e3b,stroke:#34d399,color:#f1f5f9
+    classDef phase1 fill:#78350f,stroke:#fbbf24,color:#f1f5f9
+    classDef phase2 fill:#581c87,stroke:#c084fc,color:#f1f5f9
+    classDef phase3 fill:#831843,stroke:#f472b6,color:#f1f5f9
+    classDef phase4 fill:#1e3a8a,stroke:#60a5fa,color:#f1f5f9
+    classDef phase5 fill:#155e75,stroke:#22d3ee,color:#f1f5f9
+    classDef phase6 fill:#365314,stroke:#a3e635,color:#f1f5f9
+    classDef notebox fill:#1e293b,stroke:#475569,color:#cbd5e1,stroke-dasharray:5 5
+    classDef hilite fill:#92400e,stroke:#fde047,color:#fefce8,stroke-width:3px
+    classDef endpt fill:#0f172a,stroke:#cbd5e1,color:#f1f5f9
+
+    class P0_1,P0_2,P0_3,P0_4 phase0
+    class P1_1,P1_Q,P1_A,P1_D,P1_DES,P1_OK,P1_SR phase1
+    class P2_1,P2_2,P2_3 phase2
+    class P3_1,P3_2,P3_3 phase3
+    class P4_1,P4_2,P4_3,P4_4,P4_5 phase4
+    class P5_1,P5_2,P5_3,P5_4,P5_5,P5_6,P5_7 phase5
+    class P6_1,P6_2,P6_3,P6_4,P6_5 phase6
+    class Note1 notebox
+    class P1_W,P1_REV hilite
+    class Start,Done endpt
+      </pre>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ PHASES ════════════════════════ -->
+<section id="phases">
+  <div class="section-header">
+    <span class="section-num">§3</span>
+    <h2>Where we are, what's next</h2>
+  </div>
+  <p class="lede">Each phase has clear exit criteria. We don't enter the next phase until the current one's gate is open.</p>
+  <div class="phases">
+
+    <div class="phase-row">
+      <span class="phase-id">Phase 0</span>
+      <span class="phase-emoji">🏛</span>
+      <div>
+        <div class="phase-title">Pivot Decision</div>
+        <div class="phase-detail">Pivot doc · archival tag <code class="inline">legacy/v1.9.0</code> · PBI AB#40028 · PR #87</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 A+B</span>
+      <span class="phase-emoji">📋</span>
+      <div>
+        <div class="phase-title">alpha.1 Spec + Plan</div>
+        <div class="phase-detail">10 brainstorm decisions · spec §1-§14 + Appendix A · 15-task plan · AB#40033 · PR #88</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 C</span>
+      <span class="phase-emoji">🧪</span>
+      <div>
+        <div class="phase-title">alpha.1 RED — 7 failing tests</div>
+        <div class="phase-detail">Migration (PS → <code class="inline">legacy/</code>, 95 renames) + Go scaffold + 5 fixtures + 7 failing acceptance tests · AB#40034 · PR #89</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.1 D</span>
+      <span class="phase-emoji">⚒</span>
+      <div>
+        <div class="phase-title">alpha.1 GREEN — version + doctor</div>
+        <div class="phase-detail">Manifest loader + detect interface + Unix/Windows probes + doctor subcommand · 7/7 acceptance tests pass · AB#40037 · PR #90</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 A+B</span>
+      <span class="phase-emoji">📋</span>
+      <div>
+        <div class="phase-title">alpha.2 Spec + Plan</div>
+        <div class="phase-detail">10 design decisions (prompt model, journal format, identity scope, …) · 10-task plan · AB#40039 · PR #91</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 C</span>
+      <span class="phase-emoji">🧪</span>
+      <div>
+        <div class="phase-title">alpha.2 RED — 7 more failing tests</div>
+        <div class="phase-detail">4 new packages scaffolded (<code class="inline">journal/prompt/identity/wizard</code>) + 4 unattended fixtures + 7 failing setup tests · AB#40043 · PR #92</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.2 D</span>
+      <span class="phase-emoji">⚒</span>
+      <div>
+        <div class="phase-title">alpha.2 GREEN — setup wizard + journal + prompts</div>
+        <div class="phase-detail">~2000 LOC Go + ~600 LOC tests · 14/14 acceptance tests pass · journal NDJSON, stdin prompter (no TUI), per-folder git identity · AB#40045 · PR #93</div>
+      </div>
+      <span class="phase-status done">✓ DONE</span>
+    </div>
+
+    <div class="phase-row current">
+      <span class="phase-id">Phase E</span>
+      <span class="phase-emoji">📬</span>
+      <div>
+        <div class="phase-title">PR review (7 PRs open)</div>
+        <div class="phase-detail">PRs #87, #88, #89, #90, #91, #92, #93 all open with 12-field metadata. Stacked: #93 → #92 → #90 → #89 → dev (#88, #91 → dev directly).</div>
+      </div>
+      <span class="phase-status current">● IN PROGRESS — Peter's review</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">Phase F</span>
+      <span class="phase-emoji">📦</span>
+      <div>
+        <div class="phase-title">Release (deferred)</div>
+        <div class="phase-detail">CI workflows paused per Peter's overnight cost-min directive. Will re-enable + tag <code class="inline">v2.0.0-alpha.1</code> + ship 5-platform binaries once the alpha.1/alpha.2 PRs land on <code class="inline">dev</code>.</div>
+      </div>
+      <span class="phase-status">— deferred</span>
+    </div>
+
+    <div class="phase-row">
+      <span class="phase-id">α.3+</span>
+      <span class="phase-emoji">🛠</span>
+      <div>
+        <div class="phase-title">Next subsystem: <code class="inline">repair</code></div>
+        <div class="phase-detail">alpha.3 = install logic per manifest (winget/brew/apt/dnf), session lock, journal-recorded installs that alpha.4's <code class="inline">undo</code> can reverse. Not started — pending review of alpha.1/alpha.2.</div>
+      </div>
+      <span class="phase-status">— pending</span>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════ DECISIONS LOCKED ════════════════════════ -->
+<section id="decisions">
+  <div class="section-header">
+    <span class="section-num">§4</span>
+    <h2>Decisions locked during brainstorming</h2>
+  </div>
+  <p class="lede">10 multiple-choice questions answered in sequence, each one constraining the next.</p>
+  <div class="decisions">
+
+    <div class="decision-card">
+      <div class="decision-label">Repository layout</div>
+      <div class="decision-value">In-place rewrite</div>
+      <div class="decision-note">PS tree moves under <code class="inline">legacy/</code>; Go tree at repo root. Same URL, history preserved.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Binary name</div>
+      <div class="decision-value">ca-bootstrap</div>
+      <div class="decision-note">Continuity — muscle memory carries over from the PS era.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Version line</div>
+      <div class="decision-value">v2.0.0 (semver continue)</div>
+      <div class="decision-note">Pre-release tags (<code class="inline">-alpha.N</code>, <code class="inline">-beta.N</code>) for the parity period.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Manifest format</div>
+      <div class="decision-value">YAML (unchanged)</div>
+      <div class="decision-note">Existing <code class="inline">manifest/tools.yaml</code> carries over verbatim.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">alpha.1 MVP</div>
+      <div class="decision-value">doctor + version only</div>
+      <div class="decision-note">Read-only. Smallest possible surface to prove the whole stack end-to-end.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Telemetry</div>
+      <div class="decision-value">None ever</div>
+      <div class="decision-note">No phone-home. No opt-in/opt-out UX. Privacy-clean default.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Code signing</div>
+      <div class="decision-value">Defer to v2.0.0 final</div>
+      <div class="decision-note">Alphas/betas unsigned; users handle SmartScreen/Gatekeeper click once.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Update mechanism</div>
+      <div class="decision-value">Built-in self-update</div>
+      <div class="decision-note"><code class="inline">ca-bootstrap self-update</code> lands in beta.1. Single source of truth = GH Releases.</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">Release matrix</div>
+      <div class="decision-value">5 platforms</div>
+      <div class="decision-note">windows/{amd64,arm64} · darwin/{arm64,amd64} · linux/amd64</div>
+    </div>
+
+    <div class="decision-card">
+      <div class="decision-label">TUI library</div>
+      <div class="decision-value">None — plain CLI</div>
+      <div class="decision-note">Six prior commits prove TUI is the bug magnet we're escaping. No <code class="inline">bubbletea</code>, no <code class="inline">pterm</code>.</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ════════════════════════ DOCTOR PREVIEW ════════════════════════ -->
+<section id="preview">
+  <div class="section-header">
+    <span class="section-num">§5</span>
+    <h2>alpha.1 preview — <code class="inline">ca-bootstrap doctor</code></h2>
+  </div>
+  <p class="lede">The entire alpha.1 surface. Read-only. Returns exit 0 (clean), 2 (drift found, not a failure), or 1 (system error).</p>
+  <div class="terminal">
+    <div class="terminal-bar">
+      <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+      <span class="title">~ — pwsh — ca-bootstrap doctor</span>
+    </div>
+    <div class="terminal-body"><span class="prompt">$</span> <span class="cmd">ca-bootstrap version</span>
+ca-bootstrap 2.0.0-alpha.1 (commit abc1234, built 2026-06-15T14:23:00Z)
+
+<span class="prompt">$</span> <span class="cmd">ca-bootstrap doctor</span>
+Checking installed tooling against manifest/tools.yaml...
+
+  <span class="ok">✓</span> git         2.43.0  <span class="muted">(manifest min: 2.40.0)</span>
+  <span class="ok">✓</span> gh          2.55.0  <span class="muted">(manifest min: 2.40.0)</span>
+  <span class="fail">✗</span> dotnet      9.0.1   <span class="muted">(manifest min: 10.0.0)</span>   → install dotnet-10
+  <span class="fail">✗</span> node        18.17.0 <span class="muted">(manifest min: 20.0.0)</span>   → install node@20
+  <span class="warn">⚠</span> docker      not found                       → optional, install via brew
+
+5 tools checked: 2 ok, 2 drift, 1 missing-optional
+
+<span class="prompt">$</span> <span class="cmd">echo $LASTEXITCODE</span>
+2</div>
+  </div>
+</section>
+
+<!-- ════════════════════════ RELEASE MATRIX ════════════════════════ -->
+<section id="matrix">
+  <div class="section-header">
+    <span class="section-num">§6</span>
+    <h2>Release matrix</h2>
+  </div>
+  <p class="lede">Every release pushes these five archives + a <code class="inline">SHA256SUMS</code> manifest. Asset names follow the goreleaser convention so the eventual self-update logic can build URLs deterministically.</p>
+  <div class="matrix">
+    <div class="matrix-card">
+      <div class="matrix-os">Windows · amd64</div>
+      <div class="matrix-arch">most Windows laptops</div>
+      <div class="matrix-asset">ca-bootstrap_2.0.0-alpha.1_windows_amd64.zip</div>
+    </div>
+    <div class="matrix-card">
+      <div class="matrix-os">Windows · arm64</div>
+      <div class="matrix-arch">Surface Pro X, ARM Windows VMs</div>
+      <div class="matrix-asset">ca-bootstrap_2.0.0-alpha.1_windows_arm64.zip</div>
+    </div>
+    <div class="matrix-card">
+      <div class="matrix-os">macOS · arm64</div>
+      <div class="matrix-arch">Apple Silicon (M1/M2/M3/M4)</div>
+      <div class="matrix-asset">ca-bootstrap_2.0.0-alpha.1_darwin_arm64.tar.gz</div>
+    </div>
+    <div class="matrix-card">
+      <div class="matrix-os">macOS · amd64</div>
+      <div class="matrix-arch">Intel Macs</div>
+      <div class="matrix-asset">ca-bootstrap_2.0.0-alpha.1_darwin_amd64.tar.gz</div>
+    </div>
+    <div class="matrix-card">
+      <div class="matrix-os">Linux · amd64</div>
+      <div class="matrix-arch">WSL2 + CI runners + Linux dev boxes</div>
+      <div class="matrix-asset">ca-bootstrap_2.0.0-alpha.1_linux_amd64.tar.gz</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════ LINKS ════════════════════════ -->
+<section id="links">
+  <div class="section-header">
+    <span class="section-num">§7</span>
+    <h2>Resources</h2>
+  </div>
+  <div class="links">
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/dev/docs/specs/2026-05-25-go-rewrite-pivot.md">
+      <span class="link-label">Decision record</span>
+      <span class="link-title">Pivot doc — WHY + HOW</span>
+      <span class="link-desc">Full rationale, recurring bug class, structural diagnosis, roadmap.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/docs/go-alpha-1-spec/docs/specs/2026-05-25-go-v2-0-alpha-1-spec.md">
+      <span class="link-label">Spec doc</span>
+      <span class="link-title">v2.0.0-alpha.1 implementation spec</span>
+      <span class="link-desc">Go module layout, doctor functional spec, 7 mandatory acceptance tests, release pipeline.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/docs/go-alpha-2-spec/docs/specs/2026-05-25-go-v2-0-alpha-2-spec.md">
+      <span class="link-label">Spec doc</span>
+      <span class="link-title">v2.0.0-alpha.2 implementation spec</span>
+      <span class="link-desc">setup wizard, action journal (NDJSON), prompt model (no TUI), per-folder git identity.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/blob/feat/alpha-2-impl/docs/tutorials/tdd-walkthrough.md">
+      <span class="link-label">Tutorial</span>
+      <span class="link-title">TDD walkthrough (chapters 1–19)</span>
+      <span class="link-desc">Live record of how alpha.1 and alpha.2 were built. For ChannelAssist developer onboarding.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/pulls?q=is%3Apr+is%3Aopen">
+      <span class="link-label">GitHub</span>
+      <span class="link-title">7 open PRs (#87 – #93)</span>
+      <span class="link-desc">All with 12-field metadata. Stacked: #93 → #92 → #90 → #89 → dev (#88, #91 → dev).</span>
+    </a>
+
+    <a class="link-card" href="https://channelassist-inc.visualstudio.com/ChannelManager/_workitems/edit/38056">
+      <span class="link-label">Epic</span>
+      <span class="link-title">AB#38056 — parent Epic</span>
+      <span class="link-desc">7 sibling PBIs filed under: AB#40028 (pivot), #40033 (α.1 spec), #40034 (α.1 RED), #40037 (α.1 GREEN), #40039 (α.2 spec), #40043 (α.2 RED), #40045 (α.2 GREEN).</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap/releases/tag/legacy%2Fv1.9.0">
+      <span class="link-label">Archival tag</span>
+      <span class="link-title">legacy/v1.9.0</span>
+      <span class="link-desc">Last functional PowerShell commit. Signed. Frozen.</span>
+    </a>
+
+    <a class="link-card" href="https://github.com/ChannelAssist/ca-bootstrap">
+      <span class="link-label">Repository</span>
+      <span class="link-title">ChannelAssist/ca-bootstrap</span>
+      <span class="link-desc">Same URL, same name — only the implementation changes.</span>
+    </a>
+
+  </div>
+</section>
+
+<footer>
+  <div>
+    Authored 2026-05-25 by <strong>Peter Giannopoulos</strong> with <strong>Claude Code</strong> (AI-assisted).<br>
+    Source: <code>docs/collaboration-workflow.html</code> on branch <code>docs/go-alpha-1-spec</code>.
+  </div>
+  <div>
+    Render: open the file in any modern browser. Diagram renders via <a href="https://mermaid.js.org/">Mermaid.js</a> from CDN.
+  </div>
+</footer>
+
+</main>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: 'transparent',
+      primaryColor: '#1e293b',
+      primaryTextColor: '#f1f5f9',
+      primaryBorderColor: '#475569',
+      lineColor: '#64748b',
+      secondaryColor: '#334155',
+      tertiaryColor: '#0f172a',
+      clusterBkg: 'rgba(15,23,42,0.4)',
+      clusterBorder: '#475569',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+      fontSize: '14px'
+    },
+    flowchart: {
+      curve: 'basis',
+      padding: 20,
+      nodeSpacing: 50,
+      rankSpacing: 60,
+      useMaxWidth: true
+    },
+    securityLevel: 'loose'
+  });
+</script>
+
+</body>
+</html>

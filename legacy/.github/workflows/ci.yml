@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+jobs:
+  pester:
+    name: Pester (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Pester + powershell-yaml
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable Pester | Where-Object Version -gt 5.0.0)) {
+              Install-Module Pester -Force -SkipPublisherCheck -Scope CurrentUser
+          }
+          Install-Module powershell-yaml -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Run Pester tests
+        shell: pwsh
+        run: |
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          Invoke-Pester -Configuration $config
+
+  doctor-json:
+    name: doctor --json (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install powershell-yaml
+        shell: pwsh
+        run: Install-Module powershell-yaml -Force -SkipPublisherCheck -Scope CurrentUser
+      - name: Run doctor in JSON mode
+        shell: pwsh
+        run: |
+          $output = & ./ca-bootstrap.ps1 doctor -Json
+          $code = $LASTEXITCODE
+          $payload = $output | ConvertFrom-Json
+          if (-not $payload.checks)         { throw 'no checks in JSON output' }
+          if (-not $payload.schema_version) { throw 'no schema_version' }
+          Write-Host "doctor produced $($payload.checks.Count) checks, exit_code=$code"
+          if ($code -ne 0 -and $code -ne 2) { throw "unexpected exit code: $code" }
+          # Explicit success exit so GH Actions doesn't inherit the inner
+          # script's $LASTEXITCODE=2 (which is intentional drift detection).
+          exit 0
+
+  shellcheck:
+    name: shellcheck bootstrap.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y shellcheck
+          shellcheck -S error bootstrap.sh scripts/wiki-sync.sh
+
+
+  notify-failure:
+    name: Open issue on ci failure
+    needs: [pester, doctor-json, shellcheck]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update tracking issue
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_SHA: ${{ github.sha }}
+          RUN_EVENT: ${{ github.event_name }}
+        with:
+          script: |
+            const runUrl = process.env.RUN_URL;
+            const sha = process.env.RUN_SHA;
+            const evt = process.env.RUN_EVENT;
+            const title = '[ci] workflow failure detected';
+            const body = [
+              'ci workflow failed.',
+              '',
+              `- Run: ${runUrl}`,
+              `- Commit: \`${sha}\``,
+              `- Trigger: \`${evt}\``,
+              `- At: ${new Date().toISOString()}`,
+              '',
+              'Auto-opened by `.github/workflows/ci.yml`. Close when ci runs green again.'
+            ].join('\n');
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ci-failure'
+            });
+            if (existing.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing[0].number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['ci-failure', 'bug', 'ci']
+              });
+            }
+
+      - name: Notify Teams (if webhook configured)
+        if: env.TEAMS_WEBHOOK_URL != ''
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          cat > /tmp/teams-card.json <<JSON
+          {
+            "@type": "MessageCard",
+            "@context": "https://schema.org/extensions",
+            "themeColor": "B60205",
+            "summary": "${{ github.repository }} — ci failed",
+            "title": "[ci] workflow failure detected",
+            "sections": [{
+              "facts": [
+                {"name": "Repo",     "value": "${{ github.repository }}"},
+                {"name": "Workflow", "value": "ci"},
+                {"name": "Commit",   "value": "${{ github.sha }}"},
+                {"name": "Trigger",  "value": "${{ github.event_name }}"}
+              ]
+            }],
+            "potentialAction": [{
+              "@type": "OpenUri",
+              "name": "View run",
+              "targets": [{
+                "os": "default",
+                "uri": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }]
+            }]
+          }
+          JSON
+          curl -sfS -X POST -H "Content-Type: application/json" \
+            --data-binary @/tmp/teams-card.json \
+            "$TEAMS_WEBHOOK_URL" \
+            || echo "Teams webhook post failed (non-fatal)"
+
+      - name: Notify by email (if SMTP configured)
+        if: env.MAIL_USERNAME != '' && env.MAIL_RECIPIENT != ''
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_RECIPIENT: ${{ secrets.MAIL_RECIPIENT }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_HOST || 'smtp.office365.com' }}
+          server_port: ${{ secrets.MAIL_PORT || 587 }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[ci] workflow failure in ${{ github.repository }}"
+          to: ${{ secrets.MAIL_RECIPIENT }}
+          from: ${{ secrets.MAIL_USERNAME }}
+          body: |
+            Workflow ${{ github.workflow }} failed on ${{ github.repository }}.
+
+            Run:     ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Commit:  ${{ github.sha }}
+            Trigger: ${{ github.event_name }}

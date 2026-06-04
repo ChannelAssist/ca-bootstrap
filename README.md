@@ -2,9 +2,15 @@
 
 [![Ci](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml/badge.svg)](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml)
 
+> ### ⚠️ Project pivot — 2026-05-25
+>
+> This PowerShell implementation is being **archived in place** and replaced by a Go CLI distributed as **pre-built static binaries per platform via GitHub Releases**. The rationale, scope, and roadmap live in [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md) — read it before opening new issues or PRs against this codebase.
+>
+> The PowerShell version remains usable in the interim (subject to the known limitations the rewrite is escaping). **No new features are landing here.** The last PS-era commit is tagged for archival reference. New work proceeds **spec → tests → code** in that strict order.
+
 One command to take a fresh laptop to a working ChannelAssist development environment. Runs on Windows, macOS, and Linux.
 
-> **Status: v1.7.2** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`).
+> **Status: v1.9.0 (PowerShell, lame-duck)** — all four commands are feature-complete. CI runs on Windows, macOS, and Linux (`.github/workflows/ci.yml`). See the pivot notice above; new development is happening in the Go rewrite, not here.
 
 ---
 
@@ -89,7 +95,7 @@ pwsh ./ca-bootstrap.ps1 setup
 3. **Install missing tools** — git, GitHub CLI, PowerShell 7+, GNU Make, .NET SDK 10, Node.js 20 LTS, Python 3.12, Docker, VS Code, VS Code extensions, Claude Code, GitHub Copilot CLI, gh-copilot extension
 4. **Authenticate** — runs `gh auth login` so private repos can clone
 5. **Pick a workspace location** — defaults to `~/Documents/Projects/ChannelAssistDev/` (Windows: `%USERPROFILE%\Documents\Projects\ChannelAssistDev\`). On a headless box where `~/Documents/` doesn't exist, the default falls back to `~/Projects/ChannelAssistDev/`.
-6. **Create the folder structure** — `docs/`, `ca-platform/`, `cm-product/`, `ado-legacy/`
+6. **Create the folder structure** — required: `ca-tools/`, `ca-docs/`, `ca-platform/`, `cm-product/`, `ca-training/`, `ca-work-dirs/`; optional (opt-in): `ado-legacy/`, `ca-experiments/`. Every folder gets a generated `README.md` from `templates/folder-readmes/` (required folders seeded by step 50; optional folders seeded after their repo group is cloned in step 60, or on demand via `repair --target folder-readmes`). See [`docs/specs/2026-05-22-folder-taxonomy-design.md`](docs/specs/2026-05-22-folder-taxonomy-design.md) for the full taxonomy + safety contract.
 7. **Clone repositories** — group by group, individually selectable, respects your team membership
 8. **Configure git identity** — per-folder, so personal repos elsewhere stay untouched
 9. **Optional extras** — VS Code multi-root workspace file, workspace-root `.vscode/` defaults (extensions/settings/launch/tasks), ca-claude-plugin (Claude Code plugin), ca-copilot-plugin usage notes (GitHub Copilot custom agents + prompts), WSL2 (Windows-only)
@@ -115,7 +121,9 @@ See [`manifest/tools.yaml`](manifest/tools.yaml) for the full machine-readable l
 | Python 3.12 | winget Python.Python.3.12 | brew python@3.12 | apt/dnf python3.12 |
 | Docker Desktop | winget Docker.DockerDesktop | brew Docker | apt docker-ce |
 | VS Code | winget Microsoft.VisualStudioCode | brew --cask visual-studio-code | apt code |
-| Claude Code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
+| Claude Code (CLI) | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code | npm i -g @anthropic-ai/claude-code |
+| Claude Desktop (GUI) | winget Anthropic.Claude | brew --cask claude | n/a (no official Linux build) |
+| Claude Code VS Code extension | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) | Anthropic.claude-code (via VS Code) |
 | GitHub Copilot CLI | npm i -g @github/copilot | npm i -g @github/copilot | npm i -g @github/copilot |
 | gh-copilot extension | gh extension install github/gh-copilot | gh extension install github/gh-copilot | gh extension install github/gh-copilot |
 | WSL2 + Ubuntu | wsl --install (optional) | n/a | n/a |
@@ -175,7 +183,7 @@ Standalone scripts in `scripts/` that aren't part of the wizard but are useful a
 |---|---|
 | [`scripts/install-commit-hooks.ps1`](scripts/install-commit-hooks.ps1) | Install commitlint `commit-msg` hooks in every cloned ChannelAssist repo that has a `commitlint.config.*`. Lets `git commit` reject a non-conforming header (e.g. >72 chars) locally, before CI does. Idempotent; preserves existing foreign hooks unless `-Force`. |
 
-Run directly or via Makefile:
+Run directly or via the developer task runner:
 
 ```powershell
 # Direct:
@@ -183,7 +191,13 @@ Run directly or via Makefile:
 ./scripts/install-commit-hooks.ps1 -WorkspacePath ~/MyWorkspace -WhatIf
 ./scripts/install-commit-hooks.ps1 -Force
 
-# Or via make:
+# Via ./make.ps1 (Windows-native; also works anywhere pwsh runs):
+./make.ps1 install-commit-hooks
+./make.ps1 install-commit-hooks -WhatIf
+./make.ps1 install-commit-hooks -WorkspacePath ~/MyWorkspace
+./make.ps1 install-commit-hooks -Force
+
+# Via make (macOS / Linux):
 make install-commit-hooks
 make install-commit-hooks WHATIF=1
 make install-commit-hooks WORKSPACE=~/MyWorkspace
@@ -201,6 +215,8 @@ ca-bootstrap/
 ├── bootstrap.sh               # *nix entry point (installs pwsh, clones repo, hands off)
 ├── bootstrap.ps1              # Windows entry point
 ├── ca-bootstrap.ps1           # multi-command orchestrator (setup/doctor/repair/undo)
+├── Makefile                   # developer task runner (macOS/Linux; bash + GNU make)
+├── make.ps1                   # developer task runner (Windows-native; pure pwsh 7+)
 ├── lib/                       # shared helpers (UI, platform detection, git ops, journal)
 ├── commands/                  # one file per top-level command
 │   ├── setup.ps1
@@ -226,8 +242,8 @@ ca-bootstrap/
 │   └── action-journal.md      # how state is tracked for undo
 ├── templates/                 # files copied into the developer's workspace
 │   └── dot-vscode/            # → `<workspace>/.vscode/` (extensions/settings/launch/tasks)
-├── wiki/                      # GitHub Wiki working tree (gitignored; sync with `make wiki-update`)
-├── scripts/                   # release.sh, wiki-sync.sh, etc.
+├── wiki/                      # GitHub Wiki working tree (gitignored; sync via wiki-update)
+├── scripts/                   # release/nuke/wiki-sync — each ships as .sh (bash) + .ps1 (pwsh)
 └── tests/                     # Pester tests for lib/, steps/, commands/
 ```
 
@@ -247,6 +263,37 @@ Most changes are YAML edits, no code required:
 
 For larger changes (a new step, a new command, a reverser), the architecture is documented in [`DESIGN.md`](DESIGN.md). PRs welcome; CI runs Pester + shellcheck on every push (Windows, macOS, Linux).
 
+### Developer commands: `make` (Unix) vs `./make.ps1` (Windows)
+
+The repo ships two equivalent developer task surfaces. Pick by host OS — no Git Bash or WSL required on Windows:
+
+| Surface | Host OS | Notes |
+|---|---|---|
+| [`Makefile`](Makefile) (`make <target>`) | macOS, Linux | Requires GNU make + bash. Uses `ARGS=...` / `VAR=value` style. |
+| [`make.ps1`](make.ps1) (`./make.ps1 <target>`) | Windows (also works on macOS/Linux with `pwsh`) | Pure PowerShell 7+. Typed parameters per target (e.g. `-Tool dotnet-10`). |
+
+Both surfaces invoke the same underlying `ca-bootstrap.ps1` commands and produce identical results. `./make.ps1` mirrors every Makefile target — `setup`, `doctor`, `repair`, `undo`, `nuke`, `tool-*`, `manifest-*`, `wiki-*`, `release`, `release-full`, `clean`, etc. Run `./make.ps1 help` to see the full list.
+
+Parameter style differs because PowerShell prefers typed switches over environment variables:
+
+```powershell
+# Windows (PowerShell)
+./make.ps1 tool-install -Tool dotnet-10
+./make.ps1 repair -All
+./make.ps1 nuke -IncludeTools -Confirm
+./make.ps1 release -Version 1.5.0
+```
+
+```bash
+# macOS / Linux (GNU make)
+make tool-install TOOL=dotnet-10
+make repair ARGS='--all'
+make nuke INCLUDE_TOOLS=1 CONFIRM=1
+make release VERSION=1.5.0
+```
+
+The bash shell scripts under `scripts/` (`release.sh`, `nuke.sh`, `wiki-sync.sh`, `release-full.sh`) and their PowerShell peers (`*.ps1`) are kept in lockstep; if you change behaviour in one, mirror it in the other so both host platforms stay supported.
+
 ### Branch model
 
 Following the ChannelAssist org convention:
@@ -264,25 +311,27 @@ The bootstrap one-liners pin to `main`, so end-users always pull the most recent
 # 1. Open a PR to dev that bumps $Script:CABootstrapVersion in ca-bootstrap.ps1
 #    (and adds a CHANGELOG entry if you keep one).
 # 2. Merge that PR.
-# 3. From the repo root:
-make release VERSION=1.5.0
+# 3. From the repo root, one of:
+make release VERSION=1.5.0            # macOS / Linux
+./make.ps1 release -Version 1.5.0     # Windows (or any host with pwsh)
 ```
 
-`make release` runs in this order: dependency check (`gh`/`jq`/`diff`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1`), smoke + Pester (skip with `SKIP_SMOKE=1` / `SKIP_TESTS=1`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. An `EXIT` trap restores main-protection even if a mid-flight step fails.
+Either entrypoint runs in this order: dependency check (`gh`), interactive manifest review (skip with `SKIP_MANIFEST_EDIT=1` / `-SkipManifestEdit`), smoke + Pester (skip with `SKIP_SMOKE=1` / `-SkipSmoke` and `SKIP_TESTS=1` / `-SkipTests`), confirmation gate, ff-promote `origin/dev` → `origin/main` via the disable-restore play on `main-protection`, GPG-signed tag, push, GitHub release. A trap / `try/finally` restores main-protection even if a mid-flight step fails.
 
-`make release-dry-run VERSION=1.5.0` validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
+`make release-dry-run VERSION=1.5.0` (bash) or `./make.ps1 release-dry-run -Version 1.5.0` (pwsh) validates everything without mutating. See [`docs/commands.md#make-release`](docs/commands.md) for the full reference.
 
-#### One-shot variant: `make release-full`
+#### One-shot variant: `release-full`
 
 Skip the manual bump-PR step:
 
 ```bash
-make release-full VERSION=1.5.0
+make release-full VERSION=1.5.0            # macOS / Linux
+./make.ps1 release-full -Version 1.5.0     # Windows
 ```
 
-Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same `make release` chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use `make release` if your team wants the bump PR to go through normal review.
+Auto-creates a `chore/v1.5.0-release` branch off `dev`, bumps the version, opens a PR, admin-merges it via the `dev-protection` disable-restore play, then continues into the same release chain. Tradeoff: the bump itself isn't reviewed (single-maintainer / hotfix flow). Use the plain `release` target if your team wants the bump PR to go through normal review.
 
-`make release-full-dry-run VERSION=1.5.0` validates the bump+merge plan without mutating. If the bump is genuinely needed (dev's version differs from the target) the dry-run short-circuits before invoking `scripts/release.sh` — it can't simulate "dev would be bumped, then release.sh runs against the new version" without actually bumping. To dry-run the release.sh half too, manually bump dev first then run `make release-dry-run`.
+`release-full-dry-run` validates the bump+merge plan without mutating. If the bump is genuinely needed (dev's version differs from the target) the dry-run short-circuits before invoking the release step — it can't simulate "dev would be bumped, then release runs against the new version" without actually bumping. To dry-run the release half too, manually bump dev first then run `release-dry-run`.
 
 ---
 

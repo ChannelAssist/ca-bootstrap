@@ -1,0 +1,13 @@
+# Acceptance-test fixture for TestDoctor_RequiredToolMissing_ExitsTwo.
+#
+# `xyzzy-nonexistent` is deliberately chosen — no real tool ships with this
+# name, so we won't accidentally pick up a real binary on someone's machine.
+version: 1
+tools:
+  - id: xyzzy-nonexistent
+    name: Xyzzy Nonexistent
+    optional: false
+    detect:
+      command: xyzzy-nonexistent
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'

@@ -1,0 +1,11 @@
+# Fixture for TestRepair_InstallFailure_ExitsTwo.
+# detect.command is a name no real binary uses → tool reports missing →
+# repair attempts install → mock installer (id: fail) returns Failed.
+version: 1
+tools:
+  - id: mocktool
+    name: Mock Tool
+    detect:
+      command: definitely-not-real-xyzzy-binary
+    install:
+      any: { type: mock, id: fail }

@@ -1,0 +1,24 @@
+# Acceptance-test fixture for TestDoctor_AllToolsPresent_ExitsZero.
+#
+# Both `go` and `git` exist on every CI runner and on every dev box that
+# can build this project — `go` because we use it to build, `git` because
+# checkout requires it. min_version set low enough that any modern install
+# passes; the regex handles `go version go1.21.5 darwin/arm64` style output.
+version: 1
+tools:
+  - id: go
+    name: Go
+    optional: false
+    min_version: "1.20.0"
+    detect:
+      command: go
+      version_flag: version
+      version_regex: 'go(\d+\.\d+(?:\.\d+)?)'
+  - id: git
+    name: Git
+    optional: false
+    min_version: "2.20.0"
+    detect:
+      command: git
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'

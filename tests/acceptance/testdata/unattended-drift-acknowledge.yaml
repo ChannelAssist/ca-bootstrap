@@ -1,0 +1,20 @@
+# Unattended config for TestSetup_PrereqsDrift_Acknowledged_ExitsZero.
+# Paired with one-missing-required.yaml — required tool absent → drift.
+# User pre-consents to continue despite drift, so exit code stays 0.
+welcome:
+  consent: true
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: true
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false

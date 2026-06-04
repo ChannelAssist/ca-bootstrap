@@ -1,0 +1,18 @@
+# Unattended config that declines the folders step.
+welcome:
+  consent: true
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: false
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false

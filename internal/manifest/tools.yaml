@@ -1,0 +1,284 @@
+# ca-bootstrap tools manifest — Go-era schema (spec §7).
+#
+# Migrated from the PowerShell-era schema (which used separate `required:`
+# and `optional:` lists with a `check:` block) on 2026-05-25 as part of
+# the Go rewrite (alpha.1). The original is preserved in
+# `legacy/v1.9.0` at commit `008b2e2` for reference.
+#
+# Schema (alpha.1 reads):
+#   version: 1
+#   tools:
+#     - id:          stable identifier (required)
+#       name:        display name (optional)
+#       optional:    true/false (default false)
+#       min_version: semver (optional; if absent, presence suffices)
+#       detect:
+#         command:        binary on PATH (required)
+#         version_flag:   single token or whitespace-separated; default "--version"
+#         version_regex:  regex with one capture group; default `(\d+\.\d+(?:\.\d+)?)`
+#       install:     (preserved verbatim; alpha.1's `doctor` ignores it)
+#
+# Additional fields (description, needed_by_groups, heavy, requires_reboot,
+# requires_license, platform, requires, extensions, install_method, paths)
+# are preserved verbatim under yaml.Node and ignored by alpha.1's loader.
+# alpha.2+ (setup/repair) will start reading them.
+
+version: 1
+
+tools:
+  # ─── Required ─────────────────────────────────────────────────────────
+  - id: git
+    name: Git
+    optional: false
+    min_version: "2.40.0"
+    description: Distributed version control
+    detect:
+      command: git
+      version_flag: --version
+      version_regex: 'git version (\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Git.Git }
+      macos:   { type: brew,   id: git }
+      linux:
+        debian: { type: apt, id: git }
+        rhel:   { type: dnf, id: git }
+
+  - id: gh
+    name: GitHub CLI
+    optional: false
+    min_version: "2.30.0"
+    description: GitHub command-line client; used for auth and cloning
+    detect:
+      command: gh
+      version_flag: --version
+      version_regex: 'gh version (\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: GitHub.cli }
+      macos:   { type: brew,   id: gh }
+      linux:
+        debian: { type: apt, id: gh, repo_setup: "scripts/install-gh-debian.sh" }
+        rhel:   { type: dnf, id: gh }
+
+  - id: pwsh
+    name: PowerShell 7+
+    optional: false
+    min_version: "7.0.0"
+    description: |
+      Cross-platform PowerShell. In alpha.1 this is still doctored
+      because some teammates' workflows still use legacy/ scripts;
+      from alpha.2 onward we may demote it to optional.
+    detect:
+      command: pwsh
+      version_flag: --version
+      version_regex: 'PowerShell (\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Microsoft.PowerShell }
+      macos:   { type: brew,   id: powershell, cask: true }
+      linux:
+        debian: { type: apt, id: powershell }
+        rhel:   { type: dnf, id: powershell }
+
+  - id: make
+    name: GNU Make
+    optional: false
+    min_version: "3.81"
+    description: Build automation; many ChannelAssist repos drive tasks via Makefile
+    detect:
+      command: make
+      version_flag: --version
+      version_regex: 'GNU Make (\d+\.\d+)'
+    install:
+      windows: { type: winget, id: GnuWin32.Make }
+      macos:   { type: brew,   id: make }
+      linux:
+        debian: { type: apt, id: make }
+        rhel:   { type: dnf, id: make }
+
+  # ─── Optional ────────────────────────────────────────────────────────
+  - id: dotnet-10
+    name: .NET SDK 10
+    optional: true
+    description: Required for cm-* services and ca-privacy-gate
+    needed_by_groups: [cm-product, ca-platform]
+    detect:
+      command: dotnet
+      version_flag: --list-sdks
+      version_regex: '^(10\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Microsoft.DotNet.SDK.10 }
+      macos:   { type: brew,   id: dotnet-sdk }
+      linux:
+        any: { type: script, url: "https://dot.net/v1/dotnet-install.sh", args: "--channel 10.0" }
+
+  - id: az
+    name: Azure CLI
+    optional: false
+    min_version: "2.60.0"
+    description: Azure resource provisioning + Entra app reg; required by cm-currency-service staging deploys
+    needed_by_groups: [cm-product]
+    detect:
+      command: az
+      version_flag: --version
+      version_regex: 'azure-cli\s+(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Microsoft.AzureCLI }
+      macos:   { type: brew,   id: azure-cli }
+      linux:
+        debian: { type: script, url: "https://aka.ms/InstallAzureCLIDeb" }
+        rhel:   { type: script, url: "https://aka.ms/InstallAzureCLIRhel" }
+
+  - id: kubectl
+    name: kubectl
+    optional: true
+    min_version: "1.28.0"
+    description: Kubernetes CLI; required for AKS deploys
+    needed_by_groups: [cm-product]
+    detect:
+      command: kubectl
+      version_flag: version --client
+      version_regex: 'Client Version:\s+v(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Kubernetes.kubectl }
+      macos:   { type: brew,   id: kubernetes-cli }
+      linux:   { type: snap,   id: kubectl, classic: true }
+
+  - id: helm
+    name: Helm
+    optional: true
+    min_version: "3.10.0"
+    description: Kubernetes chart deploys; required by `make staging-deploy`
+    needed_by_groups: [cm-product]
+    detect:
+      command: helm
+      version_flag: version --short
+      version_regex: 'v(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Helm.Helm }
+      macos:   { type: brew,   id: helm }
+      linux:   { type: snap,   id: helm, classic: true }
+
+  - id: jq
+    name: jq
+    optional: false
+    min_version: "1.6"
+    description: JSON parsing in shell; required by cm-currency-service staging scripts
+    needed_by_groups: [cm-product]
+    detect:
+      command: jq
+      version_flag: --version
+      version_regex: 'jq-(\d+\.\d+)'
+    install:
+      windows: { type: winget, id: jqlang.jq }
+      macos:   { type: brew,   id: jq }
+      linux:
+        debian: { type: apt, id: jq }
+        rhel:   { type: dnf, id: jq }
+
+  - id: psql
+    name: psql (PostgreSQL client)
+    optional: false
+    min_version: "14.0"
+    description: PostgreSQL client; required by cm-currency-service `make staging-seed-qa`
+    needed_by_groups: [cm-product]
+    detect:
+      command: psql
+      version_flag: --version
+      version_regex: 'psql \(PostgreSQL\) (\d+\.\d+)'
+    install:
+      windows: { type: winget, id: PostgreSQL.PostgreSQL.16 }
+      macos:   { type: brew,   id: libpq, post_install: ['PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" brew link --force --overwrite libpq'] }
+      linux:
+        debian: { type: apt, id: postgresql-client }
+        rhel:   { type: dnf, id: postgresql }
+
+  - id: node-20
+    name: Node.js 20 LTS
+    optional: true
+    min_version: "20.0.0"
+    description: Required for Keystone (Astro Starlight) and ca-data-dictionary-generator frontend
+    needed_by_groups: [docs, ca-platform]
+    detect:
+      command: node
+      version_flag: --version
+      # node prints "v20.10.0" — strip the leading v via the regex.
+      version_regex: 'v(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: OpenJS.NodeJS.LTS }
+      macos:   { type: brew,   id: "node@20" }
+      linux:   { type: nvm,    version: "20" }
+
+  - id: python-312
+    name: Python 3.12
+    optional: true
+    min_version: "3.12.0"
+    description: Required for cm-claims-validator and ca-data-dictionary-generator backend
+    needed_by_groups: [cm-product, ca-platform]
+    detect:
+      command: python3
+      version_flag: --version
+      version_regex: 'Python (\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Python.Python.3.12 }
+      macos:   { type: brew,   id: "python@3.12" }
+      linux:
+        debian: { type: apt, id: "python3.12 python3.12-venv" }
+        rhel:   { type: dnf, id: "python3.12" }
+
+  - id: docker
+    name: Docker Desktop / Engine
+    optional: true
+    description: Required for local SQL Server (cm-database-infra) and other containerized services
+    heavy: true
+    requires_reboot:  { windows: true,  macos: false, linux: false }
+    requires_license: { windows: true,  macos: true,  linux: false }
+    detect:
+      command: docker
+      version_flag: --version
+      version_regex: 'Docker version (\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Docker.DockerDesktop }
+      macos:   { type: brew,   id: docker, cask: true }
+      linux:
+        any: { type: script, url: "https://get.docker.com", post_install: ["sudo usermod -aG docker $USER"] }
+
+  - id: vscode
+    name: Visual Studio Code
+    optional: true
+    description: Recommended editor; ChannelAssist provides a workspace file
+    detect:
+      command: code
+      version_flag: --version
+      # `code --version` first line is the version; capture it.
+      version_regex: '^(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: winget, id: Microsoft.VisualStudioCode }
+      macos:   { type: brew,   id: visual-studio-code, cask: true }
+      linux:   { type: snap,   id: code, classic: true }
+
+  - id: claude-code
+    name: Claude Code (Anthropic CLI)
+    optional: true
+    description: AI coding assistant; pairs with the ca-claude-plugin
+    requires: [node-20]
+    detect:
+      command: claude
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: npm, id: "@anthropic-ai/claude-code", global: true }
+      macos:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
+      linux:   { type: npm, id: "@anthropic-ai/claude-code", global: true }
+
+  - id: copilot-cli
+    name: GitHub Copilot CLI
+    optional: false
+    description: Standalone Copilot agent in the terminal. Distinct from `gh copilot`.
+    requires: [node-20]
+    detect:
+      command: copilot
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'
+    install:
+      windows: { type: npm, id: "@github/copilot", global: true }
+      macos:   { type: npm, id: "@github/copilot", global: true }
+      linux:   { type: npm, id: "@github/copilot", global: true }

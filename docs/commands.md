@@ -29,7 +29,7 @@ If `<command>` is omitted, `setup` runs.
 | `make tool-remove TOOL=<id>` | `pwsh ./ca-bootstrap.ps1 undo --target tool.<id> -IncludeTools -Force`. Implicitly destructive — uninstall the named tool. Still prompts once per tool ("Other projects may depend on it") — that confirmation is deliberately not bypassable. |
 | `make test` | Full Pester suite. |
 | `make smoke` | End-to-end smoke test against a /tmp workspace. |
-| `make wiki-clone` / `wiki-sync` / `wiki-push` / `wiki-update` | GitHub Wiki workflow — clone the wiki repo, mirror docs/ into it, push. `wiki-update` does sync + push. |
+| `make wiki-update` | GitHub Wiki workflow — clone the wiki repo if missing, mirror docs/ into it, push. Single public target for wiki sync. |
 | `make release VERSION=X.Y.Z` | Promote `dev` → `main` (ff), tag GPG-signed, push, create GH release. Requires the version constant on `dev` to already equal X.Y.Z — bump it via a PR to `dev` first. |
 | `make release-dry-run VERSION=X.Y.Z` | Same, no writes. |
 | `make release-full VERSION=X.Y.Z` | One-shot: auto-bump dev's version (admin-merged PR, no review), then run `make release`. Skips review on the bump itself; for hotfixes / single-maintainer flows. |
@@ -112,7 +112,7 @@ Diagnostic-only. Runs every step's detection function but never modifies anythin
 ca-bootstrap doctor — 2026-05-15 09:32
 
 Workspace                    ✓  exists
-Folder structure             ✓  4/4 folders present
+Folder structure             ✓  6/6 folders present
 Prerequisites
   git                        ✓  2.43.0
   ...
@@ -122,7 +122,7 @@ Prerequisites
 
 ```
 ✓ workspace
-✓ folders (4/4)
+✓ folders (6/6)
 ✓ git 2.43.0
 ⚠ node-20 v18.18.0 (older)
 ✗ cm-shared-libs missing
@@ -182,13 +182,16 @@ You **must** specify either `--all` or `--target` — there is no default to pre
 | Target | Effect |
 |---|---|
 | `--all` | Fix every ✗ and ⚠ |
-| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `pwsh`, `make`, `dotnet-10`, `node-20`, `claude-code`, `copilot-cli`, `gh-copilot`) |
+| `--target <tool-id>` | Install/upgrade a specific tool (e.g. `pwsh`, `make`, `dotnet-10`, `node-20`, `claude-code`, `claude-desktop`, `copilot-cli`, `gh-copilot`) |
 | `--target repos` | Re-clone or fetch missing/broken repos |
 | `--target repos:<slug>` | One specific repo (e.g. `repos:cm-shared-libs`) |
 | `--target identity` | Re-write per-folder git identity |
 | `--target gh-auth` | Re-run `gh auth login` |
-| `--target folders` | Recreate any missing top-level folders |
+| `--target folders` | Recreate any missing top-level folders. A required-folder path that exists as a regular file (collision) is reported by `doctor` as `status: fail` and NOT advertised as repairable — `Invoke-CABStep50` would bail with "exists but is not a directory" before any rename could fire, so the collision must be resolved manually. |
+| `--target folder-tree-refresh` | Regenerate the `## Tree` section of each workspace folder's `README.md` from `manifest/repos.yaml`. Idempotent; only invoked explicitly (no `--all` coverage) because the hand-written templates may carry intentional grouping that a flat regenerate would flatten. Skips folders whose `README.md` is missing, or whose README has no `## Tree` heading or fenced code block (warning, no error). Preserves native line endings (LF vs CRLF) and any pre-existing UTF-8 BOM; the fence search is bounded to the Tree section so a later fenced section (e.g. `## Examples`) cannot be cross-rewritten. |
 | `--target journal` | Rebuild the journal from on-disk state |
+| `--target folder-renames` | Migrate workspace folders to their renamed paths (safety-contract compliant). `renamed_from:` can be a scalar OR a list of historical names; the target iterates the full chain so a multi-step rename history (e.g. `[ca-experiments, experiments]`) is processed predecessor-by-predecessor. |
+| `--target folder-readmes` | Re-sync `templates/folder-readmes/` into the workspace (prompts before overwriting drift). On overwrite, captures the pre-overwrite README content into the journal's `previous_content` field (base64; capped at 64KB; skipped when the content matches credential-shaped tokens under UTF-8/UTF-16LE/UTF-16BE decode) so `undo --target readmes` can restore it byte-for-byte. |
 
 ### Flags
 
@@ -227,6 +230,7 @@ Default behavior (no `--target`): walk every reversible journal entry, prompting
 |---|---|
 | (none) | Interactive walkthrough of all reversible categories |
 | `--target identity` | Remove per-folder git identity only |
+| `--target readmes` | Reverse README-touching actions. `seed_readme` entries: remove the file if it still hashes equal to the template (preserves user edits via SHA256 comparison). `refresh_readme` entries: restore the captured pre-overwrite content byte-for-byte from the journal's `previous_content` field, gated by a divergence check — the current README must still hash equal to the template (otherwise `skip`, preserving user edits made after repair), the template must still be on disk, and the hash compute must succeed (otherwise `fail`). Entries from before v1.9.0 (no `previous_content` field) resolve to `noop` so they close out cleanly without action. See [`docs/action-journal.md#refresh_readme`](action-journal.md#refresh_readme) for the full decision matrix. |
 | `--target repos` | Remove cloned repos (per-repo confirm) |
 | `--target repos:<slug>` | Remove one specific cloned repo |
 | `--target workspace` | Remove the workspace folder if empty |

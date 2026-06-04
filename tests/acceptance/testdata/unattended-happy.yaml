@@ -1,0 +1,20 @@
+# Unattended config for TestSetup_HappyPath_ExitsZero.
+# All steps consented, no drift expected (paired with two-real-tools manifest).
+welcome:
+  consent: true
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+  # workspace_root is filled in at test time via env var substitution.
+folders:
+  continue: true
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false
