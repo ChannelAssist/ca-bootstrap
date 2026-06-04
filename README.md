@@ -82,14 +82,16 @@ Every mutating step is recorded in an append-only action journal (`~/.ca-bootstr
 ca-bootstrap version    Print version, commit, build time
 ca-bootstrap doctor     Diagnose installed tooling against the manifest (read-only)
 ca-bootstrap setup      Interactive wizard (welcome → prereqs → gh-auth → identity → folders → repos → extras)
-ca-bootstrap repair     Install a missing tool by id from the manifest's install block
+ca-bootstrap repair     Install missing tools — all required by default; --all adds optional; --target <id> for one
 ca-bootstrap undo       Reverse changes recorded in the action journal
 ```
+
+`setup`'s prerequisites step **offers to install** any missing required tools inline (the same install path as `repair`); `repair` with no arguments fixes everything that's missing. You don't need to know tool ids.
 
 | Command | Key flags |
 |---|---|
 | `setup` | `--unattended --config <file>` (non-interactive; reads a YAML answer file) |
-| `repair` | `--target <tool-id>` (required), `--unattended --config <file>`, `--ForceUnlock` |
+| `repair` | *(no flags)* installs all missing **required** tools; `--all` also installs optional; `--target <id>` installs one; `--unattended --config <file>`, `--ForceUnlock` |
 | `undo` | `--target identity\|tools\|tool:<id>`, `--include-folders` (remove non-empty folders), `--include-tools` (uninstall), `--force` (skip confirm; required for `--unattended`), `--ForceUnlock` |
 | `doctor` | *(none — read-only)* |
 
@@ -109,7 +111,7 @@ The required/optional tool set lives in the embedded manifest ([`internal/manife
 
 **Optional** (detected, installable on demand): `dotnet-10`, `kubectl`, `helm`, `node-20`, `python-312`, `docker`, `vscode`, `claude-code`.
 
-Install one with `ca-bootstrap repair --target <id>` — it reads the per-OS install block (winget on Windows, brew on macOS, apt/dnf/snap/script on Linux, npm for the Node-based CLIs) and runs it with your confirmation.
+`ca-bootstrap repair` installs all missing required tools (add `--all` for optional too, or `--target <id>` for just one) — it reads the per-OS install block (winget on Windows, brew on macOS, apt/dnf/snap/script on Linux, npm for the Node-based CLIs) and runs it after a single confirmation.
 
 ---
 

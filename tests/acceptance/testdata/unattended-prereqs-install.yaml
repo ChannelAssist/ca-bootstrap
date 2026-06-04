@@ -1,0 +1,23 @@
+# Unattended config for TestSetup_PrereqsDrift_OffersInstall.
+# Paired with one-missing-required-mock.yaml — required tool absent → drift.
+# User accepts the inline install offer (install_missing: true). The mock
+# installer "succeeds" but the fake binary still isn't detectable, so drift
+# remains; continue_with_drift: true lets setup finish at exit 0.
+welcome:
+  consent: true
+prereqs:
+  install_missing: true
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: true
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false

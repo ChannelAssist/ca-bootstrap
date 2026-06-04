@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed (Go rewrite — v2.0.0-alpha.6: repair/setup actually install)
+
+- **`repair` now fixes everything by default.** Running `ca-bootstrap repair` with no `--target` scans the manifest and installs every missing/below-min **required** tool after a single batch confirmation (`Install these N tools? [Y/n]`); `repair --all` also installs missing **optional** tools. `repair --target <id>` still installs one tool by id. Previously `--target` was mandatory, so you had to know the tool id and repair one at a time. (AB#40272)
+- **`setup` installs missing tools inline.** The prerequisites step now offers to install missing required tools right there (prompt key `prereqs.install_missing`), using the same install path as `repair`, instead of only detecting drift and telling you to run `repair` later (which made it behave like `doctor`). Tools that can't be installed fall back to the existing continue-with-drift gate. (AB#40272)
+- New **`internal/provision`** package — the shared "install what's missing" orchestrator (`Missing` + `InstallMissing`) used by both `repair` and the setup prereqs step, so they behave identically. Each install is journaled (`install_attempt` → `install_success`/`install_failed`) so `undo` can reverse it. No new external dependencies. (AB#40272)
+
 ## [2.0.0-alpha.5] - 2026-06-04
 
 ### Changed (Go rewrite — required prerequisites)

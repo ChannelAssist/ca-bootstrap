@@ -344,6 +344,49 @@ func TestSetup_PrereqsDrift_Rejected_ExitsTwo(t *testing.T) {
 	}
 }
 
+// TestSetup_PrereqsDrift_OffersInstall verifies the alpha.6 behaviour: when a
+// required tool is missing, the prereqs step OFFERS TO INSTALL it inline
+// (rather than just telling the user to run repair). The mock installer can't
+// make the fake binary detectable, so drift remains and continue_with_drift
+// carries the run to exit 0 — but the install must have been attempted.
+func TestSetup_PrereqsDrift_OffersInstall(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-prereqs-install.yaml", workspace)
+	stdout, _, exit := runSetup(t, bin, fixture(t, "one-missing-required-mock.yaml"), cfg, fakeHome)
+	if exit != 0 {
+		t.Fatalf("setup with accepted install offer: expected exit 0, got %d", exit)
+	}
+	if !strings.Contains(stdout, "Installing xyzzy-nonexistent") {
+		t.Errorf("expected setup to attempt installing the missing tool. stdout:\n%s", stdout)
+	}
+	journalPath := filepath.Join(fakeHome, ".ca-bootstrap", "journal.ndjson")
+	body, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	if !strings.Contains(string(body), "install_attempt") || !strings.Contains(string(body), "xyzzy-nonexistent") {
+		t.Errorf("expected journal to record an install_attempt for xyzzy-nonexistent. got:\n%s", body)
+	}
+}
+
+// TestSetup_PrereqsInstall_MissingKey_ExitsOne is a regression guard: when the
+// prereqs install offer is reached unattended but the prereqs.install_missing
+// key is absent, the strict prompter's missing-key error must propagate as a
+// config error (exit 1) — not get swallowed into a silent skip that falls
+// through to continue_with_drift (which would let it exit 0).
+func TestSetup_PrereqsInstall_MissingKey_ExitsOne(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-prereqs-missing-key.yaml", workspace)
+	_, stderr, exit := runSetup(t, bin, fixture(t, "one-missing-required.yaml"), cfg, fakeHome)
+	if exit != 1 {
+		t.Fatalf("setup with missing prereqs.install_missing key: expected exit 1 (config error), got %d. stderr:\n%s", exit, stderr)
+	}
+}
+
 func TestSetup_QuitAtPrompt_ExitsOneThirty(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()
@@ -464,6 +507,21 @@ func TestRepair_AlreadyInstalled_ExitsZeroNoOp(t *testing.T) {
 	stdout, _, exit := runRepair(t, bin, fixture(t, "two-real-tools.yaml"), "git", "", home)
 	if exit != 0 {
 		t.Fatalf("expected exit 0 for already-installed git, got %d. stdout:\n%s", exit, stdout)
+	}
+}
+
+// TestRepair_NoTarget_NothingMissing_ExitsZero covers the alpha.6 default:
+// `repair` with no --target scans for missing required tools and, when all are
+// present, reports "nothing to repair" and exits 0 (no prompt, no install).
+func TestRepair_NoTarget_NothingMissing_ExitsZero(t *testing.T) {
+	bin := buildBinary(t)
+	home := t.TempDir()
+	stdout, _, exit := runRepair(t, bin, fixture(t, "two-real-tools.yaml"), "", "", home)
+	if exit != 0 {
+		t.Fatalf("repair (no target), all tools present: expected exit 0, got %d. stdout:\n%s", exit, stdout)
+	}
+	if !strings.Contains(strings.ToLower(stdout), "nothing to repair") {
+		t.Errorf("expected 'nothing to repair' message. got:\n%s", stdout)
 	}
 }
 
