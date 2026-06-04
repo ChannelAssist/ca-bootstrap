@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -130,7 +131,15 @@ func repairMissing(m *manifest.Manifest, det detect.Detector, sess *journal.Sess
 		fmt.Printf("%s All %s tools are present; nothing to repair.\n", glyphOK, scope)
 		return 0
 	}
-	s := provision.InstallMissing(missing, det, sess, opts, "repair.install_missing")
+	s, err := provision.InstallMissing(missing, det, sess, opts, "repair.install_missing")
+	if err != nil {
+		if errors.Is(err, prompt.ErrQuit) {
+			fmt.Println("  (quit)")
+			return 130
+		}
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
 	switch {
 	case s.Declined:
 		return 130

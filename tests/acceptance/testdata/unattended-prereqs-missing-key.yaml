@@ -1,0 +1,24 @@
+# Regression fixture for TestSetup_PrereqsInstall_MissingKey_ExitsOne.
+# Paired with one-missing-required.yaml → drift, so the prereqs step asks the
+# install offer (key prereqs.install_missing) — which is DELIBERATELY ABSENT
+# here. The strict unattended prompter must surface that as a config error
+# (exit 1), NOT silently skip and fall through to continue_with_drift.
+# (continue_with_drift: true is present precisely to prove the error isn't
+# being swallowed into the exit-0 path.)
+welcome:
+  consent: true
+prereqs:
+  continue_with_drift: true
+identity:
+  name: "Test User"
+  email: "test@example.com"
+folders:
+  continue: true
+
+repos:
+  group:
+    core: false
+
+extras:
+  vscode_workspace_file: false
+  vscode_defaults: false

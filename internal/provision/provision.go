@@ -63,12 +63,17 @@ func (s Summary) AllOK() bool {
 // when post-install detection confirms it, or install_failed otherwise.
 //
 // sess may be nil (no journaling — e.g. a dry inspection). opts supplies the
-// output writer, prompter, and elevation action. Returns a Summary; the
-// caller maps it to an exit code.
-func InstallMissing(tools []manifest.Tool, det detect.Detector, sess *journal.Session, opts install.Options, confirmKey string) Summary {
+// output writer, prompter, and elevation action.
+//
+// Returns the Summary plus an error. The error is non-nil only when the batch
+// confirmation prompt itself fails — e.g. the user quit (prompt.ErrQuit) or, in
+// unattended mode, the confirm key is missing from the answer file. Callers
+// must propagate it (quit → exit 130, other → exit 1) rather than treating it
+// as a decline; a genuine "no" answer returns (Summary{all skipped}, nil).
+func InstallMissing(tools []manifest.Tool, det detect.Detector, sess *journal.Session, opts install.Options, confirmKey string) (Summary, error) {
 	var s Summary
 	if len(tools) == 0 {
-		return s
+		return s, nil
 	}
 	out := opts.Out
 	if out == nil {
@@ -81,12 +86,17 @@ func InstallMissing(tools []manifest.Tool, det detect.Detector, sess *journal.Se
 	}
 
 	ok, err := opts.Prompter.YesNo(confirmKey, "y")
-	if err != nil || !ok {
+	if err != nil {
+		// Quit or a missing/invalid answer-file key — surface it, don't
+		// silently treat it as a decline.
+		return s, err
+	}
+	if !ok {
 		for _, t := range tools {
 			s.Skipped = append(s.Skipped, t.ID)
 		}
 		fmt.Fprintln(out, "  Skipped install; nothing changed.")
-		return s
+		return s, nil
 	}
 
 	total := len(tools)
@@ -130,7 +140,7 @@ func InstallMissing(tools []manifest.Tool, det detect.Detector, sess *journal.Se
 			fmt.Fprintln(out, "    elevation declined — stopping.")
 			s.Declined = true
 			s.Skipped = append(s.Skipped, t.ID)
-			return s // a declined elevation aborts the batch
+			return s, nil // a declined elevation aborts the batch
 		case install.Skipped:
 			if sess != nil {
 				_ = sess.Append(journal.Entry{Action: "manual_install_required", Target: t.ID, Result: "skipped"})
@@ -142,7 +152,7 @@ func InstallMissing(tools []manifest.Tool, det detect.Detector, sess *journal.Se
 			s.Failed = append(s.Failed, t.ID)
 		}
 	}
-	return s
+	return s, nil
 }
 
 func displayName(t manifest.Tool) string {

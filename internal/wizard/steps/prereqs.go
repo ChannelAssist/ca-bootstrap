@@ -6,6 +6,7 @@ import (
 	"github.com/ChannelAssist/ca-bootstrap/internal/detect"
 	"github.com/ChannelAssist/ca-bootstrap/internal/install"
 	"github.com/ChannelAssist/ca-bootstrap/internal/manifest"
+	"github.com/ChannelAssist/ca-bootstrap/internal/prompt"
 	"github.com/ChannelAssist/ca-bootstrap/internal/provision"
 	"github.com/ChannelAssist/ca-bootstrap/internal/wizard"
 )
@@ -49,7 +50,17 @@ func (Prereqs) Run(ctx *wizard.Context) (string, error) {
 	// path `repair` uses). Prompt key "prereqs.install_missing".
 	missing := provision.Missing(m, det, false) // required-drift only
 	opts := install.Options{Out: ctx.Out, Prompter: ctx.Prompt}
-	provision.InstallMissing(missing, det, ctx.Session, opts, "prereqs.install_missing")
+	summary, err := provision.InstallMissing(missing, det, ctx.Session, opts, "prereqs.install_missing")
+	if err != nil {
+		// Quit (→130) or a missing/invalid unattended key (→1). The wizard
+		// maps prompt.ErrQuit and generic errors to the right exit codes.
+		return "", err
+	}
+	if summary.Declined {
+		// Elevation declined mid-install — abort like `repair` does (→130),
+		// rather than silently dropping to the continue-with-drift gate.
+		return "", prompt.ErrQuit
+	}
 
 	// Re-evaluate: if everything required is now present, the step succeeds.
 	if len(provision.Missing(m, det, false)) == 0 {

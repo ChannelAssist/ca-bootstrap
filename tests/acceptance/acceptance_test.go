@@ -371,6 +371,22 @@ func TestSetup_PrereqsDrift_OffersInstall(t *testing.T) {
 	}
 }
 
+// TestSetup_PrereqsInstall_MissingKey_ExitsOne is a regression guard: when the
+// prereqs install offer is reached unattended but the prereqs.install_missing
+// key is absent, the strict prompter's missing-key error must propagate as a
+// config error (exit 1) — not get swallowed into a silent skip that falls
+// through to continue_with_drift (which would let it exit 0).
+func TestSetup_PrereqsInstall_MissingKey_ExitsOne(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-prereqs-missing-key.yaml", workspace)
+	_, stderr, exit := runSetup(t, bin, fixture(t, "one-missing-required.yaml"), cfg, fakeHome)
+	if exit != 1 {
+		t.Fatalf("setup with missing prereqs.install_missing key: expected exit 1 (config error), got %d. stderr:\n%s", exit, stderr)
+	}
+}
+
 func TestSetup_QuitAtPrompt_ExitsOneThirty(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()
