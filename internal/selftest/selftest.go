@@ -250,14 +250,25 @@ func InstallRoundTrip(opts Options) Result {
 	if !found {
 		return Result{name, StatusSkip, fmt.Sprintf("probe tool %q not in manifest", id)}
 	}
-	// Absent-only: never uninstall a tool the user actually has.
-	if detect.Classify(tool, opts.Detector.Probe(tool)) == detect.ClassOK {
+	// Absent-only: never touch a tool the user actually has. "Absent" means
+	// the binary isn't on the host at all — NOT merely below min version (a
+	// present-but-old tool is still the user's; uninstalling it would be
+	// destructive), so guard on Found, not on the OK/drift classification.
+	if opts.Detector.Probe(tool).Found {
 		return Result{name, StatusSkip, fmt.Sprintf("%s already present — not round-tripping (use an absent probe tool)", id)}
 	}
 
 	io.WriteString(out(opts), fmt.Sprintf("  install-round-trip: installing probe tool %s...\n", id))
 	res := install.Default().Install(tool, install.Options{Out: out(opts), Prompter: opts.Prompter, ElevationAction: opts.ElevationAction})
-	if res.Status != install.Installed {
+	switch res.Status {
+	case install.Installed:
+		// fall through to the uninstall half below
+	case install.Declined:
+		// User declined elevation — a choice, not a host incapability.
+		return Result{name, StatusSkip, fmt.Sprintf("elevation declined — skipped %s round-trip", id)}
+	case install.Skipped:
+		return Result{name, StatusSkip, fmt.Sprintf("manual install needed — skipped %s round-trip", id)}
+	default: // Failed, NotApplicable
 		return Result{name, StatusFail, fmt.Sprintf("install of %s did not succeed (status=%v)", id, res.Status)}
 	}
 	if err := install.Uninstall(res.Method, res.PackageID); err != nil {
