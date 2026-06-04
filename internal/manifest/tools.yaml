@@ -176,7 +176,7 @@ tools:
 
   - id: psql
     name: psql (PostgreSQL client)
-    optional: true
+    optional: false
     min_version: "14.0"
     description: PostgreSQL client; required by cm-currency-service `make staging-seed-qa`
     needed_by_groups: [cm-product]
