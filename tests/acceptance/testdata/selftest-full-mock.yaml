@@ -1,0 +1,30 @@
+# Fixture for the doctor --deep --full acceptance test.
+# go + git are present on every test host (no drift). mocktool is OPTIONAL and
+# absent (its detect command is a name no real binary uses) with a mock install
+# target, so the --full install→uninstall round-trip exercises cleanly without
+# touching the real machine. Point the probe at it via CA_BOOTSTRAP_SELFTEST_PROBE=mocktool.
+version: 1
+tools:
+  - id: go
+    name: Go
+    optional: false
+    min_version: "1.20.0"
+    detect:
+      command: go
+      version_flag: version
+      version_regex: 'go(\d+\.\d+(?:\.\d+)?)'
+  - id: git
+    name: Git
+    optional: false
+    min_version: "2.20.0"
+    detect:
+      command: git
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'
+  - id: mocktool
+    name: Mock Tool
+    optional: true
+    detect:
+      command: definitely-not-real-xyzzy-binary
+    install:
+      any: { type: mock, id: success }

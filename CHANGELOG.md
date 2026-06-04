@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added (Go rewrite — v2.0.0-alpha.7: doctor capability self-test)
+
+- **`doctor --deep`** runs a capability self-test after the detection report — verifying the host can actually *do* the operations bootstrap depends on, not just that tools exist. Four safe, self-reversing probes: workspace-root writable, symlink/junction create+remove, platform package manager reachable, and `gh auth` live. A failed probe is drift-equivalent (exit 2); bare `doctor` is unchanged (fast, read-only). (AB#40270)
+- **`doctor --deep --full`** adds a real install→uninstall round-trip on a probe tool (default `kubectl`, override via `$CA_BOOTSTRAP_SELFTEST_PROBE`) to prove the full install path works. **Absent-only** — if the probe tool is already present it skips, so a tool you depend on is never removed. (AB#40270)
+- New **`internal/selftest`** package — the cross-platform Go port of the real legs the PowerShell smoke harness exercised (`dist/smoke-windows.ps1`), so `doctor` and the smoke can share one source of truth. Mock seams: `CA_BOOTSTRAP_PKGMGR_MOCK`, reused `CA_BOOTSTRAP_SYMLINK_MOCK` / `CA_BOOTSTRAP_GH_MOCK`, and the install `type: mock` seam for the round-trip. No new external dependencies. (AB#40270)
+
 ### Fixed (alpha.6 review follow-ups)
 
 - **Unattended `setup` can now express an elevation choice for the inline install step.** A new optional `prereqs.elevation_action` key (`allow` | `deny` | `skip`, default `skip`) is threaded into the install path, so a missing required tool that needs elevation no longer falls through to the install package's interactive elevation prompt — whose answer keys live under `repair.*` and aren't present in setup answer files (which would error the strict unattended prompter). (AB#40272)
