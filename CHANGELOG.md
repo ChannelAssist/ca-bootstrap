@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed (Go rewrite — required prerequisites)
+
+- **`az`, `jq`, and `copilot-cli` are now required tools** (`optional: false`) in the embedded manifest, joining the already-required `git`, `gh`, `make`, and `pwsh`. The org's mandatory CLIs must all be present; `doctor`/`setup` now flag any missing one as drift rather than silently passing. A new `TestLoadDefault_RequiredToolSet` guards the az/gh/jq/git/make/copilot-cli set against accidental re-flipping. (AB#40233)
+- **Detection probe timeout raised from 10s to 30s.** A cold-start `az --version` on Windows (a Python app) could exceed the prior 10s bound and be falsely reported missing even though it was present. 30s is generous for a slow first invocation while still bounding genuine hangs. (AB#40233)
+
 ### Added (Go rewrite — parity: optional extras)
 
 - **`extras` setup step** (legacy step 80) — the final wizard step, five independently-confirmable offers: (1) a VS Code multi-root `ChannelAssist.code-workspace` file generated from the discovered clones; (2) workspace `.vscode/` defaults copied from embedded templates (existing files preserved); (3) a `ca-claude-plugin` activation symlink under `~/.claude/plugins/` (junction on Windows, symlink elsewhere); (4) `ca-copilot-plugin` usage notes; (5) a Windows-only WSL2 + Ubuntu install offer. Offers 3–4 appear only when the repo is cloned; offer 5 only on Windows. New `internal/extras` package with `CA_BOOTSTRAP_SYMLINK_MOCK` / `CA_BOOTSTRAP_WSL_MOCK` seams. Journals `create_file` (workspace + `.vscode` files, reversed by a new `CreateFile` reverser) and `install_ca_claude_plugin` (reversed by removing only the link). WSL/copilot actions are informational and not auto-reversed. **Note:** the Windows-only legs (junction creation, WSL probe) are covered by mock seams in tests and validated on real hardware at the Windows smoke step before release. (AB#40229)

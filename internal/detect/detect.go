@@ -21,8 +21,11 @@ import (
 // probeTimeout bounds every external detection command so a hanging or
 // interactive tool (e.g. a first-run winget source-agreement prompt, or
 // a --version that blocks on stdin) can never wedge `doctor`/`setup`.
-// Generous enough for slow CLIs like `az`. Overridable in tests.
-var probeTimeout = 10 * time.Second
+// 30s is generous enough for a cold-start `az --version` on Windows
+// (a Python app that can take 10s+ on first invocation) so a present
+// but slow tool is never falsely reported missing, while still bounding
+// genuine hangs. Overridable in tests.
+var probeTimeout = 30 * time.Second
 
 // Detector probes one tool against the host. Implementations are
 // platform-specific.

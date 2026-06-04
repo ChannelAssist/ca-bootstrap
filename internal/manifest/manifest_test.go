@@ -140,3 +140,28 @@ func TestLoad_ParsesInstallBlock(t *testing.T) {
 		t.Errorf("claude-code windows npm global, got %+v", cc.Install.Windows)
 	}
 }
+
+// TestLoadDefault_RequiredToolSet guards the org's required prerequisites:
+// these tools must NOT be optional in the embedded manifest. (Directed by
+// Peter 2026-06-03 — az/gh/jq/git/make/copilot-cli are mandatory.)
+func TestLoadDefault_RequiredToolSet(t *testing.T) {
+	m, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	required := map[string]bool{"az": true, "gh": true, "jq": true, "git": true, "make": true, "copilot-cli": true}
+	seen := map[string]bool{}
+	for _, tool := range m.Tools {
+		if required[tool.ID] {
+			seen[tool.ID] = true
+			if tool.Optional {
+				t.Errorf("%s must be required (optional=false), got optional=true", tool.ID)
+			}
+		}
+	}
+	for id := range required {
+		if !seen[id] {
+			t.Errorf("required tool %q not found in manifest", id)
+		}
+	}
+}
