@@ -28,6 +28,13 @@ type Context struct {
 	Prompt    prompt.Prompter
 	Session   *journal.Session
 	Workspace string
+	// ElevationAction pre-resolves how the prereqs install step handles a
+	// tool that needs elevated privileges ("allow" | "deny" | "skip" | "").
+	// Empty means "prompt interactively" (the stdin path). setup.go sets a
+	// non-empty value in unattended mode so the install package never falls
+	// back to its interactive elevation prompt — whose answer keys live under
+	// repair.* and aren't present in setup answer files.
+	ElevationAction string
 }
 
 // ErrDriftRejected is returned by the prereqs step when drift was

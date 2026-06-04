@@ -387,6 +387,23 @@ func TestSetup_PrereqsInstall_MissingKey_ExitsOne(t *testing.T) {
 	}
 }
 
+// TestSetup_PrereqsInstall_ElevationDeclined_ExitsOneThirty verifies the
+// unattended setup install path honours prereqs.elevation_action: a missing
+// required tool whose install needs elevation, with elevation_action: deny,
+// aborts at exit 130 — proving the action is threaded through and the install
+// package's repair.* elevation prompt keys (absent from setup configs) are
+// never reached (which would otherwise error → exit 1).
+func TestSetup_PrereqsInstall_ElevationDeclined_ExitsOneThirty(t *testing.T) {
+	bin := buildBinary(t)
+	workspace := t.TempDir()
+	fakeHome := t.TempDir()
+	cfg := renderUnattendedConfig(t, "unattended-prereqs-elevation-deny.yaml", workspace)
+	_, stderr, exit := runSetup(t, bin, fixture(t, "one-elevation-required-mock.yaml"), cfg, fakeHome)
+	if exit != 130 {
+		t.Fatalf("setup, elevation-needing tool + elevation_action deny: expected exit 130, got %d. stderr:\n%s", exit, stderr)
+	}
+}
+
 func TestSetup_QuitAtPrompt_ExitsOneThirty(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()

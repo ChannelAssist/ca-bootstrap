@@ -49,7 +49,7 @@ func (Prereqs) Run(ctx *wizard.Context) (string, error) {
 	// Offer to install the missing required tools inline (the same install
 	// path `repair` uses). Prompt key "prereqs.install_missing".
 	missing := provision.Missing(m, det, false) // required-drift only
-	opts := install.Options{Out: ctx.Out, Prompter: ctx.Prompt}
+	opts := install.Options{Out: ctx.Out, Prompter: ctx.Prompt, ElevationAction: ctx.ElevationAction}
 	summary, err := provision.InstallMissing(missing, det, ctx.Session, opts, "prereqs.install_missing")
 	if err != nil {
 		// Quit (→130) or a missing/invalid unattended key (→1). The wizard
@@ -62,8 +62,10 @@ func (Prereqs) Run(ctx *wizard.Context) (string, error) {
 		return "", prompt.ErrQuit
 	}
 
-	// Re-evaluate: if everything required is now present, the step succeeds.
-	if len(provision.Missing(m, det, false)) == 0 {
+	// InstallMissing already re-probed each tool post-install (its Installed
+	// list = tools that now verify OK). If every missing tool installed, the
+	// step succeeds — no need to re-scan the whole manifest.
+	if summary.AllOK() {
 		return "All required tools installed.", nil
 	}
 

@@ -73,6 +73,15 @@ func runSetup() int {
 		if ws, err := prompter.Line("identity.workspace_root", ""); err == nil && ws != "" {
 			ctx.Workspace = ws
 		}
+		// Pre-resolve the elevation action for the prereqs install step.
+		// Default "skip" (degrade to a manual note + the continue-with-drift
+		// gate) so an elevation-needing tool never reaches the install
+		// package's interactive elevation prompt, whose repair.* answer keys
+		// aren't defined in setup configs. Override via prereqs.elevation_action.
+		ctx.ElevationAction = "skip"
+		if action, err := prompter.Line("prereqs.elevation_action", ""); err == nil && action != "" {
+			ctx.ElevationAction = action
+		}
 	}
 
 	// Banner.

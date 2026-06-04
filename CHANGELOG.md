@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed (alpha.6 review follow-ups)
+
+- **Unattended `setup` can now express an elevation choice for the inline install step.** A new optional `prereqs.elevation_action` key (`allow` | `deny` | `skip`, default `skip`) is threaded into the install path, so a missing required tool that needs elevation no longer falls through to the install package's interactive elevation prompt — whose answer keys live under `repair.*` and aren't present in setup answer files (which would error the strict unattended prompter). (AB#40272)
+- **Removed a redundant post-install re-probe** in the prereqs step: it now reads the `InstallMissing` summary (which already verified each tool post-install) instead of re-scanning the whole manifest a second time. (AB#40272)
+
 ## [2.0.0-alpha.6] - 2026-06-04
 
 ### Changed (Go rewrite — v2.0.0-alpha.6: repair/setup actually install)

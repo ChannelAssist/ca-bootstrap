@@ -1,0 +1,15 @@
+# Fixture for TestSetup_PrereqsInstall_ElevationDeclined_ExitsOneThirty.
+# A required tool that is missing and whose mock install NEEDS ELEVATION.
+# Exercises the setup install offer's elevation handling without touching the
+# real machine.
+version: 1
+tools:
+  - id: xyzzy-elev
+    name: Xyzzy Elev
+    optional: false
+    detect:
+      command: definitely-not-real-xyzzy-elev-binary
+      version_flag: --version
+      version_regex: '(\d+\.\d+\.\d+)'
+    install:
+      any: { type: mock, id: needs-elevation }
