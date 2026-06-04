@@ -112,7 +112,7 @@ tools:
 
   - id: az
     name: Azure CLI
-    optional: true
+    optional: false
     min_version: "2.60.0"
     description: Azure resource provisioning + Entra app reg; required by cm-currency-service staging deploys
     needed_by_groups: [cm-product]
@@ -159,7 +159,7 @@ tools:
 
   - id: jq
     name: jq
-    optional: true
+    optional: false
     min_version: "1.6"
     description: JSON parsing in shell; required by cm-currency-service staging scripts
     needed_by_groups: [cm-product]
@@ -271,7 +271,7 @@ tools:
 
   - id: copilot-cli
     name: GitHub Copilot CLI
-    optional: true
+    optional: false
     description: Standalone Copilot agent in the terminal. Distinct from `gh copilot`.
     requires: [node-20]
     detect:
