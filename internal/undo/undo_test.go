@@ -55,6 +55,9 @@ func newSession(t *testing.T) (*journal.Session, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// os.UserHomeDir() reads %USERPROFILE% on Windows, not $HOME — set both so
+	// the journal session is sandboxed on the windows-latest runner too.
+	t.Setenv("USERPROFILE", home)
 	sess, err := journal.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)

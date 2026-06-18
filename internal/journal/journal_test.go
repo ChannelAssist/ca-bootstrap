@@ -14,6 +14,10 @@ func withTestHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// os.UserHomeDir() reads %USERPROFILE% on Windows, not $HOME, so without
+	// this the journal escapes the sandbox into the real profile dir on the
+	// windows-latest runner (the read below then can't find it).
+	t.Setenv("USERPROFILE", home)
 	return home
 }
 
