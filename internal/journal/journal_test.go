@@ -107,7 +107,10 @@ func TestEnd_WritesSessionEndWithExitCode(t *testing.T) {
 
 func TestAppend_PreservesFieldsInJSON(t *testing.T) {
 	withTestHome(t)
-	s, _ := NewSession()
+	s, err := NewSession()
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
 	defer s.Close() // release the handle so t.TempDir cleanup can remove it on Windows
 	e := Entry{
 		Action: "git_config_set",

@@ -106,8 +106,8 @@ GitHub secrets are text, so encode the binary `.pfx` to one base64 line:
 ```
 
 ```bash
-# macOS / Linux
-base64 -i ca-bootstrap-codesign.pfx | tr -d '\n' > cert.b64
+# macOS / Linux (stdin redirect — portable across BSD and GNU base64)
+base64 < ca-bootstrap-codesign.pfx | tr -d '\n' > cert.b64
 ```
 
 `cert.b64` now holds the value for the `WINDOWS_CERT_BASE64` secret.
