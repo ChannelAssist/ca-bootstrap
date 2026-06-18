@@ -64,8 +64,13 @@ Only run if installing/removing **jq** on this machine is fine:
 ```
 
 ## SmartScreen
-The exe is unsigned (signing is deferred to the final release). If Windows warns
-"unknown publisher" → **More info → Run anyway**. Expected, not a failure.
+Release binaries are Authenticode-signed when the `WINDOWS_CERT_*` secrets are
+configured (see `.github/workflows/release.yml` and
+`docs/guides/windows-code-signing.md`); a signed exe runs without a publisher
+warning. If you're testing an **unsigned** build — a local `go build`, or a
+release cut before the signing secrets were set — Windows may warn "unknown
+publisher" → **More info → Run anyway**. That's expected for unsigned builds,
+not a smoke failure.
 
 ## What to send back
 Copy the whole **SMOKE SUMMARY** block the script prints at the end (it lists
