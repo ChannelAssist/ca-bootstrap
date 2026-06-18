@@ -36,7 +36,11 @@ func TestLock_SecondAcquireFails(t *testing.T) {
 	if err := l1.Acquire(); err != nil {
 		t.Fatalf("first Acquire: %v", err)
 	}
-	defer l1.Release()
+	t.Cleanup(func() {
+		if err := l1.Release(); err != nil {
+			t.Errorf("cleanup Release: %v", err) // surfaces a UnlockFileEx regression
+		}
+	})
 
 	// LockFileEx byte-range locks are enforced against every other handle,
 	// including handles opened by the same process, so a second Acquire
@@ -44,7 +48,9 @@ func TestLock_SecondAcquireFails(t *testing.T) {
 	l2 := New(path)
 	if err := l2.Acquire(); err == nil {
 		t.Error("expected second Acquire to fail while first holds the lock")
-		_ = l2.Release()
+		if err := l2.Release(); err != nil {
+			t.Errorf("Release of unexpected second lock: %v", err)
+		}
 	}
 }
 
