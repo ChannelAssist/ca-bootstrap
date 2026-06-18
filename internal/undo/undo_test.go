@@ -64,7 +64,11 @@ func newSession(t *testing.T) (*journal.Session, string) {
 	}
 	// Release the journal handle at test end so t.TempDir cleanup can remove
 	// the file on Windows (an open handle blocks directory deletion there).
-	t.Cleanup(func() { _ = sess.Close() })
+	t.Cleanup(func() {
+		if err := sess.Close(); err != nil {
+			t.Errorf("cleanup Close: %v", err) // surfaces a handle-release regression on Windows
+		}
+	})
 	return sess, filepath.Join(home, ".ca-bootstrap", "journal.ndjson")
 }
 
