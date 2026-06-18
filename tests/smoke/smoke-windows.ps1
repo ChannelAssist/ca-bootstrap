@@ -207,7 +207,9 @@ finally {
   foreach ($v in 'CA_BOOTSTRAP_GH_MOCK','CA_BOOTSTRAP_REPOS','CA_BOOTSTRAP_CLONE_MOCK','CA_BOOTSTRAP_WSL_MOCK') {
     Remove-Item "Env:$v" -ErrorAction SilentlyContinue
   }
-  Stop-Transcript | Out-Null
+  # Stop-Transcript throws if no transcript is running (e.g. Start-Transcript
+  # failed); swallow it so it never masks the real failure from the try block.
+  try { Stop-Transcript | Out-Null } catch {}
 }
 
 # --- summary (paste this block back) -----------------------------------------
