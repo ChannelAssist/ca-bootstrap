@@ -75,19 +75,28 @@ jobs:
             Write-Host "::warning::WINDOWS_CERT_BASE64 is not set — shipping $env:ASSET UNSIGNED (SmartScreen will warn 'unknown publisher')."
             exit 0
           }
+          # Fail fast: a cert with no password would prompt interactively and hang the job.
+          if ([string]::IsNullOrEmpty($env:CERT_PASSWORD)) {
+            throw "WINDOWS_CERT_BASE64 is set but WINDOWS_CERT_PASSWORD is empty — refusing to sign."
+          }
           $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_BASE64))
-          # Newest signtool.exe from the Windows SDK on the runner image.
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
-            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
-          & $signtool sign /f $pfx /p $env:CERT_PASSWORD `
-            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $env:ASSET
-          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed (exit $LASTEXITCODE)" }
-          & $signtool verify /pa $env:ASSET
-          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed (exit $LASTEXITCODE)" }
-          Remove-Item $pfx -Force
-          Write-Host "Signed and verified $env:ASSET"
+          try {
+            # Newest signtool.exe from the Windows SDK on the runner image.
+            $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+              Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+            if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
+            & $signtool sign /f $pfx /p $env:CERT_PASSWORD `
+              /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $env:ASSET
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed (exit $LASTEXITCODE)" }
+            & $signtool verify /pa $env:ASSET
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed (exit $LASTEXITCODE)" }
+            Write-Host "Signed and verified $env:ASSET"
+          }
+          finally {
+            # Always scrub the decoded private key, even if signing/verify threw.
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
 
       - uses: actions/upload-artifact@v4
         with:
