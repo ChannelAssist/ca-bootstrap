@@ -30,6 +30,13 @@ func (p fakePrompter) Quit() bool                         { return p.quit }
 
 func baseOpts(t *testing.T, pr prompt.Prompter) Options {
 	t.Helper()
+	// Neutralize the Windows-only WSL offer so no extras test shells out to the
+	// real `wsl` binary. On windows-latest, Apply → offerWSL → wslInstall runs
+	// `wsl --install -d Ubuntu`, which blocks and hung the suite to the 10m test
+	// timeout. "has-ubuntu" makes offerWSL report already-installed and return
+	// without prompting or installing. (No-op on non-Windows, where offerWSL
+	// early-returns anyway.)
+	t.Setenv("CA_BOOTSTRAP_WSL_MOCK", "has-ubuntu")
 	return Options{Out: io.Discard, Prompter: pr, WorkspaceDir: t.TempDir(), HomeDir: t.TempDir()}
 }
 
