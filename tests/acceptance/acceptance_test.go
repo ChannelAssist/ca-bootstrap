@@ -312,10 +312,11 @@ func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string 
 	if !strings.Contains(body, "workspace_root:") {
 		// Forward-slash the path: a Windows path (C:\Users\...) inside a
 		// double-quoted YAML scalar makes yaml.v3 read \U, \A, … as invalid
-		// escape sequences ("did not find expected hexdecimal number"). Go's
-		// file ops accept forward slashes on Windows, and the tests' Stat
-		// assertions (which join the original path) resolve to the same
-		// location. Matches the smoke harness's approach.
+		// escape sequences. go-yaml then fails with its own error string,
+		// quoted verbatim here (its spelling, not ours): `did not find
+		// expected hexdecimal number`. Go's file ops accept forward slashes
+		// on Windows, and the tests' Stat assertions (which join the original
+		// path) resolve to the same location. Matches the smoke harness.
 		wsYAML := filepath.ToSlash(workspace)
 		emailLine := "  email: \"test@example.com\""
 		body = strings.Replace(body, emailLine,
