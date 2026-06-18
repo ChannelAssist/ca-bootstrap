@@ -25,7 +25,9 @@ func TestLock_AcquireAndRelease(t *testing.T) {
 	if err := l.Acquire(); err != nil {
 		t.Fatalf("re-Acquire after release: %v", err)
 	}
-	_ = l.Release()
+	if err := l.Release(); err != nil {
+		t.Errorf("final Release: %v", err) // a failure here signals a UnlockFileEx regression
+	}
 }
 
 func TestLock_SecondAcquireFails(t *testing.T) {
@@ -61,5 +63,7 @@ func TestLock_ForceUnlockBreaksStaleLock(t *testing.T) {
 	if err := l.AcquireWithForce(); err != nil {
 		t.Fatalf("AcquireWithForce over stale file: %v", err)
 	}
-	_ = l.Release()
+	if err := l.Release(); err != nil {
+		t.Errorf("Release after force-acquire: %v", err) // surfaces a UnlockFileEx regression
+	}
 }
