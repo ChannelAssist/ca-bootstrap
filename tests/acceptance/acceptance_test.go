@@ -16,7 +16,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -324,8 +323,11 @@ func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string 
 
 // runSetup is like run() but for the setup subcommand. Sets up:
 //   - $CA_BOOTSTRAP_MANIFEST (override path)
-//   - $HOME (so the journal lands in the test sandbox)
+//   - $HOME and %USERPROFILE% (so the journal lands in the test sandbox;
+//     os.UserHomeDir() reads USERPROFILE on Windows, HOME elsewhere)
 //   - $CA_BOOTSTRAP_ASCII=1 (so output is grep-able regardless of console)
+//   - $CA_BOOTSTRAP_WSL_MOCK (so the Windows-only extras WSL offer is a
+//     no-op instead of shelling out to the real, blocking `wsl --install`)
 //
 // Returns stdout, stderr, exit code.
 func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome string) (string, string, int) {
@@ -334,6 +336,8 @@ func runSetup(t *testing.T, binPath string, manifestPath, configPath, fakeHome s
 	env := append(os.Environ(),
 		"CA_BOOTSTRAP_MANIFEST="+manifestPath,
 		"HOME="+fakeHome,
+		"USERPROFILE="+fakeHome,
+		"CA_BOOTSTRAP_WSL_MOCK=has-ubuntu",
 		"CA_BOOTSTRAP_ASCII=1",
 		// Make the gh-auth step deterministic: pretend the user is
 		// already authenticated, so setup never shells out to real gh
@@ -526,7 +530,8 @@ func TestSetup_JournalRecordsSession(t *testing.T) {
 // separate test process).
 
 // runRepair invokes `repair --target <id>` with optional --unattended
-// --config. Sets HOME to redirect the journal + lock into the sandbox.
+// --config. Sets HOME + USERPROFILE to redirect the journal + lock into the
+// sandbox (os.UserHomeDir() reads USERPROFILE on Windows, HOME elsewhere).
 func runRepair(t *testing.T, binPath, manifestPath, target, configPath, fakeHome string) (string, string, int) {
 	t.Helper()
 	args := []string{"repair", "--target", target}
@@ -537,6 +542,7 @@ func runRepair(t *testing.T, binPath, manifestPath, target, configPath, fakeHome
 	cmd.Env = append(os.Environ(),
 		"CA_BOOTSTRAP_MANIFEST="+manifestPath,
 		"HOME="+fakeHome,
+		"USERPROFILE="+fakeHome,
 		"CA_BOOTSTRAP_ASCII=1",
 	)
 	var stdout, stderr bytes.Buffer
@@ -713,7 +719,8 @@ func writeWorkspaceGitConfig(t *testing.T, workspace, name, email string) {
 }
 
 // runUndo invokes `ca-bootstrap undo` with optional extra args, setting
-// HOME to redirect journal + lock into the sandbox. Returns
+// HOME + USERPROFILE to redirect journal + lock into the sandbox
+// (os.UserHomeDir() reads USERPROFILE on Windows, HOME elsewhere). Returns
 // (stdout, stderr, exit).
 func runUndo(t *testing.T, binPath, fakeHome string, extraArgs ...string) (string, string, int) {
 	t.Helper()
@@ -721,6 +728,7 @@ func runUndo(t *testing.T, binPath, fakeHome string, extraArgs ...string) (strin
 	cmd := exec.Command(binPath, args...)
 	cmd.Env = append(os.Environ(),
 		"HOME="+fakeHome,
+		"USERPROFILE="+fakeHome,
 		"CA_BOOTSTRAP_ASCII=1",
 	)
 	var stdout, stderr bytes.Buffer
@@ -1110,15 +1118,10 @@ func TestUndo_LockHeld_ExitsOne(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 	lockPath := filepath.Join(lockDir, "session.lock")
-	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		t.Fatalf("open lock: %v", err)
-	}
-	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatalf("flock: %v", err)
-	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:errcheck — best-effort cleanup
+	// Hold a real advisory lock for the test's lifetime so the spawned
+	// ca-bootstrap undo finds it genuinely held. POSIX-only (flock); the
+	// Windows stub skips, matching the runtime.GOOS guard above.
+	holdSessionLock(t, lockPath)
 
 	_, stderr, exit := runUndo(t, bin, fakeHome,
 		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
