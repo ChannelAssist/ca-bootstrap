@@ -1,0 +1,135 @@
+# Release — build the six per-platform binaries, Authenticode-sign the
+# Windows ones, publish a GitHub Release with SHA256SUMS.txt.
+#
+# Triggered by pushing a version tag (v2.0.0, v2.0.0-alpha.8, …). Tags that
+# contain a hyphen (semver pre-release) publish as a GitHub pre-release.
+#
+# Asset naming matches the existing convention (raw binaries, not archives):
+#   ca-bootstrap_<tag>_<goos>_<goarch>[.exe]   +   SHA256SUMS.txt
+# so the README download instructions stay accurate.
+#
+# Windows signing is GATED on the WINDOWS_CERT_BASE64 secret: if it's not
+# set, the build still succeeds and ships UNSIGNED (a workflow warning is
+# emitted). See docs/guides/windows-code-signing.md for cert setup.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runs-on }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { runs-on: ubuntu-latest,  goos: linux,   goarch: amd64 }
+          - { runs-on: ubuntu-latest,  goos: linux,   goarch: arm64 }
+          - { runs-on: macos-latest,   goos: darwin,  goarch: amd64 }
+          - { runs-on: macos-latest,   goos: darwin,  goarch: arm64 }
+          - { runs-on: windows-latest, goos: windows, goarch: amd64 }
+          - { runs-on: windows-latest, goos: windows, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"            # strip leading v for the ldflag
+          SHA="${GITHUB_SHA::7}"
+          NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          ASSET="ca-bootstrap_${GITHUB_REF_NAME}_${GOOS}_${GOARCH}"
+          [ "$GOOS" = windows ] && ASSET="${ASSET}.exe"
+          go build -trimpath \
+            -ldflags "-s -w -X main.Version=${VERSION} -X main.Commit=${SHA} -X main.BuildTime=${NOW}" \
+            -o "$ASSET" ./cmd/ca-bootstrap
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+          echo "Built $ASSET"
+
+      - name: Sign Windows binary (Authenticode)
+        if: matrix.goos == 'windows'
+        shell: pwsh
+        env:
+          CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrEmpty($env:CERT_BASE64)) {
+            Write-Host "::warning::WINDOWS_CERT_BASE64 is not set — shipping $env:ASSET UNSIGNED (SmartScreen will warn 'unknown publisher')."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_BASE64))
+          # Newest signtool.exe from the Windows SDK on the runner image.
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $signtool) { throw "signtool.exe not found in the Windows SDK" }
+          & $signtool sign /f $pfx /p $env:CERT_PASSWORD `
+            /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $env:ASSET
+          if ($LASTEXITCODE -ne 0) { throw "signtool sign failed (exit $LASTEXITCODE)" }
+          & $signtool verify /pa $env:ASSET
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed (exit $LASTEXITCODE)" }
+          Remove-Item $pfx -Force
+          Write-Host "Signed and verified $env:ASSET"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: dist
+
+      - name: Compute SHA256SUMS.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ca-bootstrap_* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            $PRERELEASE \
+            dist/ca-bootstrap_* dist/SHA256SUMS.txt
