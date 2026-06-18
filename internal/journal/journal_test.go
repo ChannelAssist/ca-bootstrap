@@ -27,6 +27,7 @@ func TestNewSession_ReturnsNonEmptyID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer s.Close() // release the handle so t.TempDir cleanup can remove it on Windows
 	if s == nil || s.ID == "" {
 		t.Errorf("expected non-empty session ID, got %+v", s)
 	}
@@ -38,6 +39,7 @@ func TestNewSession_WritesSessionStartEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer s.Close() // release the handle so t.TempDir cleanup can remove it on Windows
 	path := filepath.Join(home, ".ca-bootstrap", "journal.ndjson")
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -57,6 +59,7 @@ func TestAppend_WritesOneLinePerEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer s.Close() // release the handle so t.TempDir cleanup can remove it on Windows
 	if err := s.Append(Entry{Action: "test_action", Target: "/tmp/x", Result: "ok"}); err != nil {
 		t.Fatalf("Append: %v", err)
 	}
@@ -88,6 +91,7 @@ func TestEnd_WritesSessionEndWithExitCode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer s.Close() // no-op after End; guards the early-return paths on Windows
 	if err := s.End(2); err != nil {
 		t.Fatalf("End: %v", err)
 	}
@@ -104,6 +108,7 @@ func TestEnd_WritesSessionEndWithExitCode(t *testing.T) {
 func TestAppend_PreservesFieldsInJSON(t *testing.T) {
 	withTestHome(t)
 	s, _ := NewSession()
+	defer s.Close() // release the handle so t.TempDir cleanup can remove it on Windows
 	e := Entry{
 		Action: "git_config_set",
 		Target: "/path/to/.git/config",

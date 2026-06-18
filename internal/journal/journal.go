@@ -65,9 +65,26 @@ func (s *Session) Append(e Entry) error {
 func (s *Session) End(exitCode int) error {
 	if err := s.write(Entry{Action: "session_end", Result: fmt.Sprintf("exit_%d", exitCode)}); err != nil {
 		_ = s.f.Close()
+		s.f = nil
 		return err
 	}
-	return s.f.Close()
+	f := s.f
+	s.f = nil
+	return f.Close()
+}
+
+// Close releases the journal file handle WITHOUT writing a session_end
+// entry. Use it to release the file when you are not recording a normal
+// session end — e.g. a test that must remove its temp dir, since on
+// Windows an open file handle blocks directory deletion. Idempotent;
+// safe to call after End.
+func (s *Session) Close() error {
+	if s.f == nil {
+		return nil
+	}
+	err := s.f.Close()
+	s.f = nil
+	return err
 }
 
 // write marshals an Entry to JSON, prepends timestamp, sessionID,
