@@ -310,9 +310,16 @@ func renderUnattendedConfig(t *testing.T, fixtureName, workspace string) string 
 	// non-blank line under identity:. Simplest approach: split fixture
 	// content + inject right after the "email:" line.
 	if !strings.Contains(body, "workspace_root:") {
+		// Forward-slash the path: a Windows path (C:\Users\...) inside a
+		// double-quoted YAML scalar makes yaml.v3 read \U, \A, … as invalid
+		// escape sequences ("did not find expected hexdecimal number"). Go's
+		// file ops accept forward slashes on Windows, and the tests' Stat
+		// assertions (which join the original path) resolve to the same
+		// location. Matches the smoke harness's approach.
+		wsYAML := filepath.ToSlash(workspace)
 		emailLine := "  email: \"test@example.com\""
 		body = strings.Replace(body, emailLine,
-			emailLine+"\n  workspace_root: \""+workspace+"\"", 1)
+			emailLine+"\n  workspace_root: \""+wsYAML+"\"", 1)
 	}
 	dst := filepath.Join(t.TempDir(), fixtureName)
 	if err := os.WriteFile(dst, []byte(body), 0644); err != nil {
