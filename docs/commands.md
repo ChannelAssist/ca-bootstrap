@@ -361,7 +361,7 @@ make manifest-drift
       • ChannelAssist/ca-bootstrap — default branch: dev
 
     Paste under group "ca-platform" in manifest/repos.yaml:
-      - { repo: ChannelAssist/ca-bootstrap, into: ca-platform/ca-bootstrap, branch: dev }
+      - { repo: ChannelAssist/ca-bootstrap, into: ca-platform-repo/ca-bootstrap, branch: dev }
 ```
 
 The maintainer reviews the snippet, edits `manifest/repos.yaml` accordingly, and opens a PR. The tool deliberately doesn't mutate the manifest itself — group assignment for "unsorted" repos is a judgment call that benefits from human review.
@@ -393,11 +393,11 @@ ca-bootstrap manifest-edit
       • ChannelAssist/team-pulse        (archived; per policy, archived repos don't belong in the manifest)
 
   Repos in 28-style listing:
-    [x]  ChannelAssist/.github                       ca-docs/org-profile-public (main)
-    [x]  ChannelAssist/.github-private               ca-docs/org-profile-private (main)
-    [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  ca-training/Generative-AI-for-beginners-dotnet (main, opt-in)
+    [x]  ChannelAssist/.github                       ca-docs-repo/org-profile-public (main)
+    [x]  ChannelAssist/.github-private               ca-docs-repo/org-profile-private (main)
+    [x]  ChannelAssist/Generative-AI-for-beginners-dotnet  ca-training-repo/Generative-AI-for-beginners-dotnet (main, opt-in)
     [ ]  ChannelAssist/cm-new-thing  (private)       → suggested group: cm-product
-    [-]  ChannelAssist/cm-ledger-service             cm-product/cm-ledger-service (main) [auto-queued for removal]
+    [-]  ChannelAssist/cm-ledger-service             cm-product-repo/cm-ledger-service (main) [auto-queued for removal]
     ...
 
   Pending: +0 add, -2 remove
@@ -411,7 +411,7 @@ ca-bootstrap manifest-edit
 
 ### Add path
 
-Prompts for `group` (suggested heuristically: `ca-*` → ca-platform, `cm-*` → cm-product, `.github*` / `Keystone` → docs, else `unsorted`), `into` path (defaulting to `<group>/<name>`), `branch` (defaulting to the repo's actual default), and `opt_in` (default `n`).
+Prompts for `group` (suggested heuristically: `ca-*` → ca-platform, `cm-*` → cm-product, `.github*` / `Keystone` → docs, else `unsorted`), `into` path (defaulting to `<group>-repo/<name>` — destination folders carry the `-repo` suffix), `branch` (defaulting to the repo's actual default), and `opt_in` (default `n`).
 
 ### Remove path
 

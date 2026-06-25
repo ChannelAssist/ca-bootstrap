@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed (workspace taxonomy: `-repo` suffix)
+
+- **All top-level workspace folders now carry a `-repo` suffix.** The folder taxonomy in `manifest/folders.yaml` is now `ca-tools-repo/`, `ca-docs-repo/`, `ca-platform-repo/`, `cm-product-repo/`, `ca-training-repo/`, `ca-experiments-repo/` (opt-in), `ado-legacy-repo/` (opt-in), and `ca-work-dirs-repo/`. Each folder declares a `renamed_from:` predecessor (its bare un-suffixed name), so an existing workspace is **migrated in place** by `setup` / `repair --target folder-renames` rather than re-created empty. Every `into:` path in `manifest/repos.yaml`, the embedded per-folder README templates, and the `extras` plugin-link paths were re-rooted accordingly.
+
+### Fixed (repos manifest drift)
+
+- **`ChannelManager` clone slug corrected.** The `cm-product` group referenced `ChannelAssist/channel-manager`, which does not resolve (404) — the canonical repo is `ChannelAssist/ChannelManager`. The opt-in monolith clone now uses the correct slug (destination folder stays `channel-manager`).
+
+### Added (repos manifest coverage)
+
+- Added active org repos that were missing from the manifest: **`cm-rules-execution`** and **`cm-rules-generation`** (→ `cm-product-repo`), **`ca-keystone-studio`** (→ `ca-docs-repo`), and **`learn-harness-engineering`** (→ `ca-training-repo`). Still intentionally excluded: archived repos, the `ca-repo-template` template, the `desktop-tutorial` scaffold, and `azure-cost` (no `ca-`/`cm-` prefix — pending a placement decision).
+
 ## [2.0.0-alpha.7] - 2026-06-04
 
 ### Added (Go rewrite — v2.0.0-alpha.7: doctor capability self-test)

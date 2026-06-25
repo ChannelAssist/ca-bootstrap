@@ -1,4 +1,4 @@
-# ca-platform
+# ca-platform-repo
 
 ChannelAssist platform-wide services. Cross-product capabilities that any
 business unit can consume — they share the `ca-*` repo prefix.
@@ -14,7 +14,7 @@ business unit can consume — they share the `ca-*` repo prefix.
 ## Tree
 
 ```
-ca-platform/
+ca-platform-repo/
 ├── ca-ai-agents/
 ├── ca-claude-plugin/
 ├── ca-copilot-plugin/

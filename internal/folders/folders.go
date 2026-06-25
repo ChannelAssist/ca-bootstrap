@@ -220,7 +220,7 @@ func TemplateHash(folderName string) (string, error) {
 
 // FolderNameFromTemplateKey returns the folder name from a template
 // key recorded in a seed_readme entry. E.g.
-// "ca-tools/README.md" → "ca-tools". Returns "" if the key doesn't
+// "ca-tools-repo/README.md" → "ca-tools-repo". Returns "" if the key doesn't
 // match the expected shape.
 func FolderNameFromTemplateKey(key string) string {
 	const suffix = "/README.md"

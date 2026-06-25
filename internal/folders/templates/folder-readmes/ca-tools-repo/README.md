@@ -1,4 +1,4 @@
-# ca-tools
+# ca-tools-repo
 
 ChannelAssist tooling repos. Anything that builds, validates, deploys, or
 onboards the rest of the workspace lives here.
@@ -10,7 +10,7 @@ onboards the rest of the workspace lives here.
 ## Tree
 
 ```
-ca-tools/
+ca-tools-repo/
 └── ca-bootstrap/   # interactive setup + doctor + repair + manifest tools
 ```
 

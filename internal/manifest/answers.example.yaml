@@ -55,9 +55,9 @@ git_identity:
 clone:
   groups:
     docs: all                        # 'all' | 'none' | list of repo slugs
-    ca-platform: all
-    cm-product: all
-    ado-legacy: skip
+    ca-platform-repo: all
+    cm-product-repo: all
+    ado-legacy-repo: skip
   exclude:
     - ChannelAssist/channel-manager  # opt out of the legacy monolith
 

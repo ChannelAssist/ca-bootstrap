@@ -42,19 +42,19 @@ func TestLoadFoldersDefault_NormalisesScalarRenamedFrom(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFoldersDefault: %v", err)
 	}
-	// ca-experiments declares `renamed_from: experiments` (a scalar) in
+	// ca-tools-repo declares `renamed_from: ca-tools` (a scalar) in
 	// the embedded manifest; it must normalise to a one-element slice.
 	var found bool
 	for _, f := range m.Folders {
-		if f.Path == "ca-experiments" {
+		if f.Path == "ca-tools-repo" {
 			found = true
-			if len(f.RenamedFrom) != 1 || f.RenamedFrom[0] != "experiments" {
-				t.Errorf("ca-experiments renamed_from = %v, want [experiments]", f.RenamedFrom)
+			if len(f.RenamedFrom) != 1 || f.RenamedFrom[0] != "ca-tools" {
+				t.Errorf("ca-tools-repo renamed_from = %v, want [ca-tools]", f.RenamedFrom)
 			}
 		}
 	}
 	if !found {
-		t.Fatal("ca-experiments folder not present in embedded manifest")
+		t.Fatal("ca-tools-repo folder not present in embedded manifest")
 	}
 }
 

@@ -6,4 +6,4 @@ groups:
   - name: core
     description: Test group
     repos:
-      - { repo: ChannelAssist/test-repo, into: ca-tools/test-repo, branch: main }
+      - { repo: ChannelAssist/test-repo, into: ca-tools-repo/test-repo, branch: main }

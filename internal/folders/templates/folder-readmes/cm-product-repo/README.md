@@ -1,4 +1,4 @@
-# cm-product
+# cm-product-repo
 
 ChannelManager product repos. The application services and shared libraries
 that make up the ChannelManager product — they share the `cm-*` prefix.
@@ -12,13 +12,15 @@ that make up the ChannelManager product — they share the `cm-*` prefix.
 - `cm-database-infra` — database schema + migrations.
 - `cm-platform-infra` — shared platform infrastructure.
 - `cm-purchase-order-service` — purchase order service.
+- `cm-rules-execution` — rules execution service.
+- `cm-rules-generation` — rules generation service.
 - `cm-service-template` — template for new cm-* services.
 - `cm-shared-libs` — shared library code.
 
 ## Tree
 
 ```
-cm-product/
+cm-product-repo/
 ├── channel-manager/             # legacy monolith (opt-in, ≈4 GB)
 ├── cm-claims-validator/
 ├── cm-contracts/
@@ -26,6 +28,8 @@ cm-product/
 ├── cm-database-infra/
 ├── cm-platform-infra/
 ├── cm-purchase-order-service/
+├── cm-rules-execution/
+├── cm-rules-generation/
 ├── cm-service-template/
 └── cm-shared-libs/
 ```

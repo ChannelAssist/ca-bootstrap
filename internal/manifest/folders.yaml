@@ -22,30 +22,39 @@ version: 1
 root_name: ChannelAssistDev
 
 folders:
-  - path: ca-tools
+  - path: ca-tools-repo
     description: ChannelAssist tooling repos (ca-bootstrap and friends)
+    renamed_from: ca-tools
 
-  - path: ca-docs
+  - path: ca-docs-repo
     description: ChannelAssist documentation + org profiles (Keystone, .github)
+    renamed_from: ca-docs
 
-  - path: ca-platform
+  - path: ca-platform-repo
     description: ChannelAssist platform-wide services (ca-* prefix)
+    renamed_from: ca-platform
 
-  - path: cm-product
+  - path: cm-product-repo
     description: ChannelManager product repos (cm-* prefix)
+    renamed_from: cm-product
 
-  - path: ado-legacy
+  - path: ado-legacy-repo
     description: Legacy TFVC checkouts of pre-modernization code (read-only reference)
     optional: true
+    renamed_from: ado-legacy
 
-  - path: ca-training
+  - path: ca-training-repo
     description: ChannelAssist training material and learning resources
+    renamed_from: ca-training
 
-  - path: ca-experiments
+  - path: ca-experiments-repo
     description: Internal experiments / prototypes (opt-in; sparse on disk by default)
     optional: true
-    renamed_from: experiments
+    renamed_from:
+      - ca-experiments     # most recent
+      - experiments        # oldest
 
-  - path: ca-work-dirs
+  - path: ca-work-dirs-repo
     description: Working directories for Claude Code worktrees, Claude Cowork sessions, and scratch clones
+    renamed_from: ca-work-dirs
 
