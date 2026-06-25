@@ -1314,7 +1314,7 @@ var requiredFolders = []string{
 	"ca-platform-repo",
 	"cm-product-repo",
 	"ca-training-repo",
-	"ca-work-dirs-repo",
+	"ca-work-dirs",
 }
 
 func TestSetupFolders_HappyPath_CreatesAllRequired(t *testing.T) {

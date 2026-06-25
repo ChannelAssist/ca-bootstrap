@@ -57,7 +57,7 @@ clone:
     docs: all                        # 'all' | 'none' | list of repo slugs
     ca-platform-repo: all
     cm-product-repo: all
-    ado-legacy-repo: skip
+    ado-legacy: skip
   exclude:
     - ChannelAssist/channel-manager  # opt out of the legacy monolith
 

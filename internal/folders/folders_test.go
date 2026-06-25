@@ -61,7 +61,7 @@ func TestApply_KeepsExistingFolder(t *testing.T) {
 func TestApply_OptionalMissingNotCreated(t *testing.T) {
 	ws := t.TempDir()
 	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{
-		{Path: "ado-legacy-repo", Optional: true},
+		{Path: "ado-legacy", Optional: true},
 	}}
 
 	s, err := Apply(m, applyOpts(ws))
@@ -71,7 +71,7 @@ func TestApply_OptionalMissingNotCreated(t *testing.T) {
 	if s.Created != 0 {
 		t.Errorf("Created = %d, want 0 (optional + no predecessor)", s.Created)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ado-legacy-repo")); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(filepath.Join(ws, "ado-legacy")); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("optional folder should not have been created; stat err=%v", err)
 	}
 }

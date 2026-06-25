@@ -1,4 +1,4 @@
-# ca-work-dirs-repo
+# ca-work-dirs
 
 Working directories for **Claude Code worktrees**, **Claude Cowork sessions**,
 and general scratch clones. This is your scratch space — anything that's
@@ -15,18 +15,18 @@ a separate branch without disturbing your primary clone:
 ```bash
 # From <workspace> root:
 git -C ca-platform-repo/ca-claude-plugin worktree add \
-    ca-work-dirs-repo/ca-claude-plugin-experiment feature/experiment
-cd ca-work-dirs-repo/ca-claude-plugin-experiment
+    ca-work-dirs/ca-claude-plugin-experiment feature/experiment
+cd ca-work-dirs/ca-claude-plugin-experiment
 claude
 ```
 
-Convention: worktree path = `<workspace>/ca-work-dirs-repo/<repo>-<topic>/`.
+Convention: worktree path = `<workspace>/ca-work-dirs/<repo>-<topic>/`.
 
 ### Claude Cowork
 
 Cowork manages its own sub-folders here. Each Cowork session typically
 creates one directory keyed to the run id. **Do not delete sub-folders
-under `ca-work-dirs-repo/` without first checking the owning Cowork session —
+under `ca-work-dirs/` without first checking the owning Cowork session —
 the contents may be live state.**
 
 ### General scratch
@@ -37,7 +37,7 @@ that doesn't belong under the canonical `ca-*` / `cm-*` folders.
 ## Tree
 
 ```
-ca-work-dirs-repo/
+ca-work-dirs/
 ├── <repo>-<topic>/        # convention: git worktrees off your primary clones
 ├── cowork-<run-id>/       # convention: Claude Cowork session work-dirs
 └── scratch-*/             # convention: ad-hoc scratch clones
@@ -47,7 +47,7 @@ ca-work-dirs-repo/
 
 ## Safety
 
-**Do not delete `ca-work-dirs-repo/` or any of its sub-folders without
+**Do not delete `ca-work-dirs/` or any of its sub-folders without
 checking what's inside.** Sub-folders may belong to:
 
 - An active Claude Cowork session.

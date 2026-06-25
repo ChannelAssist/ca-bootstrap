@@ -38,10 +38,9 @@ folders:
     description: ChannelManager product repos (cm-* prefix)
     renamed_from: cm-product
 
-  - path: ado-legacy-repo
+  - path: ado-legacy
     description: Legacy TFVC checkouts of pre-modernization code (read-only reference)
     optional: true
-    renamed_from: ado-legacy
 
   - path: ca-training-repo
     description: ChannelAssist training material and learning resources
@@ -54,7 +53,6 @@ folders:
       - ca-experiments     # most recent
       - experiments        # oldest
 
-  - path: ca-work-dirs-repo
+  - path: ca-work-dirs
     description: Working directories for Claude Code worktrees, Claude Cowork sessions, and scratch clones
-    renamed_from: ca-work-dirs
 

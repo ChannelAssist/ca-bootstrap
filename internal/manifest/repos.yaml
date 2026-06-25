@@ -19,6 +19,7 @@ groups:
     description: Tooling repos
     repos:
       - { repo: ChannelAssist/ca-bootstrap,        into: ca-tools-repo/ca-bootstrap,        branch: dev }
+      - { repo: ChannelAssist/ca-repo-template,    into: ca-tools-repo/ca-repo-template,    branch: dev }
 
 
   - name: docs

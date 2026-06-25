@@ -1,4 +1,4 @@
-# ado-legacy-repo
+# ado-legacy
 
 Read-only TFVC checkouts of pre-modernization code. Reference-only — do not
 commit to anything here.
@@ -15,7 +15,7 @@ project tree (e.g. `Bitnix`, `OldPlatform`, etc.).
 ## Tree
 
 ```
-ado-legacy-repo/
+ado-legacy/
 ├── <legacy-team-project-1>/
 └── <legacy-team-project-2>/
 ```
