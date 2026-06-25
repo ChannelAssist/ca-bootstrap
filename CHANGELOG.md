@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [2.0.0-alpha.8] - 2026-06-25
+
 ### Changed (workspace taxonomy: `-repo` suffix)
 
 - **Repo-holding workspace folders now carry a `-repo` suffix.** The clone-destination folders in `manifest/folders.yaml` are now `ca-tools-repo/`, `ca-docs-repo/`, `ca-platform-repo/`, `cm-product-repo/`, `ca-training-repo/`, and `ca-experiments-repo/` (opt-in). The non-clone scratch/reference folders `ca-work-dirs/` and `ado-legacy/` keep their bare names (they hold worktrees / TFVC checkouts, not cloned repos). Each renamed folder declares a `renamed_from:` predecessor (its bare un-suffixed name), so an existing workspace is **migrated in place** by `setup` / `repair --target folder-renames` rather than re-created empty. Every `into:` path in `manifest/repos.yaml`, the embedded per-folder README templates, and the `extras` plugin-link paths were re-rooted accordingly.
@@ -17,6 +19,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ### Added (repos manifest coverage)
 
 - Added active org repos that were missing from the manifest: **`cm-rules-execution`** and **`cm-rules-generation`** (→ `cm-product-repo`), **`ca-keystone-studio`** (→ `ca-docs-repo`), **`learn-harness-engineering`** (→ `ca-training-repo`), and **`ca-repo-template`** (→ `ca-tools-repo`). Still intentionally excluded: archived repos, the `desktop-tutorial` scaffold, and `azure-cost` (no `ca-`/`cm-` prefix — placement undecided).
+
+### Added (CI + release infrastructure)
+
+- **Real-Windows CI matrix and a signed release pipeline.** CI now runs vet + build + unit + acceptance suites on a 3-OS matrix (windows/macos/linux) for every push/PR to `dev` and `main`, so the Windows-tagged code paths (`LockFileEx` lock, winget detect/dispatch, UTF-8 console, UAC elevation) get real execution rather than cross-compile-only verification, with windows-tagged test mirrors added to cover them. A new `release.yml` builds the six per-platform binaries on a tag push, Authenticode-signs the Windows ones (gated on the `WINDOWS_CERT_BASE64` secret — ships unsigned with a warning when unset), and publishes a GitHub Release with `SHA256SUMS.txt`. (#117)
 
 ## [2.0.0-alpha.7] - 2026-06-04
 
@@ -132,7 +138,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Pre-overwrite README content is scanned for credential patterns BEFORE base64-encoding** (`repair --target folder-readmes`). The scan tries UTF-8, UTF-16LE, AND UTF-16BE decodes and matches the same `Test-CABContainsSensitive` pattern set the journal's existing string-value guard uses (GH/AWS/Slack/JWT/PEM prefixes). On a match the snapshot is held back (`previous_content_captured: false`) — the overwrite still proceeds, only the journaling is suppressed, so secrets can't round-trip into `~/.ca-bootstrap/journal.yaml` via base64. (#83, AB#40024)
 - **`undo refresh_readme` refuses to overwrite a diverged README**. Before writing the captured bytes, it compares `SHA256(current README)` to `SHA256(recorded template)`. Mismatch → `skip` with a recovery recipe; hash-compute failure → `fail` (refuse blind write); template missing on disk → `skip` (mirrors the existing `seed_readme` discipline). User edits made after `repair --target folder-readmes` are now preserved across `undo`. (#83, AB#40024)
 
-[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.7...HEAD
+[Unreleased]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.8...HEAD
+[2.0.0-alpha.8]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.7...v2.0.0-alpha.8
 [2.0.0-alpha.7]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.6...v2.0.0-alpha.7
 [2.0.0-alpha.6]: https://github.com/ChannelAssist/ca-bootstrap/compare/v2.0.0-alpha.5...v2.0.0-alpha.6
 [2.0.0-alpha.5]: https://github.com/ChannelAssist/ca-bootstrap/compare/v1.9.0...v2.0.0-alpha.5
