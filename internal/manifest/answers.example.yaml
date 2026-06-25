@@ -53,13 +53,15 @@ git_identity:
   email: first.last@channelassist.com
 
 clone:
+  # Keys are repos-manifest *group* names (see manifest/repos.yaml `groups[].name`),
+  # NOT workspace folder names. Unattended mode maps each to a `repos.group.<name>`
+  # prompt, so a folder-suffixed or unknown key would silently skip the wrong group.
   groups:
     docs: all                        # 'all' | 'none' | list of repo slugs
-    ca-platform-repo: all
-    cm-product-repo: all
-    ado-legacy: skip
+    ca-platform: all
+    cm-product: all
   exclude:
-    - ChannelAssist/channel-manager  # opt out of the legacy monolith
+    - ChannelAssist/ChannelManager   # opt out of the legacy monolith
 
 extras:
   vscode_workspace_file: true
