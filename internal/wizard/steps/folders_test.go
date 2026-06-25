@@ -22,7 +22,7 @@ func (p stepPrompter) Quit() bool                         { return false }
 func smallFoldersManifest(t *testing.T) {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "folders.yaml")
-	body := "version: 1\nfolders:\n  - path: ca-tools\n"
+	body := "version: 1\nfolders:\n  - path: ca-tools-repo\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestFolders_Declined_NoChanges(t *testing.T) {
 	if !strings.Contains(strings.ToLower(msg), "declined") {
 		t.Errorf("summary = %q, want a 'declined' message", msg)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo")); !os.IsNotExist(err) {
 		t.Errorf("declining must not create folders; stat err=%v", err)
 	}
 }
@@ -78,7 +78,7 @@ func TestFolders_HappyPath_CreatesFolders(t *testing.T) {
 	if !strings.Contains(msg, "created") {
 		t.Errorf("summary = %q, want it to mention created count", msg)
 	}
-	if info, err := os.Stat(filepath.Join(ws, "ca-tools")); err != nil || !info.IsDir() {
-		t.Errorf("ca-tools not created: err=%v", err)
+	if info, err := os.Stat(filepath.Join(ws, "ca-tools-repo")); err != nil || !info.IsDir() {
+		t.Errorf("ca-tools-repo not created: err=%v", err)
 	}
 }

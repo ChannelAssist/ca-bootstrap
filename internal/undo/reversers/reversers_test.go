@@ -134,7 +134,7 @@ func TestToolInstall_UninstallFailure_Fails(t *testing.T) {
 // ---- CreateFolder ----
 
 func TestCreateFolder_Empty_Removes(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestCreateFolder_Empty_Removes(t *testing.T) {
 }
 
 func TestCreateFolder_NonEmpty_Refused(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestCreateFolder_NonEmpty_Refused(t *testing.T) {
 }
 
 func TestCreateFolder_NonEmpty_IncludeFolders_Removes(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestCreateFolder_MissingTarget_Fails(t *testing.T) {
 func TestRenameFolder_ReversesRename(t *testing.T) {
 	ws := t.TempDir()
 	from := filepath.Join(ws, "experiments")
-	to := filepath.Join(ws, "ca-experiments")
+	to := filepath.Join(ws, "ca-experiments-repo")
 	if err := os.MkdirAll(to, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestRenameFolder_DestGone_Noop(t *testing.T) {
 	ws := t.TempDir()
 	e := journal.Entry{Action: "rename_folder", Before: map[string]string{
 		"from": filepath.Join(ws, "experiments"),
-		"to":   filepath.Join(ws, "ca-experiments"),
+		"to":   filepath.Join(ws, "ca-experiments-repo"),
 	}}
 	out := RenameFolder{}.Reverse(e, undo.Options{})
 	if out.Status != "noop" {
@@ -233,7 +233,7 @@ func TestRenameFolder_DestGone_Noop(t *testing.T) {
 func TestRenameFolder_FromOccupied_Skips(t *testing.T) {
 	ws := t.TempDir()
 	from := filepath.Join(ws, "experiments")
-	to := filepath.Join(ws, "ca-experiments")
+	to := filepath.Join(ws, "ca-experiments-repo")
 	if err := os.MkdirAll(from, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -256,11 +256,11 @@ func TestRenameFolder_MissingBefore_Fails(t *testing.T) {
 
 // ---- SeedReadme ----
 
-// writeTemplateReadme writes the embedded ca-tools template verbatim to
+// writeTemplateReadme writes the embedded ca-tools-repo template verbatim to
 // dir/README.md so the on-disk hash matches what undo expects.
 func writeTemplateReadme(t *testing.T, dir string) string {
 	t.Helper()
-	body, err := fs.ReadFile(folders.TemplatesFS(), "ca-tools/README.md")
+	body, err := fs.ReadFile(folders.TemplatesFS(), "ca-tools-repo/README.md")
 	if err != nil {
 		t.Fatalf("read embedded template: %v", err)
 	}
@@ -278,12 +278,12 @@ func seedEntry(target string) journal.Entry {
 	return journal.Entry{
 		Action: "seed_readme",
 		Target: target,
-		Before: map[string]string{"template": "ca-tools/README.md"},
+		Before: map[string]string{"template": "ca-tools-repo/README.md"},
 	}
 }
 
 func TestSeedReadme_TemplateMatch_Removes(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo")
 	p := writeTemplateReadme(t, dir)
 	out := SeedReadme{}.Reverse(seedEntry(p), undo.Options{})
 	if out.Status != "ok" {
@@ -295,7 +295,7 @@ func TestSeedReadme_TemplateMatch_Removes(t *testing.T) {
 }
 
 func TestSeedReadme_Diverged_Skips(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +313,7 @@ func TestSeedReadme_Diverged_Skips(t *testing.T) {
 }
 
 func TestSeedReadme_Absent_Noop(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "ca-tools", "README.md")
+	p := filepath.Join(t.TempDir(), "ca-tools-repo", "README.md")
 	out := SeedReadme{}.Reverse(seedEntry(p), undo.Options{})
 	if out.Status != "noop" {
 		t.Errorf("status = %q, want noop", out.Status)
@@ -375,7 +375,7 @@ func TestGhAuthLogin_IncludeTools_LogsOut(t *testing.T) {
 // ---- CloneRepo ----
 
 func TestCloneRepo_RefusedWithoutIncludeFolders(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools", "repo")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo", "repo")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644)
 	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo", Target: dir}, undo.Options{})
@@ -388,7 +388,7 @@ func TestCloneRepo_RefusedWithoutIncludeFolders(t *testing.T) {
 }
 
 func TestCloneRepo_IncludeFolders_Removes(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "ca-tools", "repo")
+	dir := filepath.Join(t.TempDir(), "ca-tools-repo", "repo")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644)
 	out := CloneRepo{}.Reverse(journal.Entry{Action: "clone_repo", Target: dir}, undo.Options{IncludeFolders: true})

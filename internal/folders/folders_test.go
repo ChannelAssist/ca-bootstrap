@@ -21,7 +21,7 @@ func reqFolder(path string) manifest.Folder { return manifest.Folder{Path: path}
 
 func TestApply_CreatesRequiredFolder(t *testing.T) {
 	ws := t.TempDir()
-	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools")}}
+	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools-repo")}}
 
 	s, err := Apply(m, applyOpts(ws))
 	if err != nil {
@@ -30,24 +30,24 @@ func TestApply_CreatesRequiredFolder(t *testing.T) {
 	if s.Created != 1 {
 		t.Errorf("Created = %d, want 1", s.Created)
 	}
-	if info, err := os.Stat(filepath.Join(ws, "ca-tools")); err != nil || !info.IsDir() {
-		t.Errorf("ca-tools not created as dir: err=%v", err)
+	if info, err := os.Stat(filepath.Join(ws, "ca-tools-repo")); err != nil || !info.IsDir() {
+		t.Errorf("ca-tools-repo not created as dir: err=%v", err)
 	}
-	// ca-tools has an embedded README template — it should be seeded.
+	// ca-tools-repo has an embedded README template — it should be seeded.
 	if s.SeededReadmes != 1 {
 		t.Errorf("SeededReadmes = %d, want 1", s.SeededReadmes)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools", "README.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo", "README.md")); err != nil {
 		t.Errorf("README.md not seeded: %v", err)
 	}
 }
 
 func TestApply_KeepsExistingFolder(t *testing.T) {
 	ws := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(ws, "ca-tools"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(ws, "ca-tools-repo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools")}}
+	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools-repo")}}
 
 	s, err := Apply(m, applyOpts(ws))
 	if err != nil {
@@ -88,7 +88,7 @@ func TestApply_MigratesPredecessor(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{
-		{Path: "ca-experiments", Optional: true, RenamedFrom: []string{"experiments"}},
+		{Path: "ca-experiments-repo", Optional: true, RenamedFrom: []string{"experiments"}},
 	}}
 
 	s, err := Apply(m, applyOpts(ws))
@@ -102,7 +102,7 @@ func TestApply_MigratesPredecessor(t *testing.T) {
 		t.Errorf("old dir should be gone after rename; stat err=%v", err)
 	}
 	// Migrated contents must survive the rename.
-	if _, err := os.Stat(filepath.Join(ws, "ca-experiments", "keepme.txt")); err != nil {
+	if _, err := os.Stat(filepath.Join(ws, "ca-experiments-repo", "keepme.txt")); err != nil {
 		t.Errorf("migrated content missing: %v", err)
 	}
 }
@@ -110,10 +110,10 @@ func TestApply_MigratesPredecessor(t *testing.T) {
 func TestApply_CollisionNonDirRequired_ReturnsErrCollision(t *testing.T) {
 	ws := t.TempDir()
 	// A regular file sits where a required folder must go.
-	if err := os.WriteFile(filepath.Join(ws, "ca-tools"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(ws, "ca-tools-repo"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools")}}
+	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools-repo")}}
 
 	_, err := Apply(m, applyOpts(ws))
 	var ce *ErrCollision
@@ -124,7 +124,7 @@ func TestApply_CollisionNonDirRequired_ReturnsErrCollision(t *testing.T) {
 
 func TestApply_SeedReadmeIdempotent(t *testing.T) {
 	ws := t.TempDir()
-	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-docs")}}
+	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-docs-repo")}}
 
 	if _, err := Apply(m, applyOpts(ws)); err != nil {
 		t.Fatalf("first Apply: %v", err)
@@ -142,14 +142,14 @@ func TestApply_SeedReadmeIdempotent(t *testing.T) {
 }
 
 func TestApply_EmptyWorkspace_Errors(t *testing.T) {
-	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools")}}
+	m := &manifest.FoldersManifest{Version: 1, Folders: []manifest.Folder{reqFolder("ca-tools-repo")}}
 	if _, err := Apply(m, Options{Out: io.Discard, WorkspaceDir: ""}); err == nil {
 		t.Error("expected error for empty workspace dir")
 	}
 }
 
 func TestTemplateHash_KnownFolder(t *testing.T) {
-	h, err := TemplateHash("ca-tools")
+	h, err := TemplateHash("ca-tools-repo")
 	if err != nil {
 		t.Fatalf("TemplateHash: %v", err)
 	}
@@ -167,11 +167,11 @@ func TestTemplateHash_UnknownFolder_NotExist(t *testing.T) {
 
 func TestFolderNameFromTemplateKey(t *testing.T) {
 	cases := map[string]string{
-		"ca-tools/README.md": "ca-tools",
-		"ca-docs/README.md":  "ca-docs",
-		"README.md":          "", // no folder prefix
-		"ca-tools/other.txt": "", // wrong suffix
-		"":                   "",
+		"ca-tools-repo/README.md": "ca-tools-repo",
+		"ca-docs-repo/README.md":  "ca-docs-repo",
+		"README.md":               "", // no folder prefix
+		"ca-tools-repo/other.txt": "", // wrong suffix
+		"":                        "",
 	}
 	for in, want := range cases {
 		if got := FolderNameFromTemplateKey(in); got != want {
@@ -181,7 +181,7 @@ func TestFolderNameFromTemplateKey(t *testing.T) {
 }
 
 func TestTemplatesFS_ContainsKnownTemplate(t *testing.T) {
-	if _, err := fs.Stat(TemplatesFS(), "ca-tools/README.md"); err != nil {
-		t.Errorf("expected ca-tools/README.md in templates FS: %v", err)
+	if _, err := fs.Stat(TemplatesFS(), "ca-tools-repo/README.md"); err != nil {
+		t.Errorf("expected ca-tools-repo/README.md in templates FS: %v", err)
 	}
 }

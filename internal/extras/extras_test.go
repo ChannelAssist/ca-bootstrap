@@ -57,7 +57,7 @@ func TestApply_AllDeclined(t *testing.T) {
 func TestApply_WorkspaceFile(t *testing.T) {
 	o := baseOpts(t, fakePrompter{answers: map[string]bool{"extras.vscode_workspace_file": true}})
 	// Seed a couple of clones to discover.
-	for _, r := range []string{"ca-tools/ca-bootstrap", "ca-docs/keystone"} {
+	for _, r := range []string{"ca-tools-repo/ca-bootstrap", "ca-docs-repo/keystone"} {
 		os.MkdirAll(filepath.Join(o.WorkspaceDir, r, ".git"), 0o755)
 	}
 	s, err := Apply(o)
@@ -68,7 +68,7 @@ func TestApply_WorkspaceFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace file not written: %v", err)
 	}
-	for _, want := range []string{"ca-tools/ca-bootstrap", "ca-docs/keystone", "\"folders\""} {
+	for _, want := range []string{"ca-tools-repo/ca-bootstrap", "ca-docs-repo/keystone", "\"folders\""} {
 		if !contains(string(body), want) {
 			t.Errorf("workspace file missing %q:\n%s", want, body)
 		}
@@ -107,7 +107,7 @@ func TestApply_VSCodeDefaults_PreservesExisting(t *testing.T) {
 func TestApply_ClaudePluginLink_Mock(t *testing.T) {
 	t.Setenv("CA_BOOTSTRAP_SYMLINK_MOCK", "1")
 	o := baseOpts(t, fakePrompter{def: true})
-	repoPath := filepath.Join(o.WorkspaceDir, "ca-platform", "ca-claude-plugin")
+	repoPath := filepath.Join(o.WorkspaceDir, "ca-platform-repo", "ca-claude-plugin")
 	os.MkdirAll(repoPath, 0o755)
 	s, err := Apply(o)
 	if err != nil {

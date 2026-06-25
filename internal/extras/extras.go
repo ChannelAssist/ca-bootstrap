@@ -189,7 +189,7 @@ func offerVSCodeDefaults(opts Options, s *Summary) (bool, error) {
 // ---------- 3. ca-claude-plugin activation symlink ----------
 
 func offerClaudePlugin(opts Options, s *Summary) (bool, error) {
-	repoPath := filepath.Join(opts.WorkspaceDir, "ca-platform", "ca-claude-plugin")
+	repoPath := filepath.Join(opts.WorkspaceDir, "ca-platform-repo", "ca-claude-plugin")
 	if _, err := os.Stat(repoPath); err != nil {
 		fmt.Fprintln(opts.Out, "    ⓘ ca-claude-plugin not cloned (skip — clone its group to enable)")
 		return false, nil
@@ -239,7 +239,7 @@ func makeLink(target, linkPath string) error {
 // ---------- 4. ca-copilot-plugin usage info ----------
 
 func offerCopilotInfo(opts Options, s *Summary) (bool, error) {
-	repoPath := filepath.Join(opts.WorkspaceDir, "ca-platform", "ca-copilot-plugin")
+	repoPath := filepath.Join(opts.WorkspaceDir, "ca-platform-repo", "ca-copilot-plugin")
 	if _, err := os.Stat(repoPath); err != nil {
 		fmt.Fprintln(opts.Out, "    ⓘ ca-copilot-plugin not cloned (skip — clone its group to enable)")
 		return false, nil

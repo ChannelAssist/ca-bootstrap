@@ -1309,11 +1309,11 @@ func removeEmptyFolderEntry(id, sessionID, path string) journalEntry {
 // manifest/folders.yaml entries without optional:true). Tests assert
 // on these; if folders.yaml changes, update here.
 var requiredFolders = []string{
-	"ca-tools",
-	"ca-docs",
-	"ca-platform",
-	"cm-product",
-	"ca-training",
+	"ca-tools-repo",
+	"ca-docs-repo",
+	"ca-platform-repo",
+	"cm-product-repo",
+	"ca-training-repo",
 	"ca-work-dirs",
 }
 
@@ -1341,7 +1341,7 @@ func TestSetupFolders_Idempotent_KeepsExisting(t *testing.T) {
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
 	// Pre-create one required folder with a custom file inside.
-	preExisting := filepath.Join(workspace, "ca-tools")
+	preExisting := filepath.Join(workspace, "ca-tools-repo")
 	if err := os.MkdirAll(preExisting, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1358,8 +1358,8 @@ func TestSetupFolders_Idempotent_KeepsExisting(t *testing.T) {
 		t.Errorf("pre-existing sentinel was destroyed: %v", err)
 	}
 	// Also asserts that the folders step ran (a sibling required folder exists with seeded README).
-	if _, err := os.Stat(filepath.Join(workspace, "ca-docs", "README.md")); err != nil {
-		t.Errorf("sibling required folder ca-docs/README.md missing — folders step didn't run: %v", err)
+	if _, err := os.Stat(filepath.Join(workspace, "ca-docs-repo", "README.md")); err != nil {
+		t.Errorf("sibling required folder ca-docs-repo/README.md missing — folders step didn't run: %v", err)
 	}
 }
 
@@ -1373,12 +1373,12 @@ func TestSetupFolders_OptionalNotCreated(t *testing.T) {
 		t.Fatalf("setup expected exit 0, got %d", exit)
 	}
 	// First, confirm the folders step actually ran (a required folder exists).
-	if _, err := os.Stat(filepath.Join(workspace, "ca-tools", "README.md")); err != nil {
-		t.Fatalf("folders step didn't run — ca-tools/README.md missing: %v", err)
+	if _, err := os.Stat(filepath.Join(workspace, "ca-tools-repo", "README.md")); err != nil {
+		t.Fatalf("folders step didn't run — ca-tools-repo/README.md missing: %v", err)
 	}
 	// Then assert the optional folder was NOT auto-created.
-	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments")); !os.IsNotExist(err) {
-		t.Errorf("optional folder ca-experiments should not have been created (err=%v)", err)
+	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments-repo")); !os.IsNotExist(err) {
+		t.Errorf("optional folder ca-experiments-repo should not have been created (err=%v)", err)
 	}
 }
 
@@ -1386,8 +1386,10 @@ func TestSetupFolders_RenamedFrom_MigratesPredecessor(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
-	// ca-experiments has renamed_from: experiments. Seed `experiments/` with content.
-	// (ca-experiments is optional in folders.yaml, so this exercises optional rename.)
+	// ca-experiments-repo declares a renamed_from chain (most-recent first):
+	// [ca-experiments, experiments]. Seed the oldest name `experiments/` with content
+	// to exercise tail-of-chain migration.
+	// (ca-experiments-repo is optional in folders.yaml, so this exercises optional rename.)
 	old := filepath.Join(workspace, "experiments")
 	if err := os.MkdirAll(old, 0o755); err != nil {
 		t.Fatal(err)
@@ -1401,8 +1403,8 @@ func TestSetupFolders_RenamedFrom_MigratesPredecessor(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("setup with rename: expected exit 0, got %d", exit)
 	}
-	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments", "carryover.txt")); err != nil {
-		t.Errorf("rename should have moved 'experiments/carryover.txt' → 'ca-experiments/carryover.txt': %v", err)
+	if _, err := os.Stat(filepath.Join(workspace, "ca-experiments-repo", "carryover.txt")); err != nil {
+		t.Errorf("rename should have moved 'experiments/carryover.txt' → 'ca-experiments-repo/carryover.txt': %v", err)
 	}
 	if _, err := os.Stat(old); !os.IsNotExist(err) {
 		t.Errorf("old path 'experiments' should be gone after rename (err=%v)", err)
@@ -1414,7 +1416,7 @@ func TestSetupFolders_CollisionNonDirectory_ExitsOne(t *testing.T) {
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
 	// Write a regular file where a required folder needs to go.
-	if err := os.WriteFile(filepath.Join(workspace, "ca-tools"), []byte("not a dir"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(workspace, "ca-tools-repo"), []byte("not a dir"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cfg := renderUnattendedConfig(t, "unattended-folders-happy.yaml", workspace)
@@ -1434,12 +1436,12 @@ func TestSetupFolders_SkipReadmeWhenAlreadyExists(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
-	// Pre-create ca-tools/README.md with custom content.
-	if err := os.MkdirAll(filepath.Join(workspace, "ca-tools"), 0o755); err != nil {
+	// Pre-create ca-tools-repo/README.md with custom content.
+	if err := os.MkdirAll(filepath.Join(workspace, "ca-tools-repo"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	sentinel := "# Custom README — keep me\n"
-	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	readmePath := filepath.Join(workspace, "ca-tools-repo", "README.md")
 	if err := os.WriteFile(readmePath, []byte(sentinel), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1449,8 +1451,8 @@ func TestSetupFolders_SkipReadmeWhenAlreadyExists(t *testing.T) {
 		t.Fatalf("setup: expected exit 0, got %d", exit)
 	}
 	// Confirm folders step ran (a sibling required folder's README exists).
-	if _, err := os.Stat(filepath.Join(workspace, "ca-docs", "README.md")); err != nil {
-		t.Fatalf("folders step didn't run — ca-docs/README.md missing: %v", err)
+	if _, err := os.Stat(filepath.Join(workspace, "ca-docs-repo", "README.md")); err != nil {
+		t.Fatalf("folders step didn't run — ca-docs-repo/README.md missing: %v", err)
 	}
 	body, _ := os.ReadFile(readmePath)
 	if string(body) != sentinel {
@@ -1489,7 +1491,7 @@ func TestUndo_CreateFolder_Empty_Removes(t *testing.T) {
 	bin := buildBinary(t)
 	fakeHome := t.TempDir()
 	workspace := t.TempDir()
-	folder := filepath.Join(workspace, "ca-tools")
+	folder := filepath.Join(workspace, "ca-tools-repo")
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1512,7 +1514,7 @@ func TestUndo_CreateFolder_NonEmpty_Refused(t *testing.T) {
 	bin := buildBinary(t)
 	fakeHome := t.TempDir()
 	workspace := t.TempDir()
-	folder := filepath.Join(workspace, "ca-tools")
+	folder := filepath.Join(workspace, "ca-tools-repo")
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -1549,7 +1551,7 @@ func TestUndo_RenameFolder_ReverseRename(t *testing.T) {
 	fakeHome := t.TempDir()
 	workspace := t.TempDir()
 	from := filepath.Join(workspace, "experiments")
-	to := filepath.Join(workspace, "ca-experiments")
+	to := filepath.Join(workspace, "ca-experiments-repo")
 	// Simulate a previous renamed_from migration: `to` exists, `from` does not.
 	if err := os.MkdirAll(to, 0o755); err != nil {
 		t.Fatal(err)
@@ -1580,7 +1582,7 @@ func TestUndo_RenameFolder_DestGone_NoOp(t *testing.T) {
 	fakeHome := t.TempDir()
 	workspace := t.TempDir()
 	from := filepath.Join(workspace, "experiments")
-	to := filepath.Join(workspace, "ca-experiments")
+	to := filepath.Join(workspace, "ca-experiments-repo")
 	// Neither path exists.
 	seedJournal(t, fakeHome, []journalEntry{
 		renameFolderEntry("id-rename", "sess1", from, to),
@@ -1616,11 +1618,11 @@ func TestUndo_SeedReadme_TemplateMatch_Removes(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("setup precondition failed (exit %d)", exit)
 	}
-	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	readmePath := filepath.Join(workspace, "ca-tools-repo", "README.md")
 	// Precondition: setup actually seeded the README. In RED this fails,
 	// which is the point — without alpha.5 the test can't proceed.
 	if _, err := os.Stat(readmePath); err != nil {
-		t.Fatalf("precondition failed: ca-tools/README.md not seeded by setup (err=%v)", err)
+		t.Fatalf("precondition failed: ca-tools-repo/README.md not seeded by setup (err=%v)", err)
 	}
 	_, _, exit = runUndo(t, bin, fakeHome,
 		"--unattended", "--config", fixture(t, "unattended-undo-proceed.yaml"),
@@ -1643,10 +1645,10 @@ func TestUndo_SeedReadme_Diverged_Skipped(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("setup precondition failed (exit %d)", exit)
 	}
-	readmePath := filepath.Join(workspace, "ca-tools", "README.md")
+	readmePath := filepath.Join(workspace, "ca-tools-repo", "README.md")
 	// Precondition — same as the match test.
 	if _, err := os.Stat(readmePath); err != nil {
-		t.Fatalf("precondition failed: ca-tools/README.md not seeded by setup (err=%v)", err)
+		t.Fatalf("precondition failed: ca-tools-repo/README.md not seeded by setup (err=%v)", err)
 	}
 	if err := os.WriteFile(readmePath, []byte("# User-edited content — preserve me\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1671,7 +1673,7 @@ func TestUndo_RemoveEmptyFolder_Recreates(t *testing.T) {
 	bin := buildBinary(t)
 	fakeHome := t.TempDir()
 	workspace := t.TempDir()
-	folder := filepath.Join(workspace, "ca-tools")
+	folder := filepath.Join(workspace, "ca-tools-repo")
 	// Folder does not exist; the entry says it was previously removed.
 	seedJournal(t, fakeHome, []journalEntry{
 		removeEmptyFolderEntry("id-removed", "sess1", folder),

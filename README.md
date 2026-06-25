@@ -72,7 +72,7 @@ ca-bootstrap doctor    # read-only diagnosis (exit 2 = a required tool is missin
 2. **Prerequisites** — detects installed tooling against the embedded manifest and reports version drift (read-only; `repair` fixes it).
 3. **GitHub authentication** — checks `gh auth status`; offers `gh auth login --git-protocol https --web` if you're not signed in (needed to clone private repos).
 4. **Git identity** — writes a workspace-scoped `.git/config` `[user]` block, so personal repos elsewhere stay untouched. Default workspace root: `~/Documents/Projects/ChannelAssistDev` (falls back to `~/Projects/ChannelAssistDev` on a headless box).
-5. **Folder structure** — creates the workspace taxonomy (`ca-tools/`, `ca-docs/`, `ca-platform/`, `cm-product/`, `ca-training/`, `ca-work-dirs/`), migrates renamed predecessors, and seeds a per-folder `README.md`.
+5. **Folder structure** — creates the workspace taxonomy (the repo-holding folders carry a `-repo` suffix: `ca-tools-repo/`, `ca-docs-repo/`, `ca-platform-repo/`, `cm-product-repo/`, `ca-training-repo/`; the non-clone scratch/reference folders `ca-work-dirs/` and `ado-legacy/` keep their bare names), migrates renamed predecessors (e.g. an existing `ca-tools/` is renamed to `ca-tools-repo/`), and seeds a per-folder `README.md`.
 6. **Repository cloning** — clones each group's repos into the workspace, group by group, individually selectable; already-cloned repos are skipped + fetched.
 7. **Optional extras** — VS Code multi-root `.code-workspace` file, workspace `.vscode/` defaults, a `ca-claude-plugin` activation link (junction on Windows), `ca-copilot-plugin` usage notes, and a Windows-only WSL2 offer.
 
