@@ -358,10 +358,10 @@ make manifest-drift
   ⚠ 11 repo(s) on GitHub but NOT in the manifest:
 
     Suggested group: ca-platform
-      • ChannelAssist/ca-bootstrap — default branch: dev
+      • ChannelAssist/ca-insights-api — default branch: dev
 
     Paste under group "ca-platform" in manifest/repos.yaml:
-      - { repo: ChannelAssist/ca-bootstrap, into: ca-platform-repo/ca-bootstrap, branch: dev }
+      - { repo: ChannelAssist/ca-insights-api, into: ca-platform-repo/ca-insights-api, branch: dev }
 ```
 
 The maintainer reviews the snippet, edits `manifest/repos.yaml` accordingly, and opens a PR. The tool deliberately doesn't mutate the manifest itself — group assignment for "unsorted" repos is a judgment call that benefits from human review.
@@ -411,7 +411,7 @@ ca-bootstrap manifest-edit
 
 ### Add path
 
-Prompts for `group` (suggested heuristically: `ca-*` → ca-platform, `cm-*` → cm-product, `.github*` / `Keystone` → docs, else `unsorted`), `into` path (defaulting to `<group>-repo/<name>` — destination folders carry the `-repo` suffix), `branch` (defaulting to the repo's actual default), and `opt_in` (default `n`).
+Prompts for `group` (suggested heuristically: `ca-*` → ca-platform, `cm-*` → cm-product, `.github*` / `Keystone` → docs, else `unsorted`), `into` path (defaulting to `<group>/<name>`, e.g. `ca-platform/ca-foo` — the maintainer typically edits this to the group's taxonomy destination folder, which carries a `-repo` suffix, e.g. `ca-platform-repo/ca-foo`), `branch` (defaulting to the repo's actual default), and `opt_in` (default `n`).
 
 ### Remove path
 
