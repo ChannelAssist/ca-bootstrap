@@ -1386,7 +1386,9 @@ func TestSetupFolders_RenamedFrom_MigratesPredecessor(t *testing.T) {
 	bin := buildBinary(t)
 	workspace := t.TempDir()
 	fakeHome := t.TempDir()
-	// ca-experiments-repo has renamed_from: experiments. Seed `experiments/` with content.
+	// ca-experiments-repo declares a renamed_from chain (most-recent first):
+	// [ca-experiments, experiments]. Seed the oldest name `experiments/` with content
+	// to exercise tail-of-chain migration.
 	// (ca-experiments-repo is optional in folders.yaml, so this exercises optional rename.)
 	old := filepath.Join(workspace, "experiments")
 	if err := os.MkdirAll(old, 0o755); err != nil {
