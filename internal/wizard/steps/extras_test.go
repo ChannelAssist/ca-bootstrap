@@ -35,6 +35,11 @@ func TestExtras_AllDeclined(t *testing.T) {
 }
 
 func TestExtras_Accepted(t *testing.T) {
+	// Answers "yes" to every offer; on Windows that drives the extras WSL
+	// offer into the real, blocking `wsl --install`. Mock WSL as already
+	// present so the offer is a no-op (otherwise the test hangs to the 10m
+	// timeout on the windows-latest runner).
+	t.Setenv("CA_BOOTSTRAP_WSL_MOCK", "has-ubuntu")
 	ws := t.TempDir()
 	ctx := &wizard.Context{Out: io.Discard, Prompt: stepPrompter{yes: true}, Workspace: ws}
 	msg, err := (Extras{}).Run(ctx)

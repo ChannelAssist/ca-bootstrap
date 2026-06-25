@@ -55,10 +55,20 @@ func newSession(t *testing.T) (*journal.Session, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// os.UserHomeDir() reads %USERPROFILE% on Windows, not $HOME — set both so
+	// the journal session is sandboxed on the windows-latest runner too.
+	t.Setenv("USERPROFILE", home)
 	sess, err := journal.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	// Release the journal handle at test end so t.TempDir cleanup can remove
+	// the file on Windows (an open handle blocks directory deletion there).
+	t.Cleanup(func() {
+		if err := sess.Close(); err != nil {
+			t.Errorf("cleanup Close: %v", err) // surfaces a handle-release regression on Windows
+		}
+	})
 	return sess, filepath.Join(home, ".ca-bootstrap", "journal.ndjson")
 }
 

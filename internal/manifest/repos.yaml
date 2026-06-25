@@ -18,52 +18,57 @@ groups:
   - name: tools
     description: Tooling repos
     repos:
-      - { repo: ChannelAssist/ca-bootstrap,        into: ca-tools/ca-bootstrap,             branch: dev }
+      - { repo: ChannelAssist/ca-bootstrap,        into: ca-tools-repo/ca-bootstrap,        branch: dev }
+      - { repo: ChannelAssist/ca-repo-template,    into: ca-tools-repo/ca-repo-template,    branch: dev }
 
 
   - name: docs
     description: Documentation repos
     repos:
-      - { repo: ChannelAssist/Keystone,            into: ca-docs/keystone,             branch: dev }
-      - { repo: ChannelAssist/ca-keystone-runtime, into: ca-docs/ca-keystone-runtime,  branch: dev }
-      - { repo: ChannelAssist/.github,             into: ca-docs/org-profile-public,   branch: main }
-      - { repo: ChannelAssist/.github-private,     into: ca-docs/org-profile-private,  branch: main, requires_membership: true }
+      - { repo: ChannelAssist/Keystone,            into: ca-docs-repo/keystone,             branch: dev }
+      - { repo: ChannelAssist/ca-keystone-runtime, into: ca-docs-repo/ca-keystone-runtime,  branch: dev }
+      - { repo: ChannelAssist/ca-keystone-studio,  into: ca-docs-repo/ca-keystone-studio,   branch: dev }
+      - { repo: ChannelAssist/.github,             into: ca-docs-repo/org-profile-public,   branch: main }
+      - { repo: ChannelAssist/.github-private,     into: ca-docs-repo/org-profile-private,  branch: main, requires_membership: true }
 
   - name: ca-platform
     description: ChannelAssist platform-wide services
     repos:
-      - { repo: ChannelAssist/ca-ai-agents,                    into: ca-platform/ca-ai-agents,                    branch: dev }
-      - { repo: ChannelAssist/ca-claude-plugin,                into: ca-platform/ca-claude-plugin,                branch: dev }
-      - { repo: ChannelAssist/ca-copilot-plugin,               into: ca-platform/ca-copilot-plugin,               branch: dev }
-      - { repo: ChannelAssist/ca-data-dictionnary-generator,   into: ca-platform/ca-data-dictionnary-generator,   branch: dev }
-      - { repo: ChannelAssist/ca-privacy-gate,                 into: ca-platform/ca-privacy-gate,                 branch: dev }
+      - { repo: ChannelAssist/ca-ai-agents,                    into: ca-platform-repo/ca-ai-agents,                    branch: dev }
+      - { repo: ChannelAssist/ca-claude-plugin,                into: ca-platform-repo/ca-claude-plugin,                branch: dev }
+      - { repo: ChannelAssist/ca-copilot-plugin,               into: ca-platform-repo/ca-copilot-plugin,               branch: dev }
+      - { repo: ChannelAssist/ca-data-dictionnary-generator,   into: ca-platform-repo/ca-data-dictionnary-generator,   branch: dev }
+      - { repo: ChannelAssist/ca-privacy-gate,                 into: ca-platform-repo/ca-privacy-gate,                 branch: dev }
 
   - name: cm-product
     description: ChannelManager product repos
     repos:
-      - repo: ChannelAssist/channel-manager
-        into: cm-product/channel-manager
+      - repo: ChannelAssist/ChannelManager
+        into: cm-product-repo/channel-manager
         branch: dev
         large: true
         warn: "Legacy monolith — clone is ≈4 GB and can take 10+ minutes."
         opt_in: true
-      - { repo: ChannelAssist/cm-claims-validator,     into: cm-product/cm-claims-validator,     branch: dev }
-      - { repo: ChannelAssist/cm-contracts,            into: cm-product/cm-contracts,            branch: dev }
-      - { repo: ChannelAssist/cm-currency-service,     into: cm-product/cm-currency-service,     branch: dev }
-      - { repo: ChannelAssist/cm-database-infra,       into: cm-product/cm-database-infra,       branch: dev }
-      - { repo: ChannelAssist/cm-platform-infra,       into: cm-product/cm-platform-infra,       branch: dev }
-      - { repo: ChannelAssist/cm-purchase-order-service, into: cm-product/cm-purchase-order-service, branch: dev }
-      - { repo: ChannelAssist/cm-service-template,     into: cm-product/cm-service-template,     branch: dev }
-      - { repo: ChannelAssist/cm-shared-libs,          into: cm-product/cm-shared-libs,          branch: dev }
+      - { repo: ChannelAssist/cm-claims-validator,     into: cm-product-repo/cm-claims-validator,     branch: dev }
+      - { repo: ChannelAssist/cm-contracts,            into: cm-product-repo/cm-contracts,            branch: dev }
+      - { repo: ChannelAssist/cm-currency-service,     into: cm-product-repo/cm-currency-service,     branch: dev }
+      - { repo: ChannelAssist/cm-database-infra,       into: cm-product-repo/cm-database-infra,       branch: dev }
+      - { repo: ChannelAssist/cm-platform-infra,       into: cm-product-repo/cm-platform-infra,       branch: dev }
+      - { repo: ChannelAssist/cm-purchase-order-service, into: cm-product-repo/cm-purchase-order-service, branch: dev }
+      - { repo: ChannelAssist/cm-rules-execution,      into: cm-product-repo/cm-rules-execution,      branch: dev }
+      - { repo: ChannelAssist/cm-rules-generation,     into: cm-product-repo/cm-rules-generation,     branch: dev }
+      - { repo: ChannelAssist/cm-service-template,     into: cm-product-repo/cm-service-template,     branch: dev }
+      - { repo: ChannelAssist/cm-shared-libs,          into: cm-product-repo/cm-shared-libs,          branch: dev }
 
   - name: ca-training
     description: ChannelAssist training material and learning resources
     repos:
-      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training/Generative-AI-for-beginners-dotnet, branch: main }
-      - { repo: ChannelAssist/agentic-ai-lab,                     into: ca-training/agentic-ai-lab,                     branch: main }
+      - { repo: ChannelAssist/Generative-AI-for-beginners-dotnet, into: ca-training-repo/Generative-AI-for-beginners-dotnet, branch: main }
+      - { repo: ChannelAssist/agentic-ai-lab,                     into: ca-training-repo/agentic-ai-lab,                     branch: main }
+      - { repo: ChannelAssist/learn-harness-engineering,         into: ca-training-repo/learn-harness-engineering,         branch: main }
 
   - name: ca-experiments
     description: Internal experiments / prototypes — opt-in, not part of the default workspace
     repos:
-      - { repo: ChannelAssist/command-center, into: ca-experiments/command-center, branch: dev, opt_in: true }
+      - { repo: ChannelAssist/command-center, into: ca-experiments-repo/command-center, branch: dev, opt_in: true }
 

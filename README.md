@@ -2,7 +2,11 @@
 
 One command to take a fresh laptop to a working ChannelAssist development environment. A single static binary — no runtime to install — for Windows, macOS, and Linux.
 
-> **Status: v2.0.0-alpha.5 (Go).** This is the **Go rewrite**, distributed as pre-built per-platform binaries via [GitHub Releases](https://github.com/ChannelAssist/ca-bootstrap/releases). It replaces the original PowerShell implementation, now archived under [`legacy/`](legacy/) (last PS release: `v1.9.0`). Rationale and roadmap: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md). New work proceeds **spec → tests → code**, in that strict order.
+[![CI](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/ChannelAssist/ca-bootstrap/actions/workflows/ci.yml)
+
+> CI runs the full Go unit + acceptance suites on **Windows, macOS, and Linux** every push (`.github/workflows/ci.yml`), so the Windows-only code paths (LockFileEx session lock, winget detect/dispatch, UTF-8 console, UAC elevation) get real execution, not just cross-compile checks.
+
+> **Status: v2.0.0-alpha.7 (Go).** This is the **Go rewrite**, distributed as pre-built per-platform binaries via [GitHub Releases](https://github.com/ChannelAssist/ca-bootstrap/releases). It replaces the original PowerShell implementation, now archived under [`legacy/`](legacy/) (last PS release: `v1.9.0`). Rationale and roadmap: [`docs/specs/2026-05-25-go-rewrite-pivot.md`](docs/specs/2026-05-25-go-rewrite-pivot.md). New work proceeds **spec → tests → code**, in that strict order.
 
 ---
 
@@ -10,13 +14,13 @@ One command to take a fresh laptop to a working ChannelAssist development enviro
 
 Download the binary for your platform from the [latest release](https://github.com/ChannelAssist/ca-bootstrap/releases/latest), verify it against `SHA256SUMS.txt`, and put it on your `PATH`.
 
-> The alpha binaries are **unsigned** (code signing is deferred to the v2.0.0 final). On Windows, SmartScreen may warn "unknown publisher" → **More info → Run anyway**. That's expected, not a failure.
+> **Code signing:** the release workflow Authenticode-signs the Windows binaries when a signing certificate is configured (see [`docs/guides/windows-code-signing.md`](docs/guides/windows-code-signing.md)). Until the production cert is in place, alpha binaries ship **unsigned** — on Windows, SmartScreen may warn "unknown publisher" → **More info → Run anyway**. That's expected, not a failure.
 
 ### Windows (PowerShell)
 
 ```powershell
 # x64 (use ..._windows_arm64.exe on an ARM device)
-$asset = 'ca-bootstrap_v2.0.0-alpha.5_windows_amd64.exe'
+$asset = 'ca-bootstrap_v2.0.0-alpha.7_windows_amd64.exe'
 irm "https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download/$asset" -OutFile ca-bootstrap.exe
 
 # optional: verify the checksum
@@ -30,11 +34,11 @@ irm "https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download/SHA2
 
 ```bash
 # pick your platform asset:
-#   macOS Apple Silicon : ca-bootstrap_v2.0.0-alpha.5_darwin_arm64
-#   macOS Intel         : ca-bootstrap_v2.0.0-alpha.5_darwin_amd64
-#   Linux x64           : ca-bootstrap_v2.0.0-alpha.5_linux_amd64
-#   Linux ARM64         : ca-bootstrap_v2.0.0-alpha.5_linux_arm64
-ASSET=ca-bootstrap_v2.0.0-alpha.5_darwin_arm64
+#   macOS Apple Silicon : ca-bootstrap_v2.0.0-alpha.7_darwin_arm64
+#   macOS Intel         : ca-bootstrap_v2.0.0-alpha.7_darwin_amd64
+#   Linux x64           : ca-bootstrap_v2.0.0-alpha.7_linux_amd64
+#   Linux ARM64         : ca-bootstrap_v2.0.0-alpha.7_linux_arm64
+ASSET=ca-bootstrap_v2.0.0-alpha.7_darwin_arm64
 BASE=https://github.com/ChannelAssist/ca-bootstrap/releases/latest/download
 
 curl -fsSL "$BASE/$ASSET" -o ca-bootstrap
@@ -68,7 +72,7 @@ ca-bootstrap doctor    # read-only diagnosis (exit 2 = a required tool is missin
 2. **Prerequisites** — detects installed tooling against the embedded manifest and reports version drift (read-only; `repair` fixes it).
 3. **GitHub authentication** — checks `gh auth status`; offers `gh auth login --git-protocol https --web` if you're not signed in (needed to clone private repos).
 4. **Git identity** — writes a workspace-scoped `.git/config` `[user]` block, so personal repos elsewhere stay untouched. Default workspace root: `~/Documents/Projects/ChannelAssistDev` (falls back to `~/Projects/ChannelAssistDev` on a headless box).
-5. **Folder structure** — creates the workspace taxonomy (`ca-tools/`, `ca-docs/`, `ca-platform/`, `cm-product/`, `ca-training/`, `ca-work-dirs/`), migrates renamed predecessors, and seeds a per-folder `README.md`.
+5. **Folder structure** — creates the workspace taxonomy (the repo-holding folders carry a `-repo` suffix: `ca-tools-repo/`, `ca-docs-repo/`, `ca-platform-repo/`, `cm-product-repo/`, `ca-training-repo/`; the non-clone scratch/reference folders `ca-work-dirs/` and `ado-legacy/` keep their bare names), migrates renamed predecessors (e.g. an existing `ca-tools/` is renamed to `ca-tools-repo/`), and seeds a per-folder `README.md`.
 6. **Repository cloning** — clones each group's repos into the workspace, group by group, individually selectable; already-cloned repos are skipped + fetched.
 7. **Optional extras** — VS Code multi-root `.code-workspace` file, workspace `.vscode/` defaults, a `ca-claude-plugin` activation link (junction on Windows), `ca-copilot-plugin` usage notes, and a Windows-only WSL2 offer.
 
@@ -154,8 +158,10 @@ ca-bootstrap/
 │   ├── undo/                 # undo orchestrator + reversers/
 │   └── wizard/               # wizard engine + steps/
 ├── tests/acceptance/         # build-tagged end-to-end tests + YAML fixtures
+├── tests/smoke/              # live Windows end-to-end smoke harness (PowerShell)
+├── docs/guides/              # operator guides (e.g. Windows code signing)
 ├── docs/specs/               # spec-first design docs (one per alpha)
-├── dist/                     # release artifacts + the Windows smoke harness (gitignored)
+├── dist/                     # local release artifacts (gitignored)
 └── legacy/                   # archived PowerShell implementation (v1.9.0)
 ```
 

@@ -1,0 +1,56 @@
+# CI — vet, build, unit + acceptance tests across all three target OSes.
+#
+# This is the gate that gives ca-bootstrap *real* Windows execution: the
+# windows-latest leg runs the windows-tagged code paths (LockFileEx session
+# lock, winget detection/dispatch, UTF-8 console, UAC elevation wiring) and
+# their unit tests, which a macOS/Linux dev box can only cross-compile-vet.
+#
+# Re-enables CI that was paused for cost during the Go rewrite (see
+# docs/plans/2026-05-25-go-alpha-3-plan.md). Targets dev + main per ADR-0023.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+# One run per ref; a new push cancels the previous in-flight run.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        shell: bash
+        run: go vet ./...
+
+      - name: go build
+        shell: bash
+        run: go build ./...
+
+      - name: unit tests
+        shell: bash
+        run: go test -count=1 ./...
+
+      - name: acceptance tests
+        shell: bash
+        run: go test -tags acceptance -count=1 ./tests/acceptance/...

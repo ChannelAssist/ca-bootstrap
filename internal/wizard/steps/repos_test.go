@@ -14,7 +14,7 @@ import (
 func smallReposManifest(t *testing.T) {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "repos.yaml")
-	body := "version: 1\ngroups:\n  - name: core\n    repos:\n      - {repo: ChannelAssist/test-repo, into: ca-tools/test-repo, branch: main}\n"
+	body := "version: 1\ngroups:\n  - name: core\n    repos:\n      - {repo: ChannelAssist/test-repo, into: ca-tools-repo/test-repo, branch: main}\n"
 	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRepos_HappyClone_Mock(t *testing.T) {
 	if !strings.Contains(msg, "cloned") {
 		t.Errorf("summary = %q, want a clone count", msg)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools/test-repo", ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo/test-repo", ".git")); err != nil {
 		t.Errorf("repo not cloned: %v", err)
 	}
 }
@@ -60,7 +60,7 @@ func TestRepos_Declined_NoClone(t *testing.T) {
 	if _, err := (Repos{}).Run(ctx); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools/test-repo")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo/test-repo")); !os.IsNotExist(err) {
 		t.Errorf("declining the group must not clone; stat err=%v", err)
 	}
 }

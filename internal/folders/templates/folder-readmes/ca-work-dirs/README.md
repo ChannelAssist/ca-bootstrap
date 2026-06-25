@@ -14,7 +14,7 @@ a separate branch without disturbing your primary clone:
 
 ```bash
 # From <workspace> root:
-git -C ca-platform/ca-claude-plugin worktree add \
+git -C ca-platform-repo/ca-claude-plugin worktree add \
     ca-work-dirs/ca-claude-plugin-experiment feature/experiment
 cd ca-work-dirs/ca-claude-plugin-experiment
 claude

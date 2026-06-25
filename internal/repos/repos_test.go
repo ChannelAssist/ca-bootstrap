@@ -37,7 +37,7 @@ func oneGroup(optIn bool) *manifest.ReposManifest {
 		Groups: []manifest.Group{{
 			Name: "core",
 			Repos: []manifest.Repo{
-				{Repo: "ChannelAssist/test-repo", Into: "ca-tools/test-repo", Branch: "main", OptIn: optIn},
+				{Repo: "ChannelAssist/test-repo", Into: "ca-tools-repo/test-repo", Branch: "main", OptIn: optIn},
 			},
 		}},
 	}
@@ -68,7 +68,7 @@ func TestApply_GroupClone_Mock(t *testing.T) {
 	if s.Cloned != 1 {
 		t.Fatalf("Cloned=%d, want 1", s.Cloned)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools/test-repo", ".git")); err != nil {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo/test-repo", ".git")); err != nil {
 		t.Errorf("mock clone did not create the dest: %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func TestApply_CloneFailCleanup(t *testing.T) {
 	if s.Failed != 1 {
 		t.Errorf("Failed=%d, want 1", s.Failed)
 	}
-	if _, err := os.Stat(filepath.Join(ws, "ca-tools/test-repo")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, "ca-tools-repo/test-repo")); !os.IsNotExist(err) {
 		t.Errorf("failed clone should be cleaned up; stat err=%v", err)
 	}
 }

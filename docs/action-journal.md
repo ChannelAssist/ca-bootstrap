@@ -83,8 +83,8 @@ For workspace-root folders the entry also carries `is_workspace_root: true`. Tha
 - id: ...
   step: 50-folders
   action: seed_readme
-  path: C:\…\ChannelAssistDev\ca-tools\README.md
-  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools\README.md
+  path: C:\…\ChannelAssistDev\ca-tools-repo\README.md
+  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools-repo\README.md
   reversible: true
   undone: false
 ```
@@ -99,8 +99,8 @@ For workspace-root folders the entry also carries `is_workspace_root: true`. Tha
 - id: ...
   step: repair
   action: refresh_readme
-  path: C:\…\ChannelAssistDev\ca-tools\README.md
-  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools\README.md
+  path: C:\…\ChannelAssistDev\ca-tools-repo\README.md
+  template: C:\…\ca-bootstrap\templates\folder-readmes\ca-tools-repo\README.md
   previous_content: SGVsbG8gd29ybGQh                    # base64 of pre-overwrite bytes (≤64KB)
   reversible: true
   undone: false
@@ -133,7 +133,7 @@ The divergence guard mirrors the `seed_readme` reverser's discipline exactly so 
   step: 50-folders
   action: rename_folder
   from: C:\…\ChannelAssistDev\experiments
-  to:   C:\…\ChannelAssistDev\ca-experiments
+  to:   C:\…\ChannelAssistDev\ca-experiments-repo
   mode: silent-empty                                    # or: merge-into-empty-new
   reversible: true
   undone: false
@@ -169,8 +169,8 @@ The `mode` field records which branch of the safety-contract decision table the 
 - id: ...
   step: repair
   action: refresh_folder_tree
-  folder: ca-platform
-  path: C:\…\ChannelAssistDev\ca-platform\README.md
+  folder: ca-platform-repo
+  path: C:\…\ChannelAssistDev\ca-platform-repo\README.md
   reversible: false
   undone: false
 ```
@@ -314,7 +314,7 @@ Emitted by step 40 on **every** setup run — both when the workspace folder is 
 - id: ...
   step: 80-extras
   action: show_ca_copilot_plugin_usage
-  repo_path: <workspace>/ca-platform/ca-copilot-plugin
+  repo_path: <workspace>/ca-platform-repo/ca-copilot-plugin
   reversible: false
   undone: false
 ```
