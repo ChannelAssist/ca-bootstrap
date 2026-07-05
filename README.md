@@ -130,8 +130,8 @@ go build -o ca-bootstrap ./cmd/ca-bootstrap
 ./ca-bootstrap version
 
 # tests
-go test ./...                          # unit
-go test -tags acceptance ./tests/acceptance   # acceptance
+go test -count=1 ./...                            # unit
+go test -tags acceptance -count=1 ./tests/acceptance/...   # acceptance
 ```
 
 ### Makefile

@@ -26,14 +26,18 @@ BINARY  := ca-bootstrap
 PKG     := ./cmd/ca-bootstrap
 BIN_DIR := bin
 
-# Version/Commit/BuildTime are stamped into main.{Version,Commit,BuildTime}
-# via -ldflags, exactly as release.yml does. Overridable on the command line
-# (e.g. `make build VERSION=2.0.0-rc.1`). VERSION drops any leading "v" so it
-# matches the release asset convention. --match 'v[0-9]*' restricts describe
-# to release tags (the pattern release.yml triggers on), so non-version tags
-# like legacy/* are ignored — a slash in the version would corrupt the
-# build-all output filenames.
-VERSION    ?= $(patsubst v%,%,$(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev))
+# release.yml derives two distinct strings from the pushed tag, and this
+# Makefile mirrors that split so local builds match the release exactly:
+#   TAG     = the full tag incl. leading "v" (release.yml's ${GITHUB_REF_NAME})
+#             — used verbatim in the build-all asset filenames.
+#   VERSION = TAG with the leading "v" stripped (release.yml's ${...#v})
+#             — used as the main.Version ldflag value.
+# --match 'v[0-9]*' restricts describe to release tags (the pattern release.yml
+# triggers on), so non-version tags like legacy/* are ignored — a slash in the
+# describe output would otherwise corrupt the build-all filenames.
+# Both are overridable on the command line (e.g. `make build VERSION=2.0.0-rc.1`).
+TAG        ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev)
+VERSION    ?= $(patsubst v%,%,$(TAG))
 COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)
@@ -64,13 +68,13 @@ help: ## Display this help message
 	@echo "$(BOLD)$(CYAN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(RESET)"
 	@echo ""
 	@echo "$(BOLD)Build & run:$(RESET)"
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^(build|build-all|install|run):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; /^(build|build-all|install|run):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BOLD)Quality gates:$(RESET)"
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^(fmt|vet|tidy|test|test-acceptance|verify):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; /^(fmt|vet|tidy|test|test-acceptance|verify):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BOLD)Utility:$(RESET)"
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; /^(clean|help):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "}; /^(clean|help):/ {printf "  $(YELLOW)%-16s$(RESET) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "$(BOLD)$(CYAN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(RESET)"
 	@echo ""
@@ -87,11 +91,11 @@ build: ## Build the binary for the host platform into bin/ (version-stamped)
 
 .PHONY: build-all
 build-all: ## Cross-compile the six release binaries into bin/ (matches release.yml)
-	@echo "$(BOLD)$(BLUE)Cross-compiling $(BINARY) $(VERSION) for all platforms...$(RESET)"
+	@echo "$(BOLD)$(BLUE)Cross-compiling $(BINARY) $(TAG) for all platforms...$(RESET)"
 	@mkdir -p $(BIN_DIR)
 	@for platform in $(PLATFORMS); do \
 	  goos="$${platform%/*}"; goarch="$${platform#*/}"; \
-	  out="$(BIN_DIR)/$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
+	  out="$(BIN_DIR)/$(BINARY)_$(TAG)_$${goos}_$${goarch}"; \
 	  [ "$$goos" = windows ] && out="$${out}.exe"; \
 	  echo "  $(YELLOW)$${goos}/$${goarch}$(RESET) -> $$out"; \
 	  GOOS="$$goos" GOARCH="$$goarch" go build -trimpath -ldflags "$(LDFLAGS)" -o "$$out" $(PKG) || exit 1; \
@@ -140,7 +144,14 @@ test-acceptance: ## Run acceptance tests (-tags acceptance ./tests/acceptance/..
 	@go test -tags acceptance -count=1 ./tests/acceptance/...
 
 .PHONY: verify
-verify: vet build test test-acceptance ## Run the full CI gate: vet + build + unit + acceptance
+verify: ## Run the full CI gate: vet + build all packages + unit + acceptance (mirrors ci.yml)
+	@$(MAKE) --no-print-directory vet
+	@echo "$(BOLD)$(BLUE)Compiling all packages (go build ./...)...$(RESET)"
+	@go build ./...
+	@echo "$(BOLD)$(GREEN)✓ All packages compile$(RESET)"
+	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory test-acceptance
 	@echo "$(BOLD)$(GREEN)✓ All gates passed$(RESET)"
 
 # ---------------------------------------------------------------------------
