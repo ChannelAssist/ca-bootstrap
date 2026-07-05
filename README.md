@@ -130,9 +130,28 @@ go build -o ca-bootstrap ./cmd/ca-bootstrap
 ./ca-bootstrap version
 
 # tests
-go test ./...                          # unit
-go test -tags acceptance ./tests/acceptance   # acceptance
+go test -count=1 ./...                            # unit
+go test -tags acceptance -count=1 ./tests/acceptance/...   # acceptance
 ```
+
+### Makefile
+
+A `Makefile` wraps the common workflows (version-stamped like the release build). Run `make` (or `make help`) for the full list. Highlights:
+
+```bash
+make build            # version-stamped binary into bin/
+make build-all        # cross-compile the six release binaries (matches release.yml)
+make install          # go install onto your PATH, version-stamped
+make run ARGS="version"
+
+make verify           # full CI gate: vet + build + unit + acceptance
+make test             # unit tests
+make test-acceptance  # acceptance tests
+make fmt vet tidy     # formatting / static checks / module tidy
+make clean            # remove bin/ and clear the go caches
+```
+
+On Windows the `Makefile` needs Git for Windows (for `sh.exe`) and GNU Make (`choco install make` or `scoop install make`).
 
 Manifests are embedded at build time. For local experiments you can override them: `CA_BOOTSTRAP_MANIFEST`, `CA_BOOTSTRAP_REPOS`, `CA_BOOTSTRAP_FOLDERS` point at alternate YAML files.
 
