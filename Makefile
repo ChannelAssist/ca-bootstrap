@@ -38,7 +38,7 @@ BIN_DIR := bin
 # Both are overridable on the command line (e.g. `make build VERSION=2.0.0-rc.1`).
 TAG        ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev)
 VERSION    ?= $(patsubst v%,%,$(TAG))
-COMMIT     ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+COMMIT     ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)
 BUILD_TIME ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildTime=$(BUILD_TIME)
 
@@ -48,14 +48,20 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 win
 # ---------------------------------------------------------------------------
 # ANSI color codes (used by help + status messages)
 # ---------------------------------------------------------------------------
-RED=\033[0;31m
-GREEN=\033[0;32m
-YELLOW=\033[0;33m
-BLUE=\033[0;34m
-MAGENTA=\033[0;35m
-CYAN=\033[0;36m
-BOLD=\033[1m
-RESET=\033[0m
+# ESC is a literal escape byte captured at parse time, so colored output does
+# not depend on `echo` interpreting backslash escapes — POSIX /bin/sh and bash
+# echo differ on that. More robust than the raw \033 idiom currently shared
+# with the sibling repos (ca-keystone-studio, ca-command-and-control); worth
+# backporting there.
+ESC     := $(shell printf '\033')
+RED     := $(ESC)[0;31m
+GREEN   := $(ESC)[0;32m
+YELLOW  := $(ESC)[0;33m
+BLUE    := $(ESC)[0;34m
+MAGENTA := $(ESC)[0;35m
+CYAN    := $(ESC)[0;36m
+BOLD    := $(ESC)[1m
+RESET   := $(ESC)[0m
 
 # ---------------------------------------------------------------------------
 # Help target — parsed from `## description` comments after each target name
@@ -104,7 +110,8 @@ build-all: ## Cross-compile the six release binaries into bin/ (matches release.
 
 .PHONY: install
 install: ## Install the binary onto your PATH via 'go install' (version-stamped)
-	@echo "$(BOLD)$(BLUE)Installing $(BINARY) $(VERSION) to $$(go env GOBIN 2>/dev/null || echo $$(go env GOPATH)/bin)...$(RESET)"
+	@dest="$$(go env GOBIN)"; [ -n "$$dest" ] || dest="$$(go env GOPATH)/bin"; \
+	  echo "$(BOLD)$(BLUE)Installing $(BINARY) $(VERSION) to $$dest...$(RESET)"
 	@go install -trimpath -ldflags "$(LDFLAGS)" $(PKG)
 	@echo "$(BOLD)$(GREEN)✓ Installed $(BINARY)$(RESET)"
 
